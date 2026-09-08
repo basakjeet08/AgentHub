@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Testing / tooling
+.pytest_cache/
+.ruff_cache/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Local environment / secrets
+.env
+
+# Editors
+.idea/
+.vscode/

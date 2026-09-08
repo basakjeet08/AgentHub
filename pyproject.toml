@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agenthub"
+version = "0.1.0"
+description = "A TUI hub for managing coding-agent sessions"
+readme = "README.md"
+requires-python = ">=3.13"
+
+dependencies = [
+    "textual",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "textual-dev",
+]
+
+[project.scripts]
+agenthub = "agenthub.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
