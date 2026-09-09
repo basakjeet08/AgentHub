@@ -2,8 +2,6 @@
 
 A TUI hub for managing coding-agent sessions.
 
-Base project init: dependencies and package entry point only.
-
 ## Requires
 
 - Python >= 3.13
@@ -25,4 +23,13 @@ or
 
 ```fish
 python -m agenthub
+```
+
+## Structure
+
+```text
+src/agenthub/
+  main.py        # thin entry: construct + run the app
+  app.py         # AgentHubApp: layout, bindings, orchestration
+  terminal/      # AgentTerminal widget adapter
 ```
