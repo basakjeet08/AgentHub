@@ -25,6 +25,12 @@ dev = [
 [project.scripts]
 agenthub = "agenthub.main:main"
 
+[tool.hatch.build]
+# VCS ignore files are not consulted: file selection is fully explicit
+# via packages below, and a bare `src` rule in global gitignore otherwise
+# excludes the entire source tree from builds.
+ignore-vcs = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/agenthub"]
 
