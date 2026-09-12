@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 
+# Local caches (centralized under .cache/ via pyproject + .envrc)
+.cache/
+
 # Testing / tooling
 .pytest_cache/
 .ruff_cache/
