@@ -44,7 +44,3 @@ cache_dir = ".cache/pytest"
 target-version = "py313"
 line-length = 100
 cache-dir = ".cache/ruff"
-
-[tool.ruff.lint.per-file-ignores]
-# Package __init__ files group exports by concept, not sort order.
-"src/agenthub/terminal/__init__.py" = ["RUF022"]

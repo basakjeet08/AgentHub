@@ -111,24 +111,8 @@ off, `AgentTerminal` sends the configured transcript-scroll shortcuts instead.
 
 ### Current repository structure
 
-```text
-src/agenthub/
-├── __init__.py
-├── main.py
-├── app.py
-├── harnesses/
-│   ├── __init__.py
-│   ├── model.py
-│   ├── opencode.py
-│   └── registry.py
-├── sessions/
-│   ├── __init__.py
-│   ├── model.py
-│   └── manager.py
-└── terminal/
-    ├── __init__.py
-    └── widget.py
-```
+The authoritative source and test layout is documented in
+[Repository Structure](#repository-structure) below.
 
 The core ownership boundaries are now implemented, while the visible UI remains
 single-session. Sidebar navigation and user-facing multi-session lifecycle
@@ -707,6 +691,18 @@ src/agenthub/
 └── terminal/
     ├── __init__.py
     └── widget.py        # textual-tty/Bitty adapter
+
+tests/
+├── conftest.py          # shared harmless process fixture
+├── unit/
+│   ├── test_app.py
+│   ├── test_harnesses.py
+│   ├── test_main.py
+│   ├── test_session_manager.py
+│   └── test_terminal.py
+└── integration/
+    ├── test_app_lifecycle.py
+    └── test_terminal_lifecycle.py
 ```
 
 Packages are appropriate here because harnesses, sessions, and terminal hosting
@@ -771,6 +767,18 @@ These experiments may influence implementation details, but they do not by
 themselves invalidate the ownership model.
 
 ## Testing Direction
+
+Tests are grouped by execution boundary:
+
+- `tests/unit/` covers models, coordination, configuration, and adapter logic
+  without running a live Textual application or child process.
+- `tests/integration/` exercises mounted Textual widgets and their child-process
+  lifecycle.
+- `tests/conftest.py` provides the shared harmless process harness used by both
+  tiers.
+
+The tiers can be run independently with `python -m pytest tests/unit` and
+`python -m pytest tests/integration`.
 
 The architectural foundation now has automated coverage for:
 

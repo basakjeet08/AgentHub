@@ -14,9 +14,7 @@ from agenthub.terminal import AgentTerminal
 class AgentHubApp(App):
     """Fullscreen Textual host for the currently active managed session."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("ctrl+q", "quit", "Quit", priority=True)
-    ]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("ctrl+q", "quit", "Quit", priority=True)]
 
     def __init__(
         self,

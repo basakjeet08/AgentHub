@@ -1,4 +1,4 @@
-"""Tests for the AgentTerminal-to-Bitty translation boundary."""
+"""Unit tests for the AgentTerminal-to-Bitty translation boundary."""
 
 from pathlib import Path
 from unittest.mock import Mock
