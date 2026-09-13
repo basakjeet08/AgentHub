@@ -1,16 +1,7 @@
-"""Terminal package: the AgentTerminal widget plus harness selection."""
+"""Native terminal adapter package."""
 
-from .harness import DEFAULT_HARNESS, HARNESSES, AgentHarness, OpencodeHarness
-from .widget import AgentTerminal, ScrollKeys
+from .widget import AgentTerminal
 
 __all__ = [
-    # Widget
     "AgentTerminal",
-    # Harness abstraction + registry
-    "AgentHarness",
-    "OpencodeHarness",
-    "HARNESSES",
-    "DEFAULT_HARNESS",
-    # Value objects
-    "ScrollKeys",
 ]
