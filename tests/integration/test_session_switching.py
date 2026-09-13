@@ -199,3 +199,42 @@ async def test_keyboard_input_reaches_only_active_terminal(tmp_path: Path) -> No
 
         assert second_output.read_text() == "x"
         assert not first_output.exists()
+
+
+async def test_concurrent_children_inherit_distinct_session_directories(
+    tmp_path: Path,
+) -> None:
+    first_directory = tmp_path / "first-project"
+    second_directory = tmp_path / "second-project"
+    first_directory.mkdir()
+    second_directory.mkdir()
+    first_output = tmp_path / "first-cwd.txt"
+    second_output = tmp_path / "second-cwd.txt"
+    script = (
+        "import pathlib, sys, time; "
+        "pathlib.Path(sys.argv[1]).write_text(str(pathlib.Path.cwd())); "
+        "time.sleep(30)"
+    )
+    first_harness = _script_harness("test-cwd-a", script, str(first_output))
+    second_harness = _script_harness("test-cwd-b", script, str(second_output))
+    agenthub_directory = Path.cwd()
+    app = AgentHubApp(first_harness, cwd=first_directory)
+    second = app.session_manager.create(
+        name="Second",
+        cwd=second_directory,
+        harness=second_harness,
+    )
+
+    async with app.run_test() as pilot:
+        for _ in range(20):
+            if first_output.exists() and second_output.exists():
+                break
+            await pilot.pause(0.05)
+
+        assert first_output.read_text() == str(first_directory)
+        assert second_output.read_text() == str(second_directory)
+        assert Path.cwd() == agenthub_directory
+        assert second.terminal.board.process is not None
+        assert second.terminal.board.process.poll() is None
+
+    assert Path.cwd() == agenthub_directory

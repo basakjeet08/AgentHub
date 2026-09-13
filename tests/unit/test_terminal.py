@@ -7,6 +7,7 @@ import pytest
 from bittty import constants
 from textual import events
 
+from agenthub._terminal_launcher import build_launch_command
 from agenthub.harnesses import AgentHarness, KeyStroke
 from agenthub.terminal import AgentTerminal
 from agenthub.terminal.widget import _bittty_modifier
@@ -53,11 +54,30 @@ def test_wheel_uses_harness_scroll_policy(
 
 async def test_mount_revalidates_the_recorded_working_directory(
     sleeping_harness: AgentHarness,
-    monkeypatch,
     tmp_path: Path,
 ) -> None:
-    terminal = AgentTerminal(sleeping_harness)
-    monkeypatch.chdir(tmp_path)
+    working_directory = tmp_path / "project"
+    working_directory.mkdir()
+    terminal = AgentTerminal(sleeping_harness, working_directory=working_directory)
+    working_directory.rmdir()
 
-    with pytest.raises(NotImplementedError, match="different working directory"):
+    with pytest.raises(FileNotFoundError):
         await terminal.on_mount(events.Mount())
+
+
+def test_terminal_rejects_a_non_directory(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "not-a-directory"
+    file_path.touch()
+
+    with pytest.raises(NotADirectoryError):
+        AgentTerminal(sleeping_harness, working_directory=file_path)
+
+
+def test_launch_command_uses_python_module_without_a_shell(tmp_path: Path) -> None:
+    command = build_launch_command(tmp_path, ("agent", "--flag", "value with spaces"))
+
+    assert command[1:4] == ("-m", "agenthub._terminal_launcher", str(tmp_path))
+    assert command[4:] == ("agent", "--flag", "value with spaces")

@@ -86,6 +86,8 @@ widgets or import Bitty.
 
 - subclasses `textual_tty.Terminal`;
 - consumes an `AgentHarness`;
+- launches the harness in its session working directory through a shell-free
+  child helper that replaces itself with the harness process;
 - converts semantic key modifiers into Bitty constants;
 - converts mouse-wheel movement into agent-specific transcript navigation;
 - awaits Bitty reader-task and child-process cleanup during unmount;
@@ -346,7 +348,7 @@ class AgentSession:
     terminal: AgentTerminal
 ```
 
-Conceptual example after arbitrary working-directory launch is supported:
+Conceptual example:
 
 ```text
 id:       session-1
@@ -594,7 +596,7 @@ Every useful session needs an explicit working directory:
 cwd: Path
 ```
 
-The eventual launch behavior is:
+The implemented launch behavior is:
 
 ```python
 AgentTerminal(
@@ -603,21 +605,20 @@ AgentTerminal(
 )
 ```
 
-The installed `textual-tty.Terminal` constructor currently accepts a command
-but not a working directory. AgentHub currently accepts only the application
-process's working directory, records its normalized path on `AgentSession`, and
-rejects a different requested launch directory with `NotImplementedError`.
-This prevents session metadata from claiming a directory that the child process
-did not actually inherit.
+The installed `textual-tty.Terminal` constructor accepts a command but not a
+working directory. `AgentTerminal` therefore launches a small packaged Python
+helper inside the child PTY. The helper changes only its own working directory
+and calls `os.execvp()` to replace itself with the harness command. There is no
+long-lived wrapper process, shell composition, or process-wide directory change
+inside AgentHub.
 
-Arbitrary-directory session creation must not be exposed in the UI until the
-project has identified and validated a proper `textual-tty`/Bitty extension
-point.
+The terminal validates that the normalized launch path exists and is a
+directory both when constructed and immediately before mount. A user-facing
+directory picker remains part of the New Session workflow.
 
-`textual_tty.Terminal.cwd` already stores a child-reported OSC 7 path. Future
-launch configuration should therefore use a distinct name such as
-`working_directory` or `launch_cwd` rather than changing the meaning of that
-inherited attribute.
+`textual_tty.Terminal.cwd` already stores a child-reported OSC 7 path. AgentHub
+therefore uses the distinct `working_directory` attribute for launch
+configuration rather than changing the meaning of that inherited attribute.
 
 Do not implement this as a shell string such as:
 
@@ -680,6 +681,7 @@ boundaries remain stable as more harnesses and session behavior are added:
 ```text
 src/agenthub/
 ├── __init__.py
+├── _terminal_launcher.py # child-side cwd setup and exec
 ├── main.py              # entry point
 ├── app.py               # Textual application and DOM ownership
 ├── harnesses/
@@ -749,13 +751,11 @@ The architectural foundation is implemented:
 
 The remaining sequence is:
 
-1. Add proper working-directory launch support at the terminal dependency
-   boundary.
-2. Add the user-facing New Session workflow so users can choose a harness and
+1. Add the user-facing New Session workflow so users can choose a harness and
    working directory.
-3. Add explicit terminal lifecycle operations before session stop, restart, or
+2. Add explicit terminal lifecycle operations before session stop, restart, or
    removal.
-4. Add persistence and native session resumption only when the runtime model is
+3. Add persistence and native session resumption only when the runtime model is
    stable.
 
 ## Validation Tasks
@@ -768,12 +768,9 @@ Validated with the installed dependency versions:
 - Only the focused terminal receives keyboard input.
 - Hidden terminals continue buffering output and retain their screen state.
 - A terminal-exit event can be mapped to the exact owning session.
+- Two concurrent children inherit distinct session working directories while
+  AgentHub's own working directory remains unchanged.
 - App shutdown terminates all owned child processes reliably.
-
-Still to validate before exposing arbitrary project selection:
-
-- A process can be launched directly with the session's `cwd` without shell
-  command composition.
 
 These experiments may influence implementation details, but they do not by
 themselves invalidate the ownership model.
@@ -799,7 +796,8 @@ The architectural foundation now has automated coverage for:
 - behavior when selecting an unknown session;
 - terminal semantic-key to Bitty translation;
 - application creation with one managed session;
-- explicit rejection of unsupported launch directories;
+- launch-directory validation and shell-free command wrapping;
+- concurrent child processes using distinct working directories;
 - hidden mounted terminal survival;
 - focus switching between mounted terminals;
 - hidden output buffering and restored screen state;
@@ -808,8 +806,7 @@ The architectural foundation now has automated coverage for:
 - warning-free reader-task and child-process cleanup during application
   shutdown.
 
-Future tests should cover working-directory launch and the installed `agenthub`
-command.
+Future tests should cover the installed `agenthub` command.
 
 Tests that launch processes should use a harmless controllable test command or
 fake harness, not require an actual OpenCode conversation.
@@ -926,7 +923,7 @@ and multi-session switching runtime are implemented and tested. Normal startup
 still creates one OpenCode session because there is no New Session workflow.
 Multiple mounted terminals have been proven to survive repeated switching,
 retain hidden output and screen state, isolate input, route exit events to their
-owning sessions, and shut down with the app. Next: add proper working-directory
-launching, then add the New Session workflow. Persistence and native resume are
-deferred.
+owning sessions, run concurrently in distinct working directories, and shut
+down with the app. Next: add the New Session workflow. Persistence and native
+resume are deferred.
 ```

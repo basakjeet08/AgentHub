@@ -21,6 +21,8 @@ session architecture:
 - It launches one OpenCode process by default in an embedded terminal.
 - It represents that runtime with `AgentSession` and coordinates it through
   `SessionManager`.
+- It launches each terminal child in its session's normalized working directory
+  without changing AgentHub's own directory or using a shell command.
 - It mounts every session known at application composition time and displays
   the active one through a `ContentSwitcher`.
 - It provides a session sidebar and temporary Ctrl+1/Ctrl+2 switching.
@@ -34,8 +36,6 @@ session architecture:
 It does not yet provide:
 
 - a user-facing New Session flow;
-- launching a session in a directory different from AgentHub's own current
-  directory;
 - stopping, restarting, or removing sessions;
 - persisted session metadata;
 - harness-native conversation resumption.

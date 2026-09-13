@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 
@@ -22,12 +20,16 @@ def test_app_creates_one_initial_session(
     assert session.terminal.harness is sleeping_harness
 
 
-def test_app_rejects_an_unsupported_launch_directory(
+def test_app_accepts_a_different_launch_directory(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(NotImplementedError, match="different working directory"):
-        AgentHubApp(sleeping_harness, cwd=tmp_path)
+    app = AgentHubApp(sleeping_harness, cwd=tmp_path)
+    session = app.session_manager.active_session
+
+    assert session is not None
+    assert session.cwd == tmp_path.resolve()
+    assert session.terminal.working_directory == tmp_path.resolve()
 
 
 def test_quit_binding_has_priority_over_terminal_input() -> None:

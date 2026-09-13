@@ -9,6 +9,7 @@ from bittty import constants as _bittty_constants
 from textual import events
 from textual_tty import Terminal as TtyTerminal
 
+from agenthub._terminal_launcher import build_launch_command
 from agenthub.harnesses import AgentHarness, KeyStroke
 
 _BITTTY_MODIFIERS = {
@@ -53,26 +54,25 @@ class AgentTerminal(TtyTerminal):
         """Build a live terminal adapter from semantic harness configuration."""
 
         launch_directory = (working_directory or Path.cwd()).expanduser().resolve()
-        self._ensure_supported_working_directory(launch_directory)
+        self._validate_working_directory(launch_directory)
 
         self.harness = harness
         self.working_directory = launch_directory
         super().__init__(
-            command=list(harness.command),
+            command=list(build_launch_command(launch_directory, harness.command)),
             name=name,
             id=id,
             classes=classes,
         )
 
     @staticmethod
-    def _ensure_supported_working_directory(working_directory: Path) -> None:
-        """Reject a launch directory the current terminal stack cannot honor."""
+    def _validate_working_directory(working_directory: Path) -> None:
+        """Require an existing directory before constructing or mounting."""
 
-        if working_directory != Path.cwd().resolve():
-            raise NotImplementedError(
-                "textual-tty does not currently support launching a process "
-                "in a different working directory"
-            )
+        if not working_directory.exists():
+            raise FileNotFoundError(working_directory)
+        if not working_directory.is_dir():
+            raise NotADirectoryError(working_directory)
 
     async def on_mount(self, event: events.Mount) -> None:
         """Start the child only if it will inherit the recorded directory."""
@@ -80,7 +80,7 @@ class AgentTerminal(TtyTerminal):
         # Textual dispatches named handlers across the class MRO. Suppress that
         # automatic parent call because this adapter invokes it explicitly.
         event.prevent_default()
-        self._ensure_supported_working_directory(self.working_directory)
+        self._validate_working_directory(self.working_directory)
         await super().on_mount()
 
     async def on_unmount(self, event: events.Unmount) -> None:
