@@ -54,9 +54,12 @@ bittty / PTY → coding agent`.
 - mounts every session known at composition time inside a `ContentSwitcher`;
 - owns the session sidebar, active-terminal visibility, and focus;
 - routes sidebar selection through one `show_session()` operation;
-- owns a priority Ctrl+Q application binding;
-- owns priority Ctrl+N and focus-navigation bindings, whose session-creation
-  action is deliberately a stub until the New Session phase;
+- owns terminal-first Locked/Unlocked keyboard policy and priority candidates
+  for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, focus navigation, and session slots;
+- gates hub navigation through `check_action()` while a terminal is active so
+  rejected key events continue unchanged to `AgentTerminal`;
+- creates and mounts OpenCode sessions directly from Ctrl+N;
+- lazily creates one Fish session for each Ctrl+1…9 shell slot;
 - maps terminal-exit events back to their owning sessions and exits when the
   only session's child process exits.
 
@@ -68,11 +71,12 @@ bittty / PTY → coding agent`.
 - constructs terminal runtimes without mounting them.
 
 `AgentSession` currently connects an AgentHub ID and name with its intended
-working directory, harness definition, and terminal runtime.
+working directory, hosted CLI definition, and terminal runtime. The same model
+is used for coding-agent and Fish sessions.
 
 `AgentHarness` is immutable semantic data containing a stable ID, display name,
-tuple command, and terminal-independent scrolling shortcuts. It does not create
-widgets or import Bitty.
+tuple command, and an optional terminal-independent scrolling policy. It does
+not create widgets or import Bitty.
 
 `AgentTerminal` currently:
 
@@ -82,18 +86,23 @@ widgets or import Bitty.
   child helper that replaces itself with the harness process;
 - converts semantic key modifiers into Bitty constants;
 - converts mouse-wheel movement into agent-specific transcript navigation;
+- retains bounded styled normal-screen scrollback for shell harnesses without
+  their own transcript-scroll policy;
 - awaits Bitty reader-task and child-process cleanup during unmount;
 - associates process-exit messages with the terminal that emitted them;
 - delegates terminal emulation and process interaction to
   `textual-tty`/`bittty`.
 
-Only one harness is registered:
+Only one coding-agent harness is registered:
 
 ```text
 registry key: opencode
 command:      opencode
 default:      yes
 ```
+
+Fish is a built-in shell definition used directly by the fixed shell slots. It
+is intentionally not part of the coding-agent harness registry.
 
 OpenCode's current transcript-scroll policy is:
 
@@ -104,8 +113,10 @@ wheel step  → send the selected shortcut three times
 ```
 
 When the child application has enabled terminal mouse tracking, the child owns
-the wheel and `AgentTerminal` delegates to `textual-tty`. When mouse tracking is
-off, `AgentTerminal` sends the configured transcript-scroll shortcuts instead.
+the wheel and `AgentTerminal` delegates to `textual-tty`. Otherwise AgentHub
+sends a harness's configured transcript-scroll shortcuts. Harnesses without a
+custom policy, such as Fish, use bounded styled history on the normal screen
+and textual-tty's behavior inside alternate-screen applications.
 
 ### Current repository structure
 
@@ -114,7 +125,7 @@ The authoritative source and test layout is documented in
 
 The core ownership boundaries, Home-first shell, persistent sidebar and status
 bar, and switching runtime are now implemented. Normal startup creates no
-session. The visible New Session controls are not wired to session creation yet.
+session. Ctrl+N creates OpenCode sessions without opening configuration UI.
 
 ## Architecture
 
@@ -219,7 +230,7 @@ class AgentHarness:
     id: str
     display_name: str
     command: tuple[str, ...]
-    scroll: ScrollKeys
+    scroll: ScrollKeys | None
 ```
 
 OpenCode is described without importing Bitty:
@@ -435,7 +446,7 @@ SessionManager = session collection and lifecycle coordinator
 - layout and the Textual DOM;
 - terminal widget mounting and visibility;
 - the session sidebar and dialogs;
-- application keybindings such as Ctrl+Q;
+- keyboard-ownership policy and application keybindings;
 - terminal focus;
 - translating UI actions into manager operations;
 - displaying the active session's terminal;
@@ -458,17 +469,27 @@ SessionManager.select(session_id)
 App updates terminal visibility and focus
 ```
 
-Ctrl+Q belongs at this layer:
+Application shortcuts belong at this layer, but are enabled only when AgentHub
+owns the keyboard:
 
 ```text
-Ctrl+Q
-   ↓
-AgentHubApp binding
-   ↓
-quit AgentHub
+Ctrl+G toggles keyboard ownership
+   │
+   ├── Locked + active terminal → other hub actions fail check_action()
+   │                              and their original keys reach the PTY
+   │
+   └── Unlocked → Ctrl+N creates OpenCode, Ctrl+1...9 open Fish slots, and
+                  the remaining hub shortcuts execute their AgentHub actions
 ```
 
-It should not be implemented as `AgentTerminal` calling `self.app.exit()`.
+Home is the intentional exception: with no active terminal, application
+shortcuts work even while the authoritative mode remains Locked. Ctrl+0 is
+intentionally unbound. Distinct Ctrl+digit input requires a modern enhanced
+keyboard protocol; legacy terminal encoding cannot distinguish every
+Ctrl+digit combination from a plain digit.
+
+This policy does not belong inside `AgentTerminal`; that boundary continues to
+forward terminal input without knowing AgentHub navigation rules.
 
 Conceptually:
 
@@ -656,18 +677,17 @@ Normal empty startup uses a persistent application shell:
 ┌──────────────────────┬────────────────────────────────────┐
 │ AgentHub sidebar     │ HomeScreen                         │
 │                      │                                    │
-│ + New Session        │ Empty-state guidance               │
+│                      │ Empty-state guidance               │
 │                      │ Shortcut quick reference           │
 ├──────────────────────┴────────────────────────────────────┤
-│ Ready                       Sessions 0           Agents 0 │
+│ ○ Unlocked  Ctrl+G Lock     Sessions 0           Agents 0 │
 └───────────────────────────────────────────────────────────┘
 ```
 
 The Home screen is a content view inside the application shell rather than a
 separate Textual screen stack entry. This keeps shared navigation and status
-chrome mounted while future content changes inside the `ContentSwitcher`. The
-New Session control lives in the persistent sidebar rather than being duplicated
-inside Home.
+chrome mounted while future content changes inside the `ContentSwitcher`.
+Session creation remains a keyboard action until the configurable modal exists.
 
 The implemented sidebar-to-terminal relationship is conceptually:
 
@@ -682,11 +702,13 @@ The implemented sidebar-to-terminal relationship is conceptually:
 └──────────────────────┴────────────────────────────────────┘
 ```
 
-The sidebar presents a New Session entry point and, only when sessions exist,
-lists `AgentSession` objects and emits selected session IDs. It does not operate
-directly on `SessionManager` or terminal internals. The sidebar New Session
-control currently emits intent to an application-owned stub; the modal and
-creation workflow remain future work.
+The sidebar always renders `AGENTS` and `SHELLS` as equal-height sections, even
+when either collection is empty. Both collections use `AgentSession`, one
+`SessionManager`, and the same selected-session message.
+Agent rows intentionally have no numeric prefix, while Ctrl+1…9 label stable
+Fish slots. Agent sessions remain selectable directly from the sidebar. The sidebar does
+not operate directly on `SessionManager` or terminal internals. Ctrl+N remains
+the immediate OpenCode creation path; configuration UI is future work.
 
 ## Repository Structure
 
@@ -701,6 +723,7 @@ src/agenthub/
 ├── app.py               # Textual application and DOM ownership
 ├── harnesses/
 │   ├── __init__.py      # public harness API
+│   ├── fish.py          # Fish shell-slot definition
 │   ├── model.py         # immutable semantic models
 │   ├── opencode.py      # OpenCode definition
 │   └── registry.py      # built-in harness lookup
@@ -710,6 +733,7 @@ src/agenthub/
 │   └── manager.py       # session coordination
 ├── terminal/
 │   ├── __init__.py
+│   ├── scrollback.py     # bounded styled history for plain shells
 │   └── widget.py        # textual-tty/Bitty adapter
 └── ui/
     ├── __init__.py
@@ -739,6 +763,9 @@ tests/
     ├── test_app_lifecycle.py
     ├── test_command_palette.py
     ├── test_home_screen.py
+    ├── test_keyboard_ownership.py
+    ├── test_session_creation_shortcuts.py
+    ├── test_sidebar_groups.py
     ├── test_session_switching.py
     └── test_terminal_lifecycle.py
 ```
@@ -763,7 +790,8 @@ The architectural foundation is implemented:
 
 1. `AgentHarness` is immutable semantic data with stable identity.
 2. Bitty translation is isolated inside `AgentTerminal`.
-3. Ctrl+Q is an application-owned priority binding.
+3. AgentHub starts Unlocked; Ctrl+G toggles keyboard ownership, and hub actions
+   fall through to the active terminal while locked.
 4. `AgentSession` and `SessionManager` represent and coordinate runtimes.
 5. The app starts empty on Home without constructing a terminal or child
    process, while retaining support for sessions created before mount.
@@ -776,11 +804,15 @@ The architectural foundation is implemented:
 8. A persistent application shell, Textual's built-in Tokyo Night theme,
    responsive Home empty state, clean zero-session sidebar, and real status bar
    establish the shared UI foundation.
+9. Sidebar presentation accepts `AGENTS` and `SHELLS` collections backed by the
+   same manager and selection flow.
+10. Ctrl+N immediately creates OpenCode and Ctrl+1…9 lazily create stable Fish
+    slots.
 
 The remaining sequence is:
 
-1. Add the user-facing New Session workflow behind the existing intent points
-   so users can choose a harness and working directory.
+1. Replace immediate default creation with the user-facing New Session modal so
+   users can choose a harness and working directory.
 2. Add explicit terminal lifecycle operations before session stop, restart, or
    removal.
 3. Add persistence and native session resumption only when the runtime model is
@@ -794,6 +826,10 @@ Validated with the installed dependency versions:
 - Hiding Terminal A does not unmount it or terminate its process.
 - Focus can move from the hidden terminal to the visible terminal.
 - Only the focused terminal receives keyboard input.
+- Locked priority candidates rejected by `check_action()` reach the focused
+  terminal's PTY unchanged, while Unlocked candidates execute hub actions.
+- Ctrl+G changes the visible ownership state in both directions and never
+  reaches the child terminal.
 - Hidden terminals continue buffering output and retain their screen state.
 - A terminal-exit event can be mapped to the exact owning session.
 - Two concurrent children inherit distinct session working directories while
@@ -830,6 +866,9 @@ The architectural foundation now has automated coverage for:
 - focus switching between mounted terminals;
 - hidden output buffering and restored screen state;
 - keyboard input isolation;
+- Locked/Unlocked keyboard fall-through at the real PTY-write boundary;
+- Home shortcut behavior without an active terminal;
+- stable Fish-slot navigation with persistent sidebar groups;
 - process-exit routing to the owning session;
 - warning-free reader-task and child-process cleanup during application
   shutdown.
@@ -925,6 +964,8 @@ Future work should preserve these rules:
     empty placeholder packages, persistence, or `TerminalProfile` prematurely.
 14. Normal startup must show AgentHub itself without requiring a harness or
     child process to launch.
+15. AgentHub starts Unlocked for immediate navigation; when explicitly Locked,
+    only Ctrl+G may be intercepted and every other key belongs to the terminal.
 
 ## Quick Context for Future Conversations and Models
 
@@ -948,12 +989,14 @@ terminals rather than unmounting them; the core process-survival behavior is
 covered by an integration test.
 
 Current state: the harness/terminal/session/manager boundaries, Home-first
-application shell, persistent sidebar and status bar, and multi-session
-switching runtime are implemented and tested. Normal startup creates no session
-or child process. Multiple explicitly created terminals have been proven to
-survive repeated switching, retain hidden output and screen state, isolate
-input, route exit events to their owning sessions, run concurrently in distinct
-working directories, and shut down with the app. Next: wire the existing New
-Session intent points to the incremental creation workflow. Persistence and
-native resume are deferred.
+application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
+ownership, grouped sidebar presentation, immediate OpenCode creation, fixed Fish
+slots, and multi-session switching runtime are implemented and tested. Normal
+startup creates no session or child process. Multiple terminals have been
+proven to survive repeated switching, retain hidden output and screen state,
+isolate input, route exit events to their owning sessions, run concurrently in
+distinct working directories, and shut down with the app. Locked hub shortcuts
+have been proven to fall through at the PTY-write boundary. Next: replace the
+immediate defaults with the incremental New Session configuration workflow.
+Persistence and native resume are deferred.
 ```

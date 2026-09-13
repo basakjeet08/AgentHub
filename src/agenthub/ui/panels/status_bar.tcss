@@ -7,14 +7,25 @@ AgentHubStatusBar {
     layout: horizontal;
 }
 
-#status-indicator {
-    width: 2;
+#mode-indicator {
+    width: 1;
+    height: 1;
+    margin-right: 1;
+    content-align: center middle;
+    text-align: center;
+}
+
+AgentHubStatusBar.-locked #mode-indicator {
     color: $success;
 }
 
-#status-label {
-    width: 1fr;
-    min-width: 7;
+AgentHubStatusBar.-unlocked #mode-indicator {
+    color: $warning;
+}
+
+#mode-label {
+    width: auto;
+    min-width: 9;
     color: $foreground;
     text-style: bold;
 }
@@ -25,4 +36,12 @@ AgentHubStatusBar {
     min-width: 13;
     margin-right: 2;
     color: $text-muted;
+}
+
+#mode-action {
+    width: 1fr;
+    min-width: 14;
+    margin-left: 1;
+    color: $secondary;
+    text-align: left;
 }

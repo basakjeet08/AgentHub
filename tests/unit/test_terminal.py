@@ -52,6 +52,31 @@ def test_wheel_uses_harness_scroll_policy(
     event.stop.assert_called_once_with()
 
 
+def test_wheel_scrolls_native_history_for_plain_shell(tmp_path: Path) -> None:
+    shell_harness = AgentHarness(
+        id="test-shell",
+        display_name="Test Shell",
+        command=("fish",),
+        scroll=None,
+    )
+    terminal = AgentTerminal(shell_harness, working_directory=tmp_path)
+    terminal.board.resize(20, 4)
+    terminal.feed("one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\n")
+    event = Mock()
+
+    assert terminal.scrollback_line_count > 0
+    assert terminal.scrollback_offset == 0
+
+    terminal._wheel(event, constants.MOUSE_BUTTON_WHEEL_UP, "up")
+
+    assert terminal.scrollback_offset > 0
+    event.stop.assert_called_once_with()
+
+    terminal._wheel(Mock(), constants.MOUSE_BUTTON_WHEEL_DOWN, "down")
+
+    assert terminal.scrollback_offset == 0
+
+
 async def test_mount_revalidates_the_recorded_working_directory(
     sleeping_harness: AgentHarness,
     tmp_path: Path,

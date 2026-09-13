@@ -1,0 +1,258 @@
+"""Integration coverage for terminal-first keyboard ownership."""
+
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+from textual.command import CommandPalette
+from textual.widgets import OptionList, Static
+
+from agenthub.app import AgentHubApp
+from agenthub.harnesses import AgentHarness
+from agenthub.sessions import AgentSession
+from agenthub.ui import AgentHubStatusBar, SessionSidebar
+from agenthub.ui.panels.status_bar import LOCKED_ICON, UNLOCKED_ICON
+
+
+def _app_with_sessions(
+    harness: AgentHarness,
+    count: int = 1,
+) -> tuple[AgentHubApp, tuple[AgentSession, ...]]:
+    app = AgentHubApp(agent_harness=harness, shell_harness=harness)
+    sessions = tuple(
+        app.session_manager.create(
+            name=f"Session {index}",
+            cwd=Path.cwd(),
+            harness=harness,
+        )
+        for index in range(1, count + 1)
+    )
+    return app, sessions
+
+
+@pytest.mark.parametrize(
+    ("key", "expected_input"),
+    [
+        ("ctrl+a", "\x01"),
+        ("ctrl+s", "\x13"),
+        ("ctrl+n", "\x0e"),
+        ("ctrl+p", "\x10"),
+        ("ctrl+q", "\x11"),
+        ("ctrl+0", "0"),
+        ("ctrl+1", "1"),
+    ],
+)
+async def test_locked_hub_binding_reaches_pty(
+    sleeping_harness: AgentHarness,
+    key: str,
+    expected_input: str,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+g")
+        assert app.hub_locked
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press(key)
+            await pilot.pause()
+
+        write_spy.assert_called_once_with(expected_input)
+        assert app.hub_locked
+        assert app.is_running
+        assert not isinstance(app.screen, CommandPalette)
+
+
+async def test_ctrl_g_toggles_mode_without_reaching_pty(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pty = session.terminal.board.pty
+        assert pty is not None
+        status = app.query_one(AgentHubStatusBar)
+
+        assert status.query_one("#mode-indicator", Static).content == UNLOCKED_ICON
+        assert status.query_one("#mode-label", Static).content == "Unlocked"
+        assert status.query_one("#mode-action", Static).content == "Ctrl+G Lock"
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press("ctrl+g")
+            await pilot.pause()
+
+            assert app.hub_locked
+            assert status.query_one("#mode-indicator", Static).content == LOCKED_ICON
+            assert status.query_one("#mode-label", Static).content == "Locked"
+            assert status.query_one("#mode-action", Static).content == "Ctrl+G Unlock"
+
+            await pilot.press("ctrl+g")
+            await pilot.pause()
+
+        assert not app.hub_locked
+        assert status.query_one("#mode-indicator", Static).content == UNLOCKED_ICON
+        assert status.query_one("#mode-label", Static).content == "Unlocked"
+        write_spy.assert_not_called()
+
+
+async def test_locking_restores_active_agent_highlight(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, sessions = _app_with_sessions(sleeping_harness, count=2)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        agent_list = app.query_one("#agent-session-list", OptionList)
+        await pilot.press("ctrl+a")
+        assert agent_list.highlighted == 0
+
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+
+        assert sessions[1].terminal.has_focus
+        assert agent_list.highlighted == 1
+
+
+async def test_locking_restores_active_shell_highlight(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = AgentHubApp(shell_harness=sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+1")
+        await pilot.press("ctrl+2")
+        shell_list = app.query_one("#shell-session-list", OptionList)
+        await pilot.press("ctrl+s")
+        assert shell_list.highlighted == 0
+
+        active_shell = app.session_manager.active_session
+        assert active_shell is not None
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+
+        assert active_shell.terminal.has_focus
+        assert shell_list.highlighted == 1
+
+
+async def test_unlocked_navigation_and_new_session_actions_fire(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, _sessions = _app_with_sessions(sleeping_harness, count=2)
+    new_session_calls = 0
+
+    def record_new_session() -> None:
+        nonlocal new_session_calls
+        new_session_calls += 1
+
+    app.action_new_session = record_new_session  # type: ignore[method-assign]
+
+    async with app.run_test() as pilot:
+        assert not app.hub_locked
+
+        await pilot.press("ctrl+1")
+        await pilot.press("ctrl+2")
+        await pilot.pause()
+
+        agent_list = app.query_one("#agent-session-list", OptionList)
+        shell_list = app.query_one("#shell-session-list", OptionList)
+        assert shell_list.highlighted == 1
+
+        await pilot.press("ctrl+s")
+        assert shell_list.has_focus
+        assert shell_list.highlighted == 0
+        assert agent_list.highlighted is None
+
+        await pilot.press("ctrl+a")
+        assert agent_list.has_focus
+        assert agent_list.highlighted == 0
+        assert shell_list.highlighted is None
+
+        await pilot.press("ctrl+n")
+        assert new_session_calls == 1
+
+
+async def test_unlocked_command_palette_and_quit_actions_fire(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, _sessions = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+p")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
+
+        await pilot.press("escape")
+        await pilot.press("ctrl+q")
+
+    assert not app.is_running
+
+
+async def test_locking_from_command_palette_closes_it_and_refocuses_terminal(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+p")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
+
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+
+        assert app.hub_locked
+        assert not isinstance(app.screen, CommandPalette)
+        assert session.terminal.has_focus
+
+
+async def test_unbound_ctrl_0_reaches_pty_while_unlocked(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = AgentHubApp(shell_harness=sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+1")
+        session = app.session_manager.active_session
+        assert session is not None
+        assert not app.hub_locked
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press("ctrl+0")
+            await pilot.pause()
+
+        write_spy.assert_called_once_with("0")
+
+
+async def test_home_uses_unlocked_shortcuts_by_default() -> None:
+    app = AgentHubApp()
+    new_session_calls = 0
+
+    def record_new_session() -> None:
+        nonlocal new_session_calls
+        new_session_calls += 1
+
+    app.action_new_session = record_new_session  # type: ignore[method-assign]
+
+    async with app.run_test(size=(100, 36)) as pilot:
+        assert not app.hub_locked
+
+        await pilot.press("ctrl+a")
+        assert app.query_one(SessionSidebar).has_focus
+
+        await pilot.press("ctrl+s")
+        assert app.query_one(SessionSidebar).has_focus
+        await pilot.press("ctrl+n")
+        assert new_session_calls == 1
+
+        await pilot.press("ctrl+p")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)

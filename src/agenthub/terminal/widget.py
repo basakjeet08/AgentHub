@@ -2,15 +2,24 @@
 
 import asyncio
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
 from bittty import constants as _bittty_constants
+from bittty.video import Cell
+from rich.segment import Segment
+from rich.style import Style as RichStyle
 from textual import events
+from textual.strip import Strip
 from textual_tty import Terminal as TtyTerminal
 
 from agenthub._terminal_launcher import build_launch_command
 from agenthub.harnesses import AgentHarness, KeyStroke
+from agenthub.terminal.scrollback import ScrollbackVideo
+
+_SCROLLBACK_LINES = 10_000
+_WHEEL_SCROLL_LINES = 3
 
 _BITTTY_MODIFIERS = {
     (False, False, False): _bittty_constants.KEY_MOD_NONE,
@@ -58,12 +67,26 @@ class AgentTerminal(TtyTerminal):
 
         self.harness = harness
         self.working_directory = launch_directory
+        self._scrollback_offset = 0
+        self._scrollback_video: ScrollbackVideo | None = None
         super().__init__(
             command=list(build_launch_command(launch_directory, harness.command)),
             name=name,
             id=id,
             classes=classes,
         )
+        if harness.scroll is None:
+            blitter = self.board.blitter
+            scrollback_video = ScrollbackVideo(
+                self.board.width,
+                self.board.height,
+                self.board.width_policy,
+                history_limit=_SCROLLBACK_LINES,
+                on_history_added=self._on_history_added,
+            )
+            blitter.primary_buffer = scrollback_video
+            blitter.current_buffer = scrollback_video
+            self._scrollback_video = scrollback_video
 
     @staticmethod
     def _validate_working_directory(working_directory: Path) -> None:
@@ -79,6 +102,19 @@ class AgentTerminal(TtyTerminal):
         """Report child liveness without exposing terminal-library internals."""
 
         return self._process is not None and self._process.poll() is None
+
+    @property
+    def scrollback_line_count(self) -> int:
+        """Return the number of native shell-history rows retained in memory."""
+
+        video = self._scrollback_video
+        return 0 if video is None else video.history_line_count
+
+    @property
+    def scrollback_offset(self) -> int:
+        """Return how many rows above the live shell viewport are displayed."""
+
+        return self._scrollback_offset
 
     async def on_mount(self, event: events.Mount) -> None:
         """Start the child only if it will inherit the recorded directory."""
@@ -141,16 +177,89 @@ class AgentTerminal(TtyTerminal):
         # When the child tracks the mouse it owns the wheel — defer to base.
         # Otherwise send the harness's transcript-scroll keys. Plain method
         # override (not a message handler), so super() here is a single call.
+        scroll = self.harness.scroll
         if self.mouse_mode != "off":
             super()._wheel(event, button, arrow)
             return
 
-        key_stroke = self.harness.scroll.down if arrow == "down" else self.harness.scroll.up
+        if scroll is None:
+            if self.board.blitter.in_alt_screen:
+                super()._wheel(event, button, arrow)
+                return
+            self._scroll_shell_history(arrow)
+            event.stop()
+            return
 
-        for _ in range(self.harness.scroll.steps):
+        key_stroke = scroll.down if arrow == "down" else scroll.up
+
+        for _ in range(scroll.steps):
             self.board.display.input_key(
                 key_stroke.key,
                 _bittty_modifier(key_stroke),
             )
 
         event.stop()
+
+    def _on_history_added(self, count: int) -> None:
+        """Keep a scrolled-back viewport stable while new shell output arrives."""
+
+        if self._scrollback_offset:
+            self._scrollback_offset = min(
+                self._scrollback_offset + count,
+                self.scrollback_line_count,
+            )
+            self.refresh()
+
+    def _scroll_shell_history(self, arrow: str) -> None:
+        """Move the native shell viewport without sending keys to the child."""
+
+        if arrow == "up":
+            next_offset = min(
+                self._scrollback_offset + _WHEEL_SCROLL_LINES,
+                self.scrollback_line_count,
+            )
+        else:
+            next_offset = max(self._scrollback_offset - _WHEEL_SCROLL_LINES, 0)
+
+        if next_offset != self._scrollback_offset:
+            self._scrollback_offset = next_offset
+            self.refresh()
+
+    def render_line(self, y: int) -> Strip:
+        """Render retained shell rows when viewing above the live primary page."""
+
+        video = self._scrollback_video
+        if video is None or self._scrollback_offset == 0 or self.board.blitter.in_alt_screen:
+            return super().render_line(y)
+
+        history_lines = video.history_line_count
+        viewport_start = history_lines - self._scrollback_offset
+        row_index = viewport_start + y
+        if row_index < history_lines:
+            row = video.history_row(row_index)
+        else:
+            live_row = row_index - history_lines
+            if live_row >= video.height:
+                return Strip.blank(self.size.width, RichStyle())
+            row = video.grid[live_row]
+
+        return self._render_scrollback_row(row)
+
+    def _render_scrollback_row(self, row: Sequence[Cell]) -> Strip:
+        """Convert one retained Bitty row to a Textual strip with original styles."""
+
+        width = self.size.width
+        segments: list[Segment] = []
+        run: list[str] = []
+        run_style = None
+        for style, character in row[:width]:
+            if style is not run_style and style != run_style:
+                if run:
+                    segments.append(Segment("".join(run), self._to_rich(run_style)))
+                    run = []
+                run_style = style
+            run.append(character)
+        if run:
+            segments.append(Segment("".join(run), self._to_rich(run_style)))
+        padding_style = self._to_rich(row[-1][0]) if row else RichStyle()
+        return Strip(segments).adjust_cell_length(width, padding_style)

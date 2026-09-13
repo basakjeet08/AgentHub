@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Center, Grid, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Label, Static
 
-from agenthub.ui.bindings import HOME_SHORTCUT_BINDINGS
+from agenthub.ui.bindings import HOME_SHORTCUTS
 
 
 class HomeScreen(VerticalScroll):
@@ -31,12 +31,17 @@ class HomeScreen(VerticalScroll):
             ):
                 yield Static("⌨  Shortcuts", classes="section-title")
                 with Grid(id="shortcut-grid"):
-                    for binding in HOME_SHORTCUT_BINDINGS:
+                    for key_display, description in HOME_SHORTCUTS:
                         yield Label(
-                            binding.key_display or binding.key,
+                            key_display,
                             classes="shortcut-key",
                         )
                         yield Label(
-                            binding.description,
+                            description,
                             classes="shortcut-description",
                         )
+                yield Static(
+                    "Hub shortcuts require Unlocked mode while a terminal is active.",
+                    id="shortcut-mode-note",
+                    classes="muted",
+                )

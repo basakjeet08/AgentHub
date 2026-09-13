@@ -21,7 +21,7 @@ def _app_with_session(harness: AgentHarness) -> tuple[AgentHubApp, AgentSession]
     return app, session
 
 
-async def test_ctrl_q_exits_while_terminal_has_focus(
+async def test_unlocked_ctrl_q_exits_while_terminal_has_focus(
     sleeping_harness: AgentHarness,
 ) -> None:
     app, created_session = _app_with_session(sleeping_harness)
@@ -35,7 +35,7 @@ async def test_ctrl_q_exits_while_terminal_has_focus(
         assert session.terminal.has_focus
 
         status = app.query_one(AgentHubStatusBar)
-        assert status.query_one("#status-label", Static).content == "Running"
+        assert status.query_one("#mode-label", Static).content == "Unlocked"
         assert status.query_one("#session-count", Static).content == "Sessions 1"
         assert status.query_one("#agent-count", Static).content == "Agents 1"
 

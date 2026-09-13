@@ -24,9 +24,9 @@ class ScrollKeys:
 
 @dataclass(frozen=True)
 class AgentHarness:
-    """Immutable launch and terminal-behavior configuration for an agent CLI."""
+    """Immutable launch and terminal-behavior configuration for a hosted CLI."""
 
     id: str
     display_name: str
     command: tuple[str, ...]
-    scroll: ScrollKeys
+    scroll: ScrollKeys | None

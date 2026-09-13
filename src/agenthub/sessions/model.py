@@ -1,4 +1,4 @@
-"""Runtime model for one AgentHub-managed coding-agent session."""
+"""Runtime model for one AgentHub-managed terminal session."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +9,7 @@ from agenthub.terminal import AgentTerminal
 
 @dataclass
 class AgentSession:
-    """AgentHub identity and runtime objects for one coding-agent process."""
+    """AgentHub identity and runtime objects for one hosted CLI process."""
 
     id: str
     name: str

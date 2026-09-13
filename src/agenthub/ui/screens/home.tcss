@@ -72,3 +72,9 @@ HomeScreen {
 .shortcut-description {
     color: $foreground;
 }
+
+#shortcut-mode-note {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+}

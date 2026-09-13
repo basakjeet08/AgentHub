@@ -4,6 +4,17 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Static
 
+LOCKED_ICON = "●"
+UNLOCKED_ICON = "○"
+
+
+def _mode_content(locked: bool) -> tuple[str, str, str]:
+    """Return the icon, label, and action hint for one ownership mode."""
+
+    if locked:
+        return LOCKED_ICON, "Locked", "Ctrl+G Unlock"
+    return UNLOCKED_ICON, "Unlocked", "Ctrl+G Lock"
+
 
 class AgentHubStatusBar(Horizontal):
     """Display real application state without speculative provider metrics."""
@@ -13,29 +24,52 @@ class AgentHubStatusBar(Horizontal):
         *,
         session_count: int = 0,
         agent_count: int = 0,
+        locked: bool = False,
         id: str | None = None,
     ) -> None:
         super().__init__(id=id)
         self._session_count = session_count
         self._agent_count = agent_count
+        self.update_mode(locked)
 
     def compose(self) -> ComposeResult:
         """Compose application status and runtime counts."""
 
-        yield Static("●", id="status-indicator")
-        yield Static("Ready", id="status-label")
+        icon, label, action = _mode_content(self._locked)
+        yield Static(icon, id="mode-indicator")
+        yield Static(label, id="mode-label")
+        yield Static(action, id="mode-action")
         yield Static(f"Sessions {self._session_count}", id="session-count")
         yield Static(f"Agents {self._agent_count}", id="agent-count")
 
-    def update_state(self, *, session_count: int, agent_count: int) -> None:
+    def update_state(
+        self,
+        *,
+        session_count: int,
+        agent_count: int,
+        locked: bool,
+    ) -> None:
         """Refresh status from current AgentHub runtime facts."""
 
         self._session_count = session_count
         self._agent_count = agent_count
+        self.update_mode(locked)
         if not self.is_mounted:
             return
 
-        running = agent_count > 0
-        self.query_one("#status-label", Static).update("Running" if running else "Ready")
         self.query_one("#session-count", Static).update(f"Sessions {session_count}")
         self.query_one("#agent-count", Static).update(f"Agents {agent_count}")
+
+    def update_mode(self, locked: bool) -> None:
+        """Update authoritative keyboard-ownership text and its visual cue."""
+
+        self._locked = locked
+        self.set_class(locked, "-locked")
+        self.set_class(not locked, "-unlocked")
+        if not self.is_mounted:
+            return
+
+        icon, label, action = _mode_content(locked)
+        self.query_one("#mode-indicator", Static).update(icon)
+        self.query_one("#mode-label", Static).update(label)
+        self.query_one("#mode-action", Static).update(action)
