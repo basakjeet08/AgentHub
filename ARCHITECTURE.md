@@ -26,7 +26,7 @@ behavior.
 
 ## Current Implementation
 
-The current execution path is:
+Normal startup now follows this path:
 
 ```text
 main.py
@@ -34,37 +34,29 @@ main.py
    ▼
 AgentHubApp
    │
-   ▼
-SessionManager
-   │
-   ▼
-AgentSession
-   │
-   ├── AgentHarness
-   │
-   └── AgentTerminal
-   │
-   ▼
-textual-tty
-   │
-   ▼
-bittty / PTY
-   │
-   ▼
-OpenCode
+   ├── SessionSidebar
+   ├── HomeScreen
+   └── AgentHubStatusBar
 ```
+
+No `AgentSession`, `AgentTerminal`, PTY, or coding-agent process is created just
+to display Home. When sessions are explicitly present, the established runtime
+path remains `SessionManager → AgentSession → AgentTerminal → textual-tty →
+bittty / PTY → coding agent`.
 
 ### Current responsibilities
 
 `AgentHubApp`:
 
 - owns one `SessionManager`;
-- creates one initial OpenCode session;
+- starts with that manager empty and shows the neutral Home content;
+- owns the persistent sidebar, main content area, and status bar shell;
 - mounts every session known at composition time inside a `ContentSwitcher`;
 - owns the session sidebar, active-terminal visibility, and focus;
-- routes sidebar selection and priority Ctrl+1/Ctrl+2 bindings through one
-  `show_session()` operation;
+- routes sidebar selection through one `show_session()` operation;
 - owns a priority Ctrl+Q application binding;
+- owns priority Ctrl+N and focus-navigation bindings, whose session-creation
+  action is deliberately a stub until the New Session phase;
 - maps terminal-exit events back to their owning sessions and exits when the
   only session's child process exits.
 
@@ -120,9 +112,9 @@ off, `AgentTerminal` sends the configured transcript-scroll shortcuts instead.
 The authoritative source and test layout is documented in
 [Repository Structure](#repository-structure) below.
 
-The core ownership boundaries, minimal sidebar, and switching runtime are now
-implemented. Normal startup still creates one session because the user-facing
-New Session flow and lifecycle operations have not been added yet.
+The core ownership boundaries, Home-first shell, persistent sidebar and status
+bar, and switching runtime are now implemented. Normal startup creates no
+session. The visible New Session controls are not wired to session creation yet.
 
 ## Architecture
 
@@ -447,6 +439,8 @@ SessionManager = session collection and lifecycle coordinator
 - terminal focus;
 - translating UI actions into manager operations;
 - displaying the active session's terminal;
+- displaying Home when no session is active;
+- maintaining real application-level status counts;
 - deciding how to respond when a terminal process exits.
 
 Example interaction:
@@ -656,6 +650,25 @@ translate that intent into the current terminal implementation's API.
 
 ## UI Relationship
 
+Normal empty startup uses a persistent application shell:
+
+```text
+┌──────────────────────┬────────────────────────────────────┐
+│ AgentHub sidebar     │ HomeScreen                         │
+│                      │                                    │
+│ + New Session        │ Empty-state guidance               │
+│                      │ Shortcut quick reference           │
+├──────────────────────┴────────────────────────────────────┤
+│ Ready                       Sessions 0           Agents 0 │
+└───────────────────────────────────────────────────────────┘
+```
+
+The Home screen is a content view inside the application shell rather than a
+separate Textual screen stack entry. This keeps shared navigation and status
+chrome mounted while future content changes inside the `ContentSwitcher`. The
+New Session control lives in the persistent sidebar rather than being duplicated
+inside Home.
+
 The implemented sidebar-to-terminal relationship is conceptually:
 
 ```text
@@ -669,9 +682,11 @@ The implemented sidebar-to-terminal relationship is conceptually:
 └──────────────────────┴────────────────────────────────────┘
 ```
 
-The current sidebar lists existing `AgentSession` objects and emits selected
-session IDs. It does not operate directly on `SessionManager` or terminal
-internals. A New Session control and workflow remain future work.
+The sidebar presents a New Session entry point and, only when sessions exist,
+lists `AgentSession` objects and emits selected session IDs. It does not operate
+directly on `SessionManager` or terminal internals. The sidebar New Session
+control currently emits intent to an application-owned stub; the modal and
+creation workflow remain future work.
 
 ## Repository Structure
 
@@ -698,11 +713,19 @@ src/agenthub/
 │   └── widget.py        # textual-tty/Bitty adapter
 └── ui/
     ├── __init__.py
-    ├── app.tcss         # application layout styles
+    ├── app.tcss         # persistent application-shell layout
+    ├── bindings.py      # Textual bindings and shared shortcut metadata
+    ├── theme.tcss       # shared component and Textual overlay styles
+    ├── screens/
+    │   ├── __init__.py
+    │   ├── home.py      # neutral empty-state presentation and intent
+    │   └── home.tcss    # responsive Home presentation
     └── panels/
         ├── __init__.py
         ├── sidebar.py   # session navigation panel
-        └── sidebar.tcss # sidebar presentation styles
+        ├── sidebar.tcss # sidebar presentation styles
+        ├── status_bar.py   # real application state and counts
+        └── status_bar.tcss # persistent status presentation
 
 tests/
 ├── conftest.py          # shared harmless process fixture
@@ -714,6 +737,8 @@ tests/
 │   └── test_terminal.py
 └── integration/
     ├── test_app_lifecycle.py
+    ├── test_command_palette.py
+    ├── test_home_screen.py
     ├── test_session_switching.py
     └── test_terminal_lifecycle.py
 ```
@@ -740,19 +765,22 @@ The architectural foundation is implemented:
 2. Bitty translation is isolated inside `AgentTerminal`.
 3. Ctrl+Q is an application-owned priority binding.
 4. `AgentSession` and `SessionManager` represent and coordinate runtimes.
-5. The app creates one managed OpenCode session by default and can compose all
-   sessions created before mount.
-6. A minimal sidebar and priority Ctrl+1/Ctrl+2 bindings share one app-owned
-   switching operation.
+5. The app starts empty on Home without constructing a terminal or child
+   process, while retaining support for sessions created before mount.
+6. A minimal sidebar routes selection through one app-owned switching
+   operation.
 7. Integration tests prove that two manager-owned terminals remain mounted and
    running, hidden output and screen state survive switching, input is isolated
    to the active terminal, exit events map to the correct session, and app
    shutdown terminates both processes.
+8. A persistent application shell, Textual's built-in Tokyo Night theme,
+   responsive Home empty state, clean zero-session sidebar, and real status bar
+   establish the shared UI foundation.
 
 The remaining sequence is:
 
-1. Add the user-facing New Session workflow so users can choose a harness and
-   working directory.
+1. Add the user-facing New Session workflow behind the existing intent points
+   so users can choose a harness and working directory.
 2. Add explicit terminal lifecycle operations before session stop, restart, or
    removal.
 3. Add persistence and native session resumption only when the runtime model is
@@ -895,7 +923,8 @@ Future work should preserve these rules:
 12. Runtime sessions and persistent records are separate concepts.
 13. Keep current architectural domains in dedicated packages, but do not add
     empty placeholder packages, persistence, or `TerminalProfile` prematurely.
-14. Preserve current one-session behavior while introducing the new boundaries.
+14. Normal startup must show AgentHub itself without requiring a harness or
+    child process to launch.
 
 ## Quick Context for Future Conversations and Models
 
@@ -918,12 +947,13 @@ mount and stops it on unmount, session switching should hide/show mounted
 terminals rather than unmounting them; the core process-survival behavior is
 covered by an integration test.
 
-Current state: the harness/terminal/session/manager boundaries, minimal sidebar,
-and multi-session switching runtime are implemented and tested. Normal startup
-still creates one OpenCode session because there is no New Session workflow.
-Multiple mounted terminals have been proven to survive repeated switching,
-retain hidden output and screen state, isolate input, route exit events to their
-owning sessions, run concurrently in distinct working directories, and shut
-down with the app. Next: add the New Session workflow. Persistence and native
-resume are deferred.
+Current state: the harness/terminal/session/manager boundaries, Home-first
+application shell, persistent sidebar and status bar, and multi-session
+switching runtime are implemented and tested. Normal startup creates no session
+or child process. Multiple explicitly created terminals have been proven to
+survive repeated switching, retain hidden output and screen state, isolate
+input, route exit events to their owning sessions, run concurrently in distinct
+working directories, and shut down with the app. Next: wire the existing New
+Session intent points to the incremental creation workflow. Persistence and
+native resume are deferred.
 ```

@@ -1,52 +1,45 @@
-"""Application shell: layout, key bindings, and widget orchestration."""
+"""Application shell: Home layout, key bindings, and widget orchestration."""
 
-from pathlib import Path
+from collections.abc import Iterable
 from typing import ClassVar
 
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.app import App, ComposeResult, SystemCommand
+from textual.containers import Horizontal, Vertical
+from textual.screen import Screen
 from textual.widgets import ContentSwitcher
 
-from agenthub.harnesses import DEFAULT_HARNESS, HARNESSES, AgentHarness
 from agenthub.sessions import AgentSession, SessionManager
 from agenthub.terminal import AgentTerminal
-from agenthub.ui import SessionSidebar
+from agenthub.ui import (
+    AgentHubStatusBar,
+    HomeScreen,
+    SessionSidebar,
+)
+from agenthub.ui.bindings import APPLICATION_BINDINGS
 
 
 class AgentHubApp(App):
-    """Fullscreen Textual host for the currently active managed session."""
+    """Fullscreen AgentHub shell for Home and managed terminal sessions."""
 
     CSS_PATH: ClassVar[list[str]] = [
+        "ui/theme.tcss",
         "ui/app.tcss",
+        "ui/screens/home.tcss",
         "ui/panels/sidebar.tcss",
+        "ui/panels/status_bar.tcss",
     ]
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("ctrl+1", "select_session(0)", "Session 1", priority=True),
-        Binding("ctrl+2", "select_session(1)", "Session 2", priority=True),
-        Binding("ctrl+q", "quit", "Quit", priority=True),
-    ]
+    BINDINGS: ClassVar = list(APPLICATION_BINDINGS)
 
-    def __init__(
-        self,
-        harness: AgentHarness | None = None,
-        *,
-        cwd: Path | None = None,
-    ) -> None:
-        """Create one initial session using the given or default harness."""
+    def __init__(self) -> None:
+        """Create the AgentHub shell without launching a coding harness."""
 
         super().__init__()
-        selected_harness = harness or HARNESSES[DEFAULT_HARNESS]
+        self.theme = "tokyo-night"
         self.session_manager = SessionManager()
-        self.session_manager.create(
-            name=selected_harness.display_name,
-            cwd=cwd or Path.cwd(),
-            harness=selected_harness,
-        )
 
     def compose(self) -> ComposeResult:
-        """Mount every managed terminal while displaying only the active one."""
+        """Compose persistent application chrome and the current main content."""
 
         sessions = self.session_manager.sessions
         active_session = self.session_manager.active_session
@@ -56,16 +49,22 @@ class AgentHubApp(App):
         initial = (
             self._terminal_dom_id(active_session.id)
             if active_session is not None
-            else None
+            else "home-screen"
         )
-        yield Horizontal(
-            SessionSidebar(sessions, id="session-sidebar"),
-            ContentSwitcher(
-                *(session.terminal for session in sessions),
-                initial=initial,
-                id="session-content",
-            ),
-        )
+        with Vertical(id="app-shell"):
+            with Horizontal(id="application-body"):
+                yield SessionSidebar(sessions, id="session-sidebar")
+                yield ContentSwitcher(
+                    HomeScreen(id="home-screen"),
+                    *(session.terminal for session in sessions),
+                    initial=initial,
+                    id="session-content",
+                )
+            yield AgentHubStatusBar(
+                session_count=len(sessions),
+                agent_count=0,
+                id="status-bar",
+            )
 
     def on_mount(self) -> None:
         """Focus the terminal once mounted so keystrokes reach the agent."""
@@ -73,6 +72,9 @@ class AgentHubApp(App):
         session = self.session_manager.active_session
         if session is not None:
             self.show_session(session.id)
+        else:
+            self.query_one(HomeScreen).focus()
+        self.call_after_refresh(self._refresh_status)
 
     @staticmethod
     def _terminal_dom_id(session_id: str) -> str:
@@ -91,12 +93,46 @@ class AgentHubApp(App):
         self.set_focus(session.terminal)
         return session
 
-    def action_select_session(self, index: int) -> None:
-        """Select a session by creation-order index when that slot exists."""
+    def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
+        """Expose Textual's Keys command using AgentHub product language."""
 
-        sessions = self.session_manager.sessions
-        if 0 <= index < len(sessions):
-            self.show_session(sessions[index].id)
+        for command in super().get_system_commands(screen):
+            if command.title == "Keys":
+                yield SystemCommand(
+                    "Shortcuts",
+                    command.help,
+                    command.callback,
+                    command.discover,
+                )
+            else:
+                yield command
+
+    def action_new_session(self) -> None:
+        """Acknowledge session intent while creation remains deliberately deferred."""
+
+        self.notify("Session creation is coming in the next phase.", title="New Session")
+
+    def action_focus_sidebar(self) -> None:
+        """Move keyboard focus to the sidebar's most useful control."""
+
+        self.query_one(SessionSidebar).focus_primary()
+
+    def action_focus_workspace(self) -> None:
+        """Move focus to the active terminal or the Home primary action."""
+
+        session = self.session_manager.active_session
+        if session is not None:
+            self.set_focus(session.terminal)
+        else:
+            self.query_one(HomeScreen).focus()
+
+    def on_session_sidebar_new_session_requested(
+        self,
+        _message: SessionSidebar.NewSessionRequested,
+    ) -> None:
+        """Route sidebar intent through the same application-owned action."""
+
+        self.action_new_session()
 
     def on_session_sidebar_session_selected(
         self,
@@ -118,6 +154,17 @@ class AgentHubApp(App):
             if session.terminal is message.control
         )
         self._handle_session_process_exited(session, message.exit_code)
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        """Update the status bar using only current runtime facts."""
+
+        sessions = self.session_manager.sessions
+        running_agents = sum(session.terminal.is_process_running for session in sessions)
+        self.query_one(AgentHubStatusBar).update_state(
+            session_count=len(sessions),
+            agent_count=running_agents,
+        )
 
     def _handle_session_process_exited(
         self,

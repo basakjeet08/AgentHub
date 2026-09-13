@@ -1,0 +1,74 @@
+HomeScreen {
+    width: 1fr;
+    height: 1fr;
+    background: $background;
+    align: center middle;
+}
+
+#home-content {
+    width: 90%;
+    max-width: 72;
+    min-width: 30;
+    height: auto;
+    min-height: 20;
+    margin: 0;
+    padding: 0 2;
+    align-horizontal: center;
+}
+
+#home-heading {
+    width: 100%;
+    height: 1;
+    align-horizontal: center;
+}
+
+#home-title {
+    width: auto;
+    color: $foreground;
+    text-style: bold;
+}
+
+#home-tagline {
+    width: auto;
+    margin-left: 2;
+}
+
+#home-empty-copy {
+    width: 100%;
+    margin-top: 2;
+    margin-bottom: 2;
+    color: $foreground;
+    text-align: center;
+}
+
+#shortcuts-card-container {
+    width: 100%;
+    height: auto;
+}
+
+#shortcuts-card {
+    width: 100%;
+    max-width: 54;
+    height: auto;
+    margin-top: 0;
+    padding: 1 3;
+}
+
+#shortcut-grid {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+    grid-size: 2;
+    grid-columns: 11 1fr;
+    grid-rows: 1;
+    grid-gutter: 0 1;
+}
+
+.shortcut-key {
+    color: $secondary;
+    text-style: bold;
+}
+
+.shortcut-description {
+    color: $foreground;
+}

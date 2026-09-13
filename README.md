@@ -15,17 +15,21 @@ making structural changes.
 
 ## Project Status
 
-AgentHub currently has a minimal multi-session runtime built on the accepted
-session architecture:
+AgentHub currently has a Home-first application shell backed by the accepted
+multi-session runtime architecture:
 
-- It launches one OpenCode process by default in an embedded terminal.
+- It starts on a neutral Home screen without launching a coding-agent process.
+- It provides a persistent session sidebar, Home content area, and application
+  status bar.
+- It uses Textual's built-in Tokyo Night theme with shared semantic component
+  styles.
 - It represents that runtime with `AgentSession` and coordinates it through
   `SessionManager`.
 - It launches each terminal child in its session's normalized working directory
   without changing AgentHub's own directory or using a shell command.
 - It mounts every session known at application composition time and displays
   the active one through a `ContentSwitcher`.
-- It provides a session sidebar and temporary Ctrl+1/Ctrl+2 switching.
+- It provides a session sidebar for switching between managed sessions.
 - It keeps hidden terminals mounted, running, and buffering output while focus
   follows the visible terminal.
 - It forwards native keyboard and mouse interaction to the child process.
@@ -36,12 +40,15 @@ session architecture:
 It does not yet provide:
 
 - a user-facing New Session flow;
+- a complete shortcuts dialog;
 - stopping, restarting, or removing sessions;
 - persisted session metadata;
 - harness-native conversation resumption.
 
-The runtime supports multiple pre-created sessions, but the normal application
-startup still creates only one until the New Session workflow is implemented.
+The runtime still supports multiple sessions created before application
+composition, but normal startup remains empty until the New Session workflow is
+implemented. The sidebar New Session control and Ctrl+N binding are intentional
+entry points for that later phase and do not create dialogs or sessions yet.
 
 ## Architecture
 

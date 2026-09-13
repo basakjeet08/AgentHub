@@ -74,6 +74,12 @@ class AgentTerminal(TtyTerminal):
         if not working_directory.is_dir():
             raise NotADirectoryError(working_directory)
 
+    @property
+    def is_process_running(self) -> bool:
+        """Report child liveness without exposing terminal-library internals."""
+
+        return self._process is not None and self._process.poll() is None
+
     async def on_mount(self, event: events.Mount) -> None:
         """Start the child only if it will inherit the recorded directory."""
 

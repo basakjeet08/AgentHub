@@ -1,0 +1,28 @@
+AgentHubStatusBar {
+    width: 100%;
+    height: 3;
+    padding: 1 2;
+    background: $surface;
+    color: $text-muted;
+    layout: horizontal;
+}
+
+#status-indicator {
+    width: 2;
+    color: $success;
+}
+
+#status-label {
+    width: 1fr;
+    min-width: 7;
+    color: $foreground;
+    text-style: bold;
+}
+
+#session-count,
+#agent-count {
+    width: auto;
+    min-width: 13;
+    margin-right: 2;
+    color: $text-muted;
+}

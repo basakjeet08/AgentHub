@@ -1,0 +1,72 @@
+/* Shared component styling using Textual's active semantic theme variables. */
+
+Screen {
+    background: $background;
+    color: $foreground;
+}
+
+.muted {
+    color: $text-muted;
+}
+
+.section-title {
+    color: $foreground;
+    text-style: bold;
+}
+
+.card {
+    background: $surface;
+}
+
+Button {
+    min-width: 16;
+    height: 3;
+    background: $surface;
+    color: $foreground;
+    border: tall $panel;
+    text-style: bold;
+}
+
+Button:hover {
+    background: $panel;
+    border: tall $secondary;
+}
+
+Button:focus {
+    background: $panel;
+    color: $foreground;
+    border: tall $primary;
+}
+
+Button.primary {
+    background: $primary;
+    color: $background;
+    border: tall $primary;
+}
+
+Button.primary:hover,
+Button.primary:focus {
+    background: $primary-lighten-1;
+    color: $background;
+    border: tall $secondary;
+}
+
+/* Keep Textual's built-in command behavior while presenting it as a launcher. */
+CommandPalette {
+    align: center middle;
+}
+
+CommandPalette > #--container {
+    width: 50%;
+    min-width: 36;
+    max-width: 80;
+    height: 14;
+    min-height: 10;
+    max-height: 70vh;
+    margin-top: 0;
+}
+
+CommandPalette CommandList {
+    height: 10;
+    max-height: 50vh;
+}

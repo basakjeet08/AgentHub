@@ -8,6 +8,7 @@ from textual.widgets import ContentSwitcher
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
+from agenthub.sessions import AgentSession
 from agenthub.ui import SessionSidebar
 
 
@@ -35,12 +36,24 @@ def _script_harness(harness_id: str, script: str, *args: str) -> AgentHarness:
     )
 
 
-async def test_keyboard_and_sidebar_switch_managed_sessions(
+def _app_with_session(
+    harness: AgentHarness,
+    *,
+    cwd: Path | None = None,
+) -> tuple[AgentHubApp, AgentSession]:
+    app = AgentHubApp()
+    session = app.session_manager.create(
+        name=harness.display_name,
+        cwd=cwd or Path.cwd(),
+        harness=harness,
+    )
+    return app, session
+
+
+async def test_sidebar_switches_managed_sessions(
     sleeping_harness: AgentHarness,
 ) -> None:
-    app = AgentHubApp(sleeping_harness)
-    first = app.session_manager.active_session
-    assert first is not None
+    app, first = _app_with_session(sleeping_harness)
     second = app.session_manager.create(
         name="Second",
         cwd=first.cwd,
@@ -64,7 +77,9 @@ async def test_keyboard_and_sidebar_switch_managed_sessions(
         assert app.session_manager.active_session is second
         assert switcher.current == app._terminal_dom_id(second.id)
 
-        await pilot.press("ctrl+1")
+        sidebar.set_active(first.id)
+        sidebar.focus_primary()
+        await pilot.press("enter")
 
         assert app.session_manager.active_session is first
         assert first.terminal.display
@@ -74,21 +89,25 @@ async def test_keyboard_and_sidebar_switch_managed_sessions(
         assert first_process.poll() is None
         assert second_process.poll() is None
 
-        await pilot.press("ctrl+2")
+        sidebar.set_active(second.id)
+        sidebar.focus_primary()
+        await pilot.press("enter")
 
         assert app.session_manager.active_session is second
         assert not first.terminal.display
         assert second.terminal.display
         assert second.terminal.has_focus
 
-        await pilot.press("ctrl+1")
+        sidebar.set_active(first.id)
+        sidebar.focus_primary()
+        await pilot.press("enter")
 
         assert app.session_manager.active_session is first
         assert first.terminal.display
         assert first.terminal.has_focus
 
-        app.set_focus(sidebar)
         sidebar.set_active(second.id)
+        sidebar.focus_primary()
         await pilot.press("enter")
 
         assert app.session_manager.active_session is second
@@ -107,9 +126,7 @@ async def test_keyboard_and_sidebar_switch_managed_sessions(
 async def test_process_exit_is_resolved_to_owning_session(
     sleeping_harness: AgentHarness,
 ) -> None:
-    app = AgentHubApp(sleeping_harness)
-    first = app.session_manager.active_session
-    assert first is not None
+    app, first = _app_with_session(sleeping_harness)
     second = app.session_manager.create(
         name="Exits",
         cwd=first.cwd,
@@ -138,9 +155,7 @@ async def test_hidden_output_and_screen_state_survive_switching(
         "print('while-hidden', flush=True); "
         "time.sleep(30)",
     )
-    app = AgentHubApp(output_harness)
-    first = app.session_manager.active_session
-    assert first is not None
+    app, first = _app_with_session(output_harness)
     second = app.session_manager.create(
         name="Second",
         cwd=first.cwd,
@@ -156,7 +171,10 @@ async def test_hidden_output_and_screen_state_survive_switching(
         assert "before-hide" in hidden_screen
         assert "while-hidden" in hidden_screen
 
-        await pilot.press("ctrl+1")
+        sidebar = app.query_one(SessionSidebar)
+        sidebar.set_active(first.id)
+        sidebar.focus_primary()
+        await pilot.press("enter")
 
         assert first.terminal.display
         assert first.terminal.has_focus
@@ -177,9 +195,7 @@ async def test_keyboard_input_reaches_only_active_terminal(tmp_path: Path) -> No
     second_output = tmp_path / "second-input.txt"
     first_harness = _script_harness("test-input-a", script, str(first_output))
     second_harness = _script_harness("test-input-b", script, str(second_output))
-    app = AgentHubApp(first_harness)
-    first = app.session_manager.active_session
-    assert first is not None
+    app, first = _app_with_session(first_harness)
     second = app.session_manager.create(
         name="Second",
         cwd=first.cwd,
@@ -218,7 +234,7 @@ async def test_concurrent_children_inherit_distinct_session_directories(
     first_harness = _script_harness("test-cwd-a", script, str(first_output))
     second_harness = _script_harness("test-cwd-b", script, str(second_output))
     agenthub_directory = Path.cwd()
-    app = AgentHubApp(first_harness, cwd=first_directory)
+    app, _first = _app_with_session(first_harness, cwd=first_directory)
     second = app.session_manager.create(
         name="Second",
         cwd=second_directory,
