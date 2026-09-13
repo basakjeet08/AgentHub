@@ -15,27 +15,33 @@ making structural changes.
 
 ## Project Status
 
-AgentHub currently has a single-session UI built on the accepted session
-architecture:
+AgentHub currently has a minimal multi-session runtime built on the accepted
+session architecture:
 
-- It launches one OpenCode process in a fullscreen embedded terminal.
+- It launches one OpenCode process by default in an embedded terminal.
 - It represents that runtime with `AgentSession` and coordinates it through
   `SessionManager`.
-- It focuses the terminal automatically.
+- It mounts every session known at application composition time and displays
+  the active one through a `ContentSwitcher`.
+- It provides a session sidebar and temporary Ctrl+1/Ctrl+2 switching.
+- It keeps hidden terminals mounted, running, and buffering output while focus
+  follows the visible terminal.
 - It forwards native keyboard and mouse interaction to the child process.
 - It adapts mouse-wheel events to OpenCode's transcript-scroll shortcuts.
-- It exits when Ctrl+Q is pressed or when the child process exits.
+- It exits when Ctrl+Q is pressed, and preserves the original exit-on-child
+  behavior when only one session exists.
 
 It does not yet provide:
 
-- multiple sessions;
-- a session sidebar;
-- session switching, stopping, restarting, or removal;
+- a user-facing New Session flow;
+- launching a session in a directory different from AgentHub's own current
+  directory;
+- stopping, restarting, or removing sessions;
 - persisted session metadata;
 - harness-native conversation resumption.
 
-The phrase "session hub" describes the product direction, not the complete
-feature set of the current prototype.
+The runtime supports multiple pre-created sessions, but the normal application
+startup still creates only one until the New Session workflow is implemented.
 
 ## Architecture
 
@@ -101,9 +107,9 @@ authoritative package tree and module responsibilities.
 
 Runtime dependencies declared in `pyproject.toml`:
 
-- `bittty`
-- `textual`
-- `textual-tty`
+- `bittty==0.1.4`
+- `textual==8.2.8`
+- `textual-tty==0.4.0`
 
 Development dependencies:
 

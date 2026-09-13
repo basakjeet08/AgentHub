@@ -60,10 +60,13 @@ OpenCode
 
 - owns one `SessionManager`;
 - creates one initial OpenCode session;
-- mounts that session's fullscreen terminal widget;
-- focuses that widget on mount;
+- mounts every session known at composition time inside a `ContentSwitcher`;
+- owns the session sidebar, active-terminal visibility, and focus;
+- routes sidebar selection and priority Ctrl+1/Ctrl+2 bindings through one
+  `show_session()` operation;
 - owns a priority Ctrl+Q application binding;
-- exits when the terminal child process exits.
+- maps terminal-exit events back to their owning sessions and exits when the
+  only session's child process exits.
 
 `SessionManager` currently:
 
@@ -86,6 +89,7 @@ widgets or import Bitty.
 - converts semantic key modifiers into Bitty constants;
 - converts mouse-wheel movement into agent-specific transcript navigation;
 - awaits Bitty reader-task and child-process cleanup during unmount;
+- associates process-exit messages with the terminal that emitted them;
 - delegates terminal emulation and process interaction to
   `textual-tty`/`bittty`.
 
@@ -114,9 +118,9 @@ off, `AgentTerminal` sends the configured transcript-scroll shortcuts instead.
 The authoritative source and test layout is documented in
 [Repository Structure](#repository-structure) below.
 
-The core ownership boundaries are now implemented, while the visible UI remains
-single-session. Sidebar navigation and user-facing multi-session lifecycle
-operations have not been added yet.
+The core ownership boundaries, minimal sidebar, and switching runtime are now
+implemented. Normal startup still creates one session because the user-facing
+New Session flow and lifecycle operations have not been added yet.
 
 ## Architecture
 
@@ -504,11 +508,11 @@ The intended model is:
 Switching should mean changing visibility and focus, not unmounting the old
 terminal and mounting the new one.
 
-An automated integration test now confirms with the installed Textual and
-`textual-tty` versions that hiding a mounted terminal leaves its process alive
-and that application shutdown stops all mounted terminal processes. Output
-buffering and screen restoration still require validation before significant
-sidebar work.
+Automated integration tests now confirm with the installed Textual and
+`textual-tty` versions that hiding a mounted terminal leaves its process alive,
+hidden output continues to update retained screen state, input reaches only the
+focused terminal, repeated switching restores the terminal view, and
+application shutdown stops all mounted terminal processes.
 
 Textual dispatches convention-based event handlers across the widget class
 hierarchy. `AgentTerminal` therefore prevents the automatic parent mount and
@@ -649,15 +653,13 @@ elif agent == "codex":
 Harness configuration should describe intent. Only the terminal adapter should
 translate that intent into the current terminal implementation's API.
 
-## Planned UI Relationship
+## UI Relationship
 
-The eventual UI is conceptually:
+The implemented sidebar-to-terminal relationship is conceptually:
 
 ```text
 ┌──────────────────────┬────────────────────────────────────┐
 │ Sessions             │                                    │
-│                      │                                    │
-│ + New Session        │                                    │
 │                      │                                    │
 │ > Auth Refactor      │       Active AgentTerminal         │
 │   API Cleanup        │                                    │
@@ -666,8 +668,9 @@ The eventual UI is conceptually:
 └──────────────────────┴────────────────────────────────────┘
 ```
 
-The sidebar displays and selects `AgentSession` objects. It must not operate
-directly on terminal internals.
+The current sidebar lists existing `AgentSession` objects and emits selected
+session IDs. It does not operate directly on `SessionManager` or terminal
+internals. A New Session control and workflow remain future work.
 
 ## Repository Structure
 
@@ -688,9 +691,16 @@ src/agenthub/
 │   ├── __init__.py      # public session API
 │   ├── model.py         # AgentSession runtime model
 │   └── manager.py       # session coordination
-└── terminal/
+├── terminal/
+│   ├── __init__.py
+│   └── widget.py        # textual-tty/Bitty adapter
+└── ui/
     ├── __init__.py
-    └── widget.py        # textual-tty/Bitty adapter
+    ├── app.tcss         # application layout styles
+    └── panels/
+        ├── __init__.py
+        ├── sidebar.py   # session navigation panel
+        └── sidebar.tcss # sidebar presentation styles
 
 tests/
 ├── conftest.py          # shared harmless process fixture
@@ -702,6 +712,7 @@ tests/
 │   └── test_terminal.py
 └── integration/
     ├── test_app_lifecycle.py
+    ├── test_session_switching.py
     └── test_terminal_lifecycle.py
 ```
 
@@ -711,8 +722,8 @@ expected implementations. Imports elsewhere should prefer the package public
 APIs rather than reaching into `model.py`, `manager.py`, or individual harness
 modules.
 
-Do not create empty `ui/`, `persistence/`, or `config/` packages yet. Add those
-when the corresponding implementation begins.
+Do not create empty `widgets/`, `modals/`, `screens/`, `persistence/`, or
+`config/` packages yet. Add those when the corresponding implementation begins.
 
 The governing rule is:
 
@@ -727,22 +738,24 @@ The architectural foundation is implemented:
 2. Bitty translation is isolated inside `AgentTerminal`.
 3. Ctrl+Q is an application-owned priority binding.
 4. `AgentSession` and `SessionManager` represent and coordinate runtimes.
-5. The app creates one managed OpenCode session while preserving the existing
-   fullscreen behavior.
-6. An integration test proves that two terminals remain mounted and running
-   while one is hidden, focus moves to the visible terminal, and app shutdown
-   terminates both processes.
+5. The app creates one managed OpenCode session by default and can compose all
+   sessions created before mount.
+6. A minimal sidebar and priority Ctrl+1/Ctrl+2 bindings share one app-owned
+   switching operation.
+7. Integration tests prove that two manager-owned terminals remain mounted and
+   running, hidden output and screen state survive switching, input is isolated
+   to the active terminal, exit events map to the correct session, and app
+   shutdown terminates both processes.
 
 The remaining sequence is:
 
 1. Add proper working-directory launch support at the terminal dependency
    boundary.
-2. Validate hidden-terminal output buffering, screen restoration, keyboard
-   isolation, and process-exit routing.
-3. Add the sidebar, terminal container, and session switching.
-4. Add explicit terminal lifecycle operations before session stop, restart, or
+2. Add the user-facing New Session workflow so users can choose a harness and
+   working directory.
+3. Add explicit terminal lifecycle operations before session stop, restart, or
    removal.
-5. Add persistence and native session resumption only when the runtime model is
+4. Add persistence and native session resumption only when the runtime model is
    stable.
 
 ## Validation Tasks
@@ -752,14 +765,13 @@ Validated with the installed dependency versions:
 - Terminal A and Terminal B can remain mounted simultaneously.
 - Hiding Terminal A does not unmount it or terminate its process.
 - Focus can move from the hidden terminal to the visible terminal.
+- Only the focused terminal receives keyboard input.
+- Hidden terminals continue buffering output and retain their screen state.
+- A terminal-exit event can be mapped to the exact owning session.
 - App shutdown terminates all owned child processes reliably.
 
-Still to validate before substantial multi-session UI work:
+Still to validate before exposing arbitrary project selection:
 
-- Only the visible terminal receives user input.
-- Switching visibility returns a terminal with its screen state intact.
-- A hidden terminal continues receiving and buffering process output.
-- Exiting one process can be mapped to the correct session.
 - A process can be launched directly with the session's `cwd` without shell
   command composition.
 
@@ -790,12 +802,14 @@ The architectural foundation now has automated coverage for:
 - explicit rejection of unsupported launch directories;
 - hidden mounted terminal survival;
 - focus switching between mounted terminals;
+- hidden output buffering and restored screen state;
+- keyboard input isolation;
+- process-exit routing to the owning session;
 - warning-free reader-task and child-process cleanup during application
   shutdown.
 
-Future tests should cover hidden output buffering, restored screen state,
-keyboard isolation, process-exit routing, working-directory launch, and the
-installed `agenthub` command.
+Future tests should cover working-directory launch and the installed `agenthub`
+command.
 
 Tests that launch processes should use a harmless controllable test command or
 fake harness, not require an actual OpenCode conversation.
@@ -907,10 +921,12 @@ mount and stops it on unmount, session switching should hide/show mounted
 terminals rather than unmounting them; the core process-survival behavior is
 covered by an integration test.
 
-Current state: the harness/terminal/session/manager boundaries are implemented
-and tested while the UI still shows one fullscreen OpenCode session. Two hidden
-or visible mounted terminal processes have been proven to survive switching and
-shut down with their app. Next: add proper working-directory launching, finish
-the remaining lifecycle validation, then add the sidebar and switching.
-Persistence and native resume are deferred.
+Current state: the harness/terminal/session/manager boundaries, minimal sidebar,
+and multi-session switching runtime are implemented and tested. Normal startup
+still creates one OpenCode session because there is no New Session workflow.
+Multiple mounted terminals have been proven to survive repeated switching,
+retain hidden output and screen state, isolate input, route exit events to their
+owning sessions, and shut down with the app. Next: add proper working-directory
+launching, then add the New Session workflow. Persistence and native resume are
+deferred.
 ```

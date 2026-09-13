@@ -31,8 +31,20 @@ def test_app_rejects_an_unsupported_launch_directory(
 
 
 def test_quit_binding_has_priority_over_terminal_input() -> None:
-    binding = AgentHubApp.BINDINGS[0]
+    binding = next(binding for binding in AgentHubApp.BINDINGS if binding.action == "quit")
 
     assert binding.key == "ctrl+q"
     assert binding.action == "quit"
     assert binding.priority is True
+
+
+def test_session_bindings_have_priority_over_terminal_input() -> None:
+    bindings = {
+        binding.key: binding
+        for binding in AgentHubApp.BINDINGS
+        if binding.key in {"ctrl+1", "ctrl+2"}
+    }
+
+    assert bindings["ctrl+1"].action == "select_session(0)"
+    assert bindings["ctrl+2"].action == "select_session(1)"
+    assert all(binding.priority for binding in bindings.values())

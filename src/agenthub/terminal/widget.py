@@ -3,6 +3,7 @@
 import asyncio
 import subprocess
 from pathlib import Path
+from typing import cast
 
 from bittty import constants as _bittty_constants
 from textual import events
@@ -30,6 +31,15 @@ def _bittty_modifier(key_stroke: KeyStroke) -> int:
 
 class AgentTerminal(TtyTerminal):
     """textual-tty (bittty) terminal hosting the coding agent."""
+
+    class ProcessExited(TtyTerminal.ProcessExited):
+        """Process-exit message associated with its terminal adapter."""
+
+        @property
+        def control(self) -> "AgentTerminal":
+            """Return the terminal that emitted this message."""
+
+            return cast("AgentTerminal", self._sender)
 
     def __init__(
         self,

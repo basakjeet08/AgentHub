@@ -1,0 +1,8 @@
+Horizontal {
+    height: 100%;
+}
+
+#session-content {
+    width: 1fr;
+    height: 100%;
+}
