@@ -41,11 +41,19 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
         )
 
         status = app.query_one(AgentHubStatusBar)
+        assert [child.id for child in status.children] == [
+            "session-metrics",
+            "lock-status",
+        ]
         assert status.query_one("#mode-indicator", Static).content == UNLOCKED_ICON
         assert status.query_one("#mode-label", Static).content == "Unlocked"
         assert status.query_one("#mode-action", Static).content == "Ctrl+G Lock"
         assert status.query_one("#session-count", Static).content == "Sessions 0"
         assert status.query_one("#agent-count", Static).content == "Agents 0"
+        assert (
+            status.query_one("#agent-count", Static).region.x
+            < status.query_one("#mode-indicator", Static).region.x
+        )
 
         shortcut_labels = [str(label.content) for label in home.query("#shortcut-grid Label")]
         expected_labels = [value for shortcut in HOME_SHORTCUTS for value in shortcut]

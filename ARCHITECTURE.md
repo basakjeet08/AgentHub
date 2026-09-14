@@ -699,10 +699,12 @@ Normal empty startup uses a persistent application shell:
 │                      │ Contextual session guidance        │
 │                      │ Shortcut quick reference           │
 ├──────────────────────┴────────────────────────────────────┤
-│ ○ Unlocked  Ctrl+G Lock     Sessions 0           Agents 0 │
+│ Sessions 0   Agents 0             ○ Unlocked  Ctrl+G Lock │
 └───────────────────────────────────────────────────────────┘
 ```
 
+The status bar keeps session and running-agent metrics on the left while the
+keyboard-ownership state and Ctrl+G action remain grouped on the right.
 The Home screen is a content view inside the application shell rather than a
 separate Textual screen stack entry. This keeps shared navigation and status
 chrome mounted while future content changes inside the `ContentSwitcher`.

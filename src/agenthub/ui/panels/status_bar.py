@@ -36,11 +36,13 @@ class AgentHubStatusBar(Horizontal):
         """Compose application status and runtime counts."""
 
         icon, label, action = _mode_content(self._locked)
-        yield Static(icon, id="mode-indicator")
-        yield Static(label, id="mode-label")
-        yield Static(action, id="mode-action")
-        yield Static(f"Sessions {self._session_count}", id="session-count")
-        yield Static(f"Agents {self._agent_count}", id="agent-count")
+        with Horizontal(id="session-metrics"):
+            yield Static(f"Sessions {self._session_count}", id="session-count")
+            yield Static(f"Agents {self._agent_count}", id="agent-count")
+        with Horizontal(id="lock-status"):
+            yield Static(icon, id="mode-indicator")
+            yield Static(label, id="mode-label")
+            yield Static(action, id="mode-action")
 
     def update_state(
         self,
