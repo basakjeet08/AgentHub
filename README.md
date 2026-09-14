@@ -32,8 +32,10 @@ multi-session runtime architecture:
 - It provides a session sidebar for switching between managed sessions.
 - It keeps equal-height `AGENTS` and `SHELLS` sidebar groups visible at all
   times without adding a second manager.
-- It launches OpenCode directly with Ctrl+N and lazily creates reusable Fish
-  sessions by pressing Ctrl+S followed by a slot number from 1…9.
+- It opens a registry-driven harness picker and session-name prompt with Ctrl+N,
+  then launches the selected coding agent after both steps are confirmed.
+- It lazily creates reusable Fish sessions by pressing Ctrl+S followed by a
+  slot number from 1…9.
 - It removes sessions whose child processes exit, releases their Fish slots,
   and returns active exits to Home without interrupting a live active sibling.
 - It keeps hidden terminals mounted, running, and buffering output while focus
@@ -45,15 +47,15 @@ multi-session runtime architecture:
 
 It does not yet provide:
 
-- a configurable New Session flow;
+- working-directory selection in the New Agent Session flow;
 - a complete shortcuts dialog;
 - user-initiated stopping, restarting, or removal of live sessions;
 - persisted session metadata;
 - harness-native conversation resumption.
 
-Normal startup remains empty. Ctrl+N launches OpenCode immediately in
-AgentHub's current working directory; harness, directory, and naming
-configuration remain deferred to the future New Session modal.
+Normal startup remains empty. Ctrl+N opens a harness picker followed by a
+required session-name prompt. Confirming both launches the selected harness in
+AgentHub's current working directory; directory selection remains deferred.
 
 ## Keyboard Ownership
 
@@ -68,7 +70,7 @@ Unlocked bindings are:
 
 ```text
 Ctrl+G          Lock AgentHub
-Ctrl+N          Create a new OpenCode session
+Ctrl+N          Create a new agent session
 Ctrl+P          Command Palette
 Ctrl+Q          Quit
 Ctrl+A, 1...9   Select a numbered agent session

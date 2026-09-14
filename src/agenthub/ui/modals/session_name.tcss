@@ -1,0 +1,61 @@
+SessionNameModal {
+    align: center middle;
+    background: $background 70%;
+}
+
+#session-name-dialog {
+    width: 54;
+    max-width: 90%;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: tall $panel;
+}
+
+#session-name-title {
+    width: 100%;
+    height: 2;
+    color: $foreground;
+    text-style: bold;
+}
+
+#session-name-harness {
+    width: 100%;
+    height: 2;
+    color: $text-muted;
+}
+
+#session-name-label {
+    width: 100%;
+    height: 1;
+    color: $foreground;
+}
+
+#session-name-input {
+    width: 100%;
+    margin-top: 1;
+    background: $background;
+    color: $foreground;
+    border: tall $panel;
+}
+
+#session-name-input:focus {
+    border: tall $primary;
+}
+
+#session-name-input.invalid-name {
+    border: tall $secondary;
+}
+
+#session-name-error {
+    width: 100%;
+    height: 2;
+    color: $secondary;
+}
+
+#session-name-help {
+    width: 100%;
+    height: 1;
+    color: $text-muted;
+    text-align: center;
+}

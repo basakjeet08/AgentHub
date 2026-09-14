@@ -58,7 +58,8 @@ bittty / PTY → coding agent`.
   for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, and sidebar-group focus;
 - gates hub navigation through `check_action()` while a terminal is active so
   rejected key events continue unchanged to `AgentTerminal`;
-- creates and mounts OpenCode sessions directly from Ctrl+N;
+- coordinates a registry-driven harness picker and required session-name modal
+  from Ctrl+N, creating no runtime until both are confirmed;
 - lazily creates one Fish session for each Ctrl+S, then 1…9 shell slot;
 - maps terminal-exit events back to their owning sessions, removes exited
   runtimes, releases their shell slots, and shows Home after an active exit.
@@ -126,7 +127,8 @@ The authoritative source and test layout is documented in
 
 The core ownership boundaries, Home-first shell, persistent sidebar and status
 bar, and switching runtime are now implemented. Normal startup creates no
-session. Ctrl+N creates OpenCode sessions without opening configuration UI.
+session. Ctrl+N collects a registered harness and user-provided session name
+before creating the selected agent runtime.
 
 ## Architecture
 
@@ -498,8 +500,9 @@ Ctrl+G toggles keyboard ownership
    ├── Locked + active terminal → other hub actions fail check_action()
    │                              and their original keys reach the PTY
    │
-   └── Unlocked → Ctrl+N creates OpenCode, Ctrl+A/Ctrl+S focus a sidebar group,
-                  and a following plain digit selects its numbered entry
+   └── Unlocked → Ctrl+N opens the New Agent Session modal flow,
+                  Ctrl+A/Ctrl+S focus a sidebar group, and a following plain
+                  digit selects its numbered entry
 ```
 
 Home is the intentional exception: with no active terminal, application
@@ -708,7 +711,33 @@ keyboard-ownership state and Ctrl+G action remain grouped on the right.
 The Home screen is a content view inside the application shell rather than a
 separate Textual screen stack entry. This keeps shared navigation and status
 chrome mounted while future content changes inside the `ContentSwitcher`.
-Session creation remains a keyboard action until the configurable modal exists.
+Agent creation begins as a keyboard action and is configured through two small
+modal screens:
+
+```text
+Ctrl+N
+   │
+   ▼
+HarnessSelectionModal
+   │ stable harness ID or cancellation
+   ▼
+AgentHubApp resolves registry
+   │ selected harness
+   ▼
+SessionNameModal
+   │ trimmed non-empty name or cancellation
+   ▼
+AgentHubApp._create_agent_session(...)
+   │
+   ▼
+_create_and_mount_session(...)
+```
+
+The harness picker derives its entries from the coding-agent registry and the
+name modal displays the selected harness while collecting the AgentHub session
+name. Both modals only return user choices. `AgentHubApp` owns their sequencing,
+registry resolution, and eventual runtime creation. Cancelling either stage
+creates nothing and leaves the previous Home or live-session state usable.
 
 The implemented sidebar-to-terminal relationship is conceptually:
 
@@ -730,8 +759,8 @@ The first nine agent rows use creation-order numbers selected through Ctrl+A,
 then 1…9. Fish rows display their stable slot numbers and are opened or selected
 through Ctrl+S, then 1…9. Agent sessions remain selectable directly from the
 sidebar. The sidebar does not operate directly on `SessionManager` or terminal
-internals. Ctrl+N remains the immediate OpenCode creation path; configuration UI
-is future work.
+internals. Ctrl+N uses the agent-only harness-and-name modal flow; Fish creation
+continues to use the independent fixed-slot workflow.
 
 ## Repository Structure
 
@@ -763,6 +792,12 @@ src/agenthub/
     ├── app.tcss         # persistent application-shell layout
     ├── bindings.py      # Textual bindings and shared shortcut metadata
     ├── theme.tcss       # shared component and Textual overlay styles
+    ├── modals/
+    │   ├── __init__.py
+    │   ├── harness_selection.py   # registry-driven agent harness picker
+    │   ├── harness_selection.tcss # compact picker presentation
+    │   ├── session_name.py        # required AgentHub session name input
+    │   └── session_name.tcss      # compact name-prompt presentation
     ├── screens/
     │   ├── __init__.py
     │   ├── home.py      # neutral empty-state presentation and intent
@@ -781,12 +816,14 @@ tests/
 │   ├── test_harnesses.py
 │   ├── test_main.py
 │   ├── test_session_manager.py
+│   ├── test_session_name_modal.py
 │   └── test_terminal.py
 └── integration/
     ├── test_app_lifecycle.py
     ├── test_command_palette.py
     ├── test_home_screen.py
     ├── test_keyboard_ownership.py
+    ├── test_new_session_modals.py
     ├── test_session_creation_shortcuts.py
     ├── test_sidebar_groups.py
     ├── test_session_switching.py
@@ -799,8 +836,8 @@ expected implementations. Imports elsewhere should prefer the package public
 APIs rather than reaching into `model.py`, `manager.py`, or individual harness
 modules.
 
-Do not create empty `widgets/`, `modals/`, `screens/`, `persistence/`, or
-`config/` packages yet. Add those when the corresponding implementation begins.
+Do not create empty `widgets/`, `persistence/`, or `config/` packages yet. Add
+those when the corresponding implementation begins.
 
 The governing rule is:
 
@@ -829,8 +866,10 @@ The architectural foundation is implemented:
    establish the shared UI foundation.
 9. Sidebar presentation accepts `AGENTS` and `SHELLS` collections backed by the
    same manager and selection flow.
-10. Ctrl+N immediately creates OpenCode; Ctrl+A or Ctrl+S followed by 1…9
-    selects numbered agents or lazily creates and selects stable Fish slots.
+10. Ctrl+N opens a registry-driven harness picker followed by a required
+    session-name prompt; confirming both creates and focuses the selected agent.
+    Ctrl+A or Ctrl+S followed by 1…9 selects numbered agents or lazily creates
+    and selects stable Fish slots.
 11. Sessions carry explicit agent-or-shell identity, while the separate slot map
     only assigns shell keyboard shortcuts.
 12. Exited runtimes are removed, active exits return to contextual Home, hidden
@@ -838,8 +877,7 @@ The architectural foundation is implemented:
 
 The remaining sequence is:
 
-1. Replace immediate default creation with the user-facing New Session modal so
-   users can choose a harness and working directory.
+1. Extend the New Agent Session workflow with working-directory selection.
 2. Add explicit terminal lifecycle operations before user-initiated stop or
    restart of live sessions.
 3. Add persistence and native session resumption only when the runtime model is
@@ -898,6 +936,9 @@ The architectural foundation now has automated coverage for:
 - keyboard input isolation;
 - Locked/Unlocked keyboard fall-through at the real PTY-write boundary;
 - Home shortcut behavior without an active terminal;
+- registry-derived harness selection and stable-ID modal results;
+- required, trimmed user-provided session names and cancellation at both stages;
+- deferred runtime creation until both New Agent Session modals are confirmed;
 - stable Fish-slot navigation with persistent sidebar groups;
 - process-exit routing to the owning session;
 - active-exit navigation to Home and silent hidden-exit cleanup;
@@ -1024,15 +1065,15 @@ covered by an integration test.
 
 Current state: the harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
-ownership, grouped sidebar presentation, immediate OpenCode creation, fixed Fish
-slots, explicit session kinds, exited-runtime cleanup, and multi-session
-switching runtime are implemented and tested. Normal startup creates no session
+ownership, grouped sidebar presentation, registry-driven harness selection,
+required session naming, fixed Fish slots, explicit session kinds,
+exited-runtime cleanup, and multi-session switching runtime are implemented and
+tested. Normal startup and incomplete or cancelled modal flows create no session
 or child process. Multiple terminals have been proven to survive repeated
 switching, retain hidden output and screen state, isolate input, run concurrently
 in distinct working directories, and shut down with the app. Active exits return
 to Home, hidden exits are removed without interrupting the current terminal, and
 Fish slots become reusable. Locked hub shortcuts have been proven to fall through
-at the PTY-write boundary. Next: replace the immediate defaults with the
-incremental New Session configuration workflow. Persistence and native resume
-are deferred.
+at the PTY-write boundary. Next: add working-directory selection to the New Agent
+Session workflow. Persistence and native resume are deferred.
 ```

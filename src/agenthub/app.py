@@ -1,6 +1,7 @@
 """Application shell: Home layout, key bindings, and widget orchestration."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from functools import partial
 from pathlib import Path
 from typing import ClassVar
 
@@ -11,7 +12,7 @@ from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import ContentSwitcher
 
-from agenthub.harnesses import FISH, OPENCODE, AgentHarness
+from agenthub.harnesses import FISH, HARNESSES, AgentHarness
 from agenthub.sessions import AgentSession, SessionKind, SessionManager
 from agenthub.terminal import AgentTerminal
 from agenthub.ui import (
@@ -20,6 +21,7 @@ from agenthub.ui import (
     SessionSidebar,
 )
 from agenthub.ui.bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
+from agenthub.ui.modals import HarnessSelectionModal, SessionNameModal
 
 
 class AgentHubApp(App):
@@ -40,7 +42,7 @@ class AgentHubApp(App):
     def __init__(
         self,
         *,
-        agent_harness: AgentHarness = OPENCODE,
+        agent_harnesses: Mapping[str, AgentHarness] | None = None,
         shell_harness: AgentHarness = FISH,
     ) -> None:
         """Create the AgentHub shell without launching a coding harness."""
@@ -48,7 +50,9 @@ class AgentHubApp(App):
         super().__init__()
         self.theme = "tokyo-night"
         self.session_manager = SessionManager()
-        self._agent_harness = agent_harness
+        self._agent_harnesses = dict(
+            HARNESSES if agent_harnesses is None else agent_harnesses
+        )
         self._shell_harness = shell_harness
         self._shell_session_slots: dict[int, str] = {}
 
@@ -186,21 +190,62 @@ class AgentHubApp(App):
             else:
                 yield command
 
-    async def action_new_session(self) -> None:
-        """Create and display an OpenCode session without configuration UI."""
+    def action_new_session(self) -> None:
+        """Begin the user-driven New Agent Session modal workflow."""
 
-        agent_number = len(self._agent_sessions()) + 1
-        name = self._agent_harness.display_name
-        if agent_number > 1:
-            name = f"{name} {agent_number}"
+        if isinstance(self.screen, (HarnessSelectionModal, SessionNameModal)):
+            return
+
+        self.push_screen(
+            HarnessSelectionModal(self._agent_harnesses.values()),
+            self._on_harness_selected,
+        )
+
+    def _on_harness_selected(self, harness_id: str | None) -> None:
+        """Continue the workflow by prompting for the selected harness's name."""
+
+        if harness_id is None:
+            return
+
+        harness = self._agent_harnesses[harness_id]
+        self.push_screen(
+            SessionNameModal(harness.display_name),
+            partial(self._on_session_name_selected, harness),
+        )
+
+    async def _on_session_name_selected(
+        self,
+        harness: AgentHarness,
+        name: str | None,
+    ) -> None:
+        """Create the runtime only after both modal stages are confirmed."""
+
+        if name is None:
+            return
+
+        normalized_name = name.strip()
+        if not normalized_name:
+            return
+
+        await self._create_agent_session(harness=harness, name=normalized_name)
+
+    async def _create_agent_session(
+        self,
+        *,
+        harness: AgentHarness,
+        name: str,
+    ) -> AgentSession:
+        """Apply Agent-session policy around generic runtime creation."""
+
         session = await self._create_and_mount_session(
             name=name,
-            harness=self._agent_harness,
+            harness=harness,
             kind=SessionKind.AGENT,
         )
         self._refresh_sidebar()
         if session in self.session_manager.sessions:
             self.show_session(session.id)
+        return session
 
     def action_focus_agents(self) -> None:
         """Move keyboard focus to the agent-session list."""

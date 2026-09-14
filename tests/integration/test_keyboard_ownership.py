@@ -11,6 +11,7 @@ from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.ui import AgentHubStatusBar, SessionSidebar
+from agenthub.ui.modals import HarnessSelectionModal, SessionNameModal
 from agenthub.ui.panels.status_bar import LOCKED_ICON, UNLOCKED_ICON
 
 
@@ -18,7 +19,10 @@ def _app_with_sessions(
     harness: AgentHarness,
     count: int = 1,
 ) -> tuple[AgentHubApp, tuple[AgentSession, ...]]:
-    app = AgentHubApp(agent_harness=harness, shell_harness=harness)
+    app = AgentHubApp(
+        agent_harnesses={harness.id: harness},
+        shell_harness=harness,
+    )
     sessions = tuple(
         app.session_manager.create(
             name=f"Session {index}",
@@ -65,6 +69,8 @@ async def test_locked_hub_binding_reaches_pty(
         assert app.hub_locked
         assert app.is_running
         assert not isinstance(app.screen, CommandPalette)
+        assert not isinstance(app.screen, (HarnessSelectionModal, SessionNameModal))
+        assert app.session_manager.sessions == (session,)
 
 
 async def test_ctrl_g_toggles_mode_without_reaching_pty(

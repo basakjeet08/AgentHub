@@ -13,7 +13,7 @@ TOGGLE_HUB_LOCK_BINDING = Binding(
 NEW_SESSION_BINDING = Binding(
     "ctrl+n",
     "new_session",
-    "New OpenCode session",
+    "New agent session",
     key_display="Ctrl+N",
     priority=True,
 )
