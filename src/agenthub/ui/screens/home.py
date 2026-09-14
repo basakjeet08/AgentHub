@@ -1,4 +1,4 @@
-"""Neutral Home presentation shown when AgentHub has no sessions."""
+"""Neutral Home presentation for empty or temporarily unselected sessions."""
 
 from textual.app import ComposeResult
 from textual.containers import Center, Grid, Horizontal, Vertical, VerticalScroll
@@ -6,12 +6,15 @@ from textual.widgets import Label, Static
 
 from agenthub.ui.bindings import HOME_SHORTCUTS
 
+_EMPTY_COPY = "No sessions yet. Start your first\ncoding-agent session."
+_SESSIONS_COPY = "Select a session from the sidebar\nor start a new coding-agent session."
+
 
 class HomeScreen(VerticalScroll):
-    """Polished empty state with focused application-level guidance."""
+    """Polished landing state with focused application-level guidance."""
 
     def compose(self) -> ComposeResult:
-        """Compose the centered empty state and compact shortcut reference."""
+        """Compose centered session guidance and a compact shortcut reference."""
 
         with Vertical(id="home-content"):
             with Horizontal(id="home-heading"):
@@ -21,10 +24,7 @@ class HomeScreen(VerticalScroll):
                     id="home-tagline",
                     classes="muted",
                 )
-            yield Static(
-                "No sessions yet. Start your first\ncoding-agent session.",
-                id="home-empty-copy",
-            )
+            yield Static(_EMPTY_COPY, id="home-empty-copy")
             with (
                 Center(id="shortcuts-card-container"),
                 Vertical(id="shortcuts-card", classes="card"),
@@ -45,3 +45,11 @@ class HomeScreen(VerticalScroll):
                     id="shortcut-mode-note",
                     classes="muted",
                 )
+
+    def update_for_sessions(self, has_sessions: bool) -> None:
+        """Keep Home guidance accurate when live sessions remain available."""
+
+        if self.is_mounted:
+            self.query_one("#home-empty-copy", Static).update(
+                _SESSIONS_COPY if has_sessions else _EMPTY_COPY
+            )

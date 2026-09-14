@@ -2,14 +2,14 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock
 
-from textual.widgets import ContentSwitcher
+from textual.widgets import ContentSwitcher, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
-from agenthub.sessions import AgentSession
-from agenthub.ui import SessionSidebar
+from agenthub.sessions import AgentSession, SessionKind
+from agenthub.ui import HomeScreen, SessionSidebar
 
 
 def _exiting_harness(exit_code: int) -> AgentHarness:
@@ -44,6 +44,7 @@ def _app_with_session(
     app = AgentHubApp()
     session = app.session_manager.create(
         name=harness.display_name,
+        kind=SessionKind.AGENT,
         cwd=cwd or Path.cwd(),
         harness=harness,
     )
@@ -56,6 +57,7 @@ async def test_sidebar_switches_managed_sessions(
     app, first = _app_with_session(sleeping_harness)
     second = app.session_manager.create(
         name="Second",
+        kind=SessionKind.AGENT,
         cwd=first.cwd,
         harness=sleeping_harness,
     )
@@ -129,10 +131,11 @@ async def test_process_exit_is_resolved_to_owning_session(
     app, first = _app_with_session(sleeping_harness)
     second = app.session_manager.create(
         name="Exits",
+        kind=SessionKind.AGENT,
         cwd=first.cwd,
         harness=_exiting_harness(7),
     )
-    exit_handler = Mock()
+    exit_handler = AsyncMock()
     app._handle_session_process_exited = exit_handler  # type: ignore[method-assign]
 
     async with app.run_test() as pilot:
@@ -141,7 +144,81 @@ async def test_process_exit_is_resolved_to_owning_session(
             if exit_handler.called:
                 break
 
-        exit_handler.assert_called_once_with(second, 7)
+        exit_handler.assert_awaited_once_with(second, 7)
+
+
+async def test_active_exit_returns_home_while_other_session_keeps_running(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, first = _app_with_session(sleeping_harness)
+    second = app.session_manager.create(
+        name="Exits",
+        kind=SessionKind.AGENT,
+        cwd=first.cwd,
+        harness=_exiting_harness(7),
+    )
+
+    async with app.run_test() as pilot:
+        for _ in range(20):
+            if second not in app.session_manager.sessions:
+                break
+            await pilot.pause(0.05)
+        await pilot.pause()
+
+        assert app.is_running
+        assert app.session_manager.sessions == (first,)
+        assert app.session_manager.active_session is None
+        assert first.terminal.is_process_running
+        assert not first.terminal.display
+        home = app.query_one(HomeScreen)
+        assert home.display
+        assert home.has_focus
+        assert home.query_one("#home-empty-copy", Static).content == (
+            "Select a session from the sidebar\nor start a new coding-agent session."
+        )
+        assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
+        assert all(
+            session_list.highlighted is None for session_list in app.query(OptionList)
+        )
+
+        await pilot.press("ctrl+a")
+        await pilot.press("1")
+        await pilot.pause()
+        assert app.session_manager.active_session is first
+        assert first.terminal.display
+        assert first.terminal.has_focus
+
+
+async def test_hidden_exit_is_removed_without_interrupting_active_session(
+    sleeping_harness: AgentHarness,
+) -> None:
+    delayed_exit = _script_harness(
+        "delayed-exit",
+        "import time; time.sleep(0.2)",
+    )
+    app, first = _app_with_session(delayed_exit)
+    second = app.session_manager.create(
+        name="Active",
+        kind=SessionKind.AGENT,
+        cwd=first.cwd,
+        harness=sleeping_harness,
+    )
+
+    async with app.run_test() as pilot:
+        for _ in range(20):
+            if first not in app.session_manager.sessions:
+                break
+            await pilot.pause(0.05)
+        await pilot.pause()
+
+        assert app.session_manager.sessions == (second,)
+        assert app.session_manager.active_session is second
+        assert second.terminal.display
+        assert second.terminal.has_focus
+        assert app.query_one("#session-content", ContentSwitcher).current == (
+            app._terminal_dom_id(second.id)
+        )
+        assert app.query_one(SessionSidebar).visible_session_ids == (second.id,)
 
 
 async def test_hidden_output_and_screen_state_survive_switching(
@@ -158,6 +235,7 @@ async def test_hidden_output_and_screen_state_survive_switching(
     app, first = _app_with_session(output_harness)
     second = app.session_manager.create(
         name="Second",
+        kind=SessionKind.AGENT,
         cwd=first.cwd,
         harness=sleeping_harness,
     )
@@ -198,6 +276,7 @@ async def test_keyboard_input_reaches_only_active_terminal(tmp_path: Path) -> No
     app, first = _app_with_session(first_harness)
     second = app.session_manager.create(
         name="Second",
+        kind=SessionKind.AGENT,
         cwd=first.cwd,
         harness=second_harness,
     )
@@ -237,6 +316,7 @@ async def test_concurrent_children_inherit_distinct_session_directories(
     app, _first = _app_with_session(first_harness, cwd=first_directory)
     second = app.session_manager.create(
         name="Second",
+        kind=SessionKind.AGENT,
         cwd=second_directory,
         harness=second_harness,
     )

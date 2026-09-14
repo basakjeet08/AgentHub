@@ -12,7 +12,7 @@ from textual.screen import Screen
 from textual.widgets import ContentSwitcher
 
 from agenthub.harnesses import FISH, OPENCODE, AgentHarness
-from agenthub.sessions import AgentSession, SessionManager
+from agenthub.sessions import AgentSession, SessionKind, SessionManager
 from agenthub.terminal import AgentTerminal
 from agenthub.ui import (
     AgentHubStatusBar,
@@ -165,10 +165,12 @@ class AgentHubApp(App):
         session = await self._create_and_mount_session(
             name=f"Shell {slot}",
             harness=self._shell_harness,
+            kind=SessionKind.SHELL,
+            shell_slot=slot,
         )
-        self._shell_session_slots[slot] = session.id
         self._refresh_sidebar()
-        self.show_session(session.id)
+        if session in self.session_manager.sessions:
+            self.show_session(session.id)
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         """Expose Textual's Keys command using AgentHub product language."""
@@ -194,9 +196,11 @@ class AgentHubApp(App):
         session = await self._create_and_mount_session(
             name=name,
             harness=self._agent_harness,
+            kind=SessionKind.AGENT,
         )
         self._refresh_sidebar()
-        self.show_session(session.id)
+        if session in self.session_manager.sessions:
+            self.show_session(session.id)
 
     def action_focus_agents(self) -> None:
         """Move keyboard focus to the agent-session list."""
@@ -213,23 +217,33 @@ class AgentHubApp(App):
         *,
         name: str,
         harness: AgentHarness,
+        kind: SessionKind,
+        shell_slot: int | None = None,
     ) -> AgentSession:
         """Create one manager-owned session and mount its terminal in the shell."""
 
+        previous_session = self.session_manager.active_session
         session = self.session_manager.create(
             name=name,
+            kind=kind,
             cwd=Path.cwd(),
             harness=harness,
         )
         session.terminal.id = self._terminal_dom_id(session.id)
-        await self.query_one("#session-content", ContentSwitcher).mount(session.terminal)
+        if shell_slot is not None:
+            self._shell_session_slots[shell_slot] = session.id
+        try:
+            await self.query_one("#session-content", ContentSwitcher).mount(session.terminal)
+        except Exception:
+            if shell_slot is not None and self._shell_session_slots.get(shell_slot) == session.id:
+                self._shell_session_slots.pop(shell_slot, None)
+            if session in self.session_manager.sessions:
+                self.session_manager.remove(session.id)
+                if previous_session in self.session_manager.sessions:
+                    self.session_manager.select(previous_session.id)
+            raise
         self.call_after_refresh(self._refresh_status)
         return session
-
-    def _is_shell_session(self, session_id: str) -> bool:
-        """Return whether a session belongs to one of the fixed shell slots."""
-
-        return session_id in self._shell_session_slots.values()
 
     def _agent_sessions(self) -> tuple[AgentSession, ...]:
         """Return managed coding-agent sessions in creation order."""
@@ -237,16 +251,26 @@ class AgentHubApp(App):
         return tuple(
             session
             for session in self.session_manager.sessions
-            if not self._is_shell_session(session.id)
+            if session.kind is SessionKind.AGENT
         )
 
     def _shell_sessions(self) -> tuple[AgentSession, ...]:
-        """Return Fish sessions in numeric slot order."""
+        """Return shell sessions with numbered slots first in numeric order."""
 
-        sessions_by_id = {session.id: session for session in self.session_manager.sessions}
-        return tuple(
+        shell_sessions = tuple(
+            session
+            for session in self.session_manager.sessions
+            if session.kind is SessionKind.SHELL
+        )
+        sessions_by_id = {session.id: session for session in shell_sessions}
+        slotted = tuple(
             sessions_by_id[session_id]
             for _slot, session_id in sorted(self._shell_session_slots.items())
+            if session_id in sessions_by_id
+        )
+        slotted_ids = {session.id for session in slotted}
+        return slotted + tuple(
+            session for session in shell_sessions if session.id not in slotted_ids
         )
 
     def _shortcut_slots(self) -> dict[str, int]:
@@ -290,19 +314,30 @@ class AgentHubApp(App):
 
         self.show_session(message.session_id)
 
-    def on_agent_terminal_process_exited(
+    async def on_session_sidebar_shell_slot_selected(
+        self,
+        message: SessionSidebar.ShellSlotSelected,
+    ) -> None:
+        """Open or create a shell slot selected through the shell sidebar."""
+
+        await self.action_open_shell(message.slot)
+
+    async def on_agent_terminal_process_exited(
         self,
         message: AgentTerminal.ProcessExited,
     ) -> None:
         """Resolve terminal exit events to their owning AgentHub session."""
 
         session = next(
-            session
-            for session in self.session_manager.sessions
-            if session.terminal is message.control
+            (
+                session
+                for session in self.session_manager.sessions
+                if session.terminal is message.control
+            ),
+            None,
         )
-        self._handle_session_process_exited(session, message.exit_code)
-        self._refresh_status()
+        if session is not None:
+            await self._handle_session_process_exited(session, message.exit_code)
 
     def _refresh_status(self) -> None:
         """Update the status bar using only current runtime facts."""
@@ -317,12 +352,41 @@ class AgentHubApp(App):
             locked=self.hub_locked,
         )
 
-    def _handle_session_process_exited(
+    async def _handle_session_process_exited(
         self,
-        _session: AgentSession,
+        session: AgentSession,
         _exit_code: int,
     ) -> None:
-        """Preserve single-session exit policy; defer multi-session policy."""
+        """Remove an exited runtime and show Home when it was active."""
 
-        if len(self.session_manager.sessions) == 1:
-            self.exit()
+        await self._remove_exited_session(session)
+
+    async def _remove_exited_session(self, session: AgentSession) -> None:
+        """Synchronize process-exit cleanup across manager, DOM, slots, and UI."""
+
+        if session not in self.session_manager.sessions:
+            return
+
+        was_active = self.session_manager.active_session is session
+        for slot, session_id in tuple(self._shell_session_slots.items()):
+            if session_id == session.id:
+                del self._shell_session_slots[slot]
+
+        self.session_manager.remove(session.id)
+        if was_active:
+            self._show_home()
+
+        if session.terminal.is_mounted:
+            await session.terminal.remove()
+
+        self._refresh_sidebar()
+        self._refresh_status()
+
+    def _show_home(self) -> None:
+        """Display and focus Home without changing keyboard-ownership mode."""
+
+        home = self.query_one(HomeScreen)
+        home.update_for_sessions(bool(self.session_manager.sessions))
+        self.query_one("#session-content", ContentSwitcher).current = "home-screen"
+        self.query_one(SessionSidebar).clear_active()
+        self.set_focus(home)

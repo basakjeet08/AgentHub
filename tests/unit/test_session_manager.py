@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from agenthub.harnesses import AgentHarness
-from agenthub.sessions import SessionManager
+from agenthub.sessions import SessionKind, SessionManager
 
 
 def test_manager_starts_empty() -> None:
@@ -21,11 +21,13 @@ def test_create_retains_sessions_in_order_and_selects_the_newest(
     manager = SessionManager()
     first = manager.create(
         name="First",
+        kind=SessionKind.AGENT,
         cwd=Path.cwd(),
         harness=sleeping_harness,
     )
     second = manager.create(
         name="Second",
+        kind=SessionKind.SHELL,
         cwd=Path.cwd(),
         harness=sleeping_harness,
     )
@@ -33,6 +35,8 @@ def test_create_retains_sessions_in_order_and_selects_the_newest(
     assert manager.sessions == (first, second)
     assert manager.active_session is second
     assert first.id != second.id
+    assert first.kind is SessionKind.AGENT
+    assert second.kind is SessionKind.SHELL
     assert first.terminal.harness is sleeping_harness
 
 
@@ -42,11 +46,13 @@ def test_select_changes_only_logical_selection(
     manager = SessionManager()
     first = manager.create(
         name="First",
+        kind=SessionKind.AGENT,
         cwd=Path.cwd(),
         harness=sleeping_harness,
     )
     second = manager.create(
         name="Second",
+        kind=SessionKind.AGENT,
         cwd=Path.cwd(),
         harness=sleeping_harness,
     )
@@ -64,6 +70,7 @@ def test_select_rejects_unknown_session_without_changing_selection(
     manager = SessionManager()
     session = manager.create(
         name="Known",
+        kind=SessionKind.AGENT,
         cwd=Path.cwd(),
         harness=sleeping_harness,
     )
@@ -71,4 +78,66 @@ def test_select_rejects_unknown_session_without_changing_selection(
     with pytest.raises(KeyError):
         manager.select("missing")
 
+    assert manager.active_session is session
+
+
+def test_remove_inactive_session_preserves_selection(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    first = manager.create(
+        name="First",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    second = manager.create(
+        name="Second",
+        kind=SessionKind.SHELL,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+
+    assert manager.remove(first.id) is first
+    assert manager.sessions == (second,)
+    assert manager.active_session is second
+
+
+def test_remove_active_session_clears_selection(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    first = manager.create(
+        name="First",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    second = manager.create(
+        name="Second",
+        kind=SessionKind.SHELL,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+
+    assert manager.remove(second.id) is second
+    assert manager.sessions == (first,)
+    assert manager.active_session is None
+
+
+def test_remove_rejects_unknown_session_without_changing_selection(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    session = manager.create(
+        name="Known",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+
+    with pytest.raises(KeyError):
+        manager.remove("missing")
+
+    assert manager.sessions == (session,)
     assert manager.active_session is session

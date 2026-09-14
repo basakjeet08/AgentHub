@@ -3,18 +3,20 @@
 import sys
 from pathlib import Path
 
-from textual.widgets import Static
+from textual.widgets import ContentSwitcher, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
-from agenthub.sessions import AgentSession
-from agenthub.ui import AgentHubStatusBar
+from agenthub.sessions import AgentSession, SessionKind
+from agenthub.terminal import AgentTerminal
+from agenthub.ui import AgentHubStatusBar, HomeScreen, SessionSidebar
 
 
 def _app_with_session(harness: AgentHarness) -> tuple[AgentHubApp, AgentSession]:
     app = AgentHubApp()
     session = app.session_manager.create(
         name=harness.display_name,
+        kind=SessionKind.AGENT,
         cwd=Path.cwd(),
         harness=harness,
     )
@@ -45,7 +47,7 @@ async def test_unlocked_ctrl_q_exits_while_terminal_has_focus(
     assert process.wait(timeout=1) is not None
 
 
-async def test_only_child_exiting_closes_the_application() -> None:
+async def test_only_child_exiting_returns_to_empty_home() -> None:
     harness = AgentHarness(
         id="test-exit",
         display_name="Test Exit",
@@ -59,8 +61,23 @@ async def test_only_child_exiting_closes_the_application() -> None:
 
     async with app.run_test() as pilot:
         for _ in range(20):
-            if not app.is_running:
+            if not app.session_manager.sessions:
                 break
             await pilot.pause(0.05)
+        await pilot.pause()
 
-    assert not app.is_running
+        assert app.is_running
+        assert app.session_manager.sessions == ()
+        assert app.session_manager.active_session is None
+        assert not app.query(AgentTerminal).nodes
+        home = app.query_one(HomeScreen)
+        assert home.display
+        assert home.has_focus
+        assert home.query_one("#home-empty-copy", Static).content == (
+            "No sessions yet. Start your first\ncoding-agent session."
+        )
+        assert app.query_one(SessionSidebar).visible_session_ids == ()
+        assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
+        status = app.query_one(AgentHubStatusBar)
+        assert status.query_one("#session-count", Static).content == "Sessions 0"
+        assert status.query_one("#agent-count", Static).content == "Agents 0"

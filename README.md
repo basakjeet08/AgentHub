@@ -33,20 +33,21 @@ multi-session runtime architecture:
 - It keeps equal-height `AGENTS` and `SHELLS` sidebar groups visible at all
   times without adding a second manager.
 - It launches OpenCode directly with Ctrl+N and lazily creates reusable Fish
-  sessions in Ctrl+1…9 slots.
+  sessions by pressing Ctrl+S followed by a slot number from 1…9.
+- It removes sessions whose child processes exit, releases their Fish slots,
+  and returns active exits to Home without interrupting a live active sibling.
 - It keeps hidden terminals mounted, running, and buffering output while focus
   follows the visible terminal.
 - It starts Unlocked for immediate navigation and lets the user transfer all
   non-toggle shortcuts to the active terminal by locking with Ctrl+G.
 - It adapts mouse-wheel events to OpenCode's transcript-scroll shortcuts and
   retains native styled scrollback for Fish shells.
-- It preserves the original exit-on-child behavior when only one session exists.
 
 It does not yet provide:
 
 - a configurable New Session flow;
 - a complete shortcuts dialog;
-- stopping, restarting, or removing sessions;
+- user-initiated stopping, restarting, or removal of live sessions;
 - persisted session metadata;
 - harness-native conversation resumption.
 
@@ -70,16 +71,14 @@ Ctrl+G          Lock AgentHub
 Ctrl+N          Create a new OpenCode session
 Ctrl+P          Command Palette
 Ctrl+Q          Quit
-Ctrl+A          Focus agent sessions
-Ctrl+S          Focus shell sessions
-Ctrl+1...9      Open or create persistent Fish shell slots 1...9
+Ctrl+A, 1...9   Select a numbered agent session
+Ctrl+S, 1...9   Open or select a persistent Fish shell slot
 ```
 
 Home has no terminal to protect, so these application shortcuts work there
-without requiring an unlock. Ctrl+0 is intentionally unbound. Distinct
-Ctrl+digit input depends on a terminal using a modern enhanced keyboard
-protocol; legacy terminals may encode Ctrl+digit as the corresponding plain
-digit.
+without requiring an unlock. After Ctrl+A or Ctrl+S focuses a sidebar group,
+press a plain digit from 1 through 9 to select the numbered entry. Ctrl+digit
+combinations are intentionally left to the active terminal.
 
 ## Architecture
 
@@ -98,7 +97,7 @@ lifecycle constraints, and implementation roadmap.
 - Python 3.13 or newer
 - A pyenv environment named `agenthub` (selected by `.python-version`)
 - OpenCode available on `PATH` for Ctrl+N sessions
-- Fish available on `PATH` for Ctrl+1…9 shell slots
+- Fish available on `PATH` for numbered shell slots
 
 The environment used during initial development was created with Python
 3.13.15:

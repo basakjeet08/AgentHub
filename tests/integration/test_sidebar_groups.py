@@ -7,7 +7,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import OptionList
 
 from agenthub.harnesses import AgentHarness
-from agenthub.sessions import AgentSession, SessionManager
+from agenthub.sessions import AgentSession, SessionKind, SessionManager
 from agenthub.ui import SessionSidebar
 
 
@@ -25,6 +25,7 @@ class SidebarTestApp(App):
         self.shell_sessions = shell_sessions
         self.shortcut_slots = shortcut_slots or {}
         self.selected_session_id: str | None = None
+        self.selected_shell_slot: int | None = None
 
     def compose(self) -> ComposeResult:
         yield SessionSidebar(
@@ -39,13 +40,23 @@ class SidebarTestApp(App):
     ) -> None:
         self.selected_session_id = message.session_id
 
+    def on_session_sidebar_shell_slot_selected(
+        self,
+        message: SessionSidebar.ShellSlotSelected,
+    ) -> None:
+        self.selected_shell_slot = message.slot
+
 
 def _sessions(
     harness: AgentHarness,
+    kind: SessionKind,
     *names: str,
 ) -> tuple[AgentSession, ...]:
     manager = SessionManager()
-    return tuple(manager.create(name=name, cwd=Path.cwd(), harness=harness) for name in names)
+    return tuple(
+        manager.create(name=name, kind=kind, cwd=Path.cwd(), harness=harness)
+        for name in names
+    )
 
 
 async def test_empty_sidebar_shows_two_equal_empty_session_groups() -> None:
@@ -68,7 +79,7 @@ async def test_empty_sidebar_shows_two_equal_empty_session_groups() -> None:
 async def test_sidebar_keeps_empty_shell_group_when_agents_exist(
     sleeping_harness: AgentHarness,
 ) -> None:
-    agents = _sessions(sleeping_harness, "AgentHub", "Backend")
+    agents = _sessions(sleeping_harness, SessionKind.AGENT, "AgentHub", "Backend")
     app = SidebarTestApp(agents, ())
 
     async with app.run_test() as pilot:
@@ -84,8 +95,13 @@ async def test_sidebar_keeps_empty_shell_group_when_agents_exist(
 async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
     sleeping_harness: AgentHarness,
 ) -> None:
-    agents = _sessions(sleeping_harness, "AgentHub", "Backend")
-    shells = _sessions(sleeping_harness, "AgentHub Shell", "Backend Server")
+    agents = _sessions(sleeping_harness, SessionKind.AGENT, "AgentHub", "Backend")
+    shells = _sessions(
+        sleeping_harness,
+        SessionKind.SHELL,
+        "AgentHub Shell",
+        "Backend Server",
+    )
     shortcut_slots = {
         shells[0].id: 1,
         shells[1].id: 3,
@@ -105,10 +121,10 @@ async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
             for option in option_list.options
         ]
         assert option_prompts == [
-            "Test Sleeper · AgentHub",
-            "Test Sleeper · Backend",
-            "1  Test Sleeper · AgentHub Shell",
-            "3  Test Sleeper · Backend Server",
+            "[ 1 ] Test Sleeper · AgentHub",
+            "[ 2 ] Test Sleeper · Backend",
+            "[ 1 ] Test Sleeper · AgentHub Shell",
+            "[ 3 ] Test Sleeper · Backend Server",
         ]
 
         shell_list = app.query_one("#shell-session-list", OptionList)
@@ -116,3 +132,15 @@ async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
         shell_list.focus()
         await pilot.press("enter")
         assert app.selected_session_id == shells[0].id
+
+        sidebar.focus_agents()
+        await pilot.press("2")
+        assert app.selected_session_id == agents[1].id
+
+        sidebar.focus_shells()
+        await pilot.press("3")
+        assert app.selected_session_id == shells[1].id
+
+        sidebar.focus_shells()
+        await pilot.press("2")
+        assert app.selected_shell_slot == 2

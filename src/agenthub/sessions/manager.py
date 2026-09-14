@@ -6,7 +6,7 @@ from uuid import uuid4
 from agenthub.harnesses import AgentHarness
 from agenthub.terminal import AgentTerminal
 
-from .model import AgentSession
+from .model import AgentSession, SessionKind
 
 
 class SessionManager:
@@ -34,6 +34,7 @@ class SessionManager:
         self,
         *,
         name: str,
+        kind: SessionKind,
         cwd: Path,
         harness: AgentHarness,
     ) -> AgentSession:
@@ -43,6 +44,7 @@ class SessionManager:
         session = AgentSession(
             id=uuid4().hex,
             name=name,
+            kind=kind,
             cwd=working_directory,
             harness=harness,
             terminal=AgentTerminal(
@@ -63,4 +65,19 @@ class SessionManager:
 
         session = self._sessions[session_id]
         self._active_session_id = session_id
+        return session
+
+    def remove(self, session_id: str) -> AgentSession:
+        """Remove and return a session without selecting a replacement.
+
+        Removing an inactive session preserves the current selection. Removing
+        the active session clears selection so the app can display Home.
+
+        Raises:
+            KeyError: If ``session_id`` is not managed by this instance.
+        """
+
+        session = self._sessions.pop(session_id)
+        if self._active_session_id == session_id:
+            self._active_session_id = None
         return session

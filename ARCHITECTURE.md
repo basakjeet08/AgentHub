@@ -55,24 +55,25 @@ bittty / PTY → coding agent`.
 - owns the session sidebar, active-terminal visibility, and focus;
 - routes sidebar selection through one `show_session()` operation;
 - owns terminal-first Locked/Unlocked keyboard policy and priority candidates
-  for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, focus navigation, and session slots;
+  for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, and sidebar-group focus;
 - gates hub navigation through `check_action()` while a terminal is active so
   rejected key events continue unchanged to `AgentTerminal`;
 - creates and mounts OpenCode sessions directly from Ctrl+N;
-- lazily creates one Fish session for each Ctrl+1…9 shell slot;
-- maps terminal-exit events back to their owning sessions and exits when the
-  only session's child process exits.
+- lazily creates one Fish session for each Ctrl+S, then 1…9 shell slot;
+- maps terminal-exit events back to their owning sessions, removes exited
+  runtimes, releases their shell slots, and shows Home after an active exit.
 
 `SessionManager` currently:
 
 - creates and retains sessions in creation order;
 - makes a new session active;
 - selects existing sessions by ID;
+- removes exited sessions and clears selection when the active session is removed;
 - constructs terminal runtimes without mounting them.
 
 `AgentSession` currently connects an AgentHub ID and name with its intended
-working directory, hosted CLI definition, and terminal runtime. The same model
-is used for coding-agent and Fish sessions.
+working directory, explicit agent-or-shell kind, hosted CLI definition, and
+terminal runtime. The same model is used for coding-agent and Fish sessions.
 
 `AgentHarness` is immutable semantic data containing a stable ID, display name,
 tuple command, and an optional terminal-independent scrolling policy. It does
@@ -332,6 +333,8 @@ It connects:
 ```text
 AgentHub identity
         +
+semantic session kind
+        +
 working directory
         +
 harness definition
@@ -342,10 +345,16 @@ terminal runtime
 The implemented model is:
 
 ```python
+class SessionKind(StrEnum):
+    AGENT = "agent"
+    SHELL = "shell"
+
+
 @dataclass
 class AgentSession:
     id: str
     name: str
+    kind: SessionKind
     cwd: Path
     harness: AgentHarness
     terminal: AgentTerminal
@@ -356,6 +365,7 @@ Conceptual example:
 ```text
 id:       session-1
 name:     Auth Refactor
+kind:     agent
 cwd:      ~/Projects/backend
 harness:  OpenCode
 terminal: mounted OpenCode terminal runtime
@@ -365,8 +375,12 @@ The session conceptually owns the terminal runtime, but `AgentHubApp` remains
 responsible for mounting that widget and controlling its visibility in the
 Textual DOM.
 
-Do not add lifecycle-state enums, native harness session IDs, persistence
-records, or separate runtime objects until the implementation needs them.
+`SessionKind` describes semantic identity independently from keyboard shortcut
+addressability. The Fish slot map answers which Ctrl+digit opens a session; it
+does not decide whether a session is an agent or shell. Do not add
+lifecycle-state enums, native harness session IDs, persistence records, or
+separate runtime objects until stopped sessions are retained or another
+implementation need requires them.
 
 Conceptually:
 
@@ -383,9 +397,9 @@ It coordinates:
 
 - which sessions exist;
 - which session is active;
-- creation and selection;
+- creation, selection, and logical removal;
 - lookup and enumeration;
-- eventually stopping, restarting, and removal once those lifecycle operations
+- eventually stopping and restarting once those lifecycle operations
   exist and are tested at the terminal boundary.
 
 The implemented public behavior is:
@@ -400,12 +414,16 @@ class SessionManager:
         self,
         *,
         name: str,
+        kind: SessionKind,
         cwd: Path,
         harness: AgentHarness,
     ) -> AgentSession:
         ...
 
     def select(self, session_id: str) -> AgentSession:
+        ...
+
+    def remove(self, session_id: str) -> AgentSession:
         ...
 
     @property
@@ -418,7 +436,9 @@ class SessionManager:
 ```
 
 Session IDs are generated internally, sessions are returned in creation order,
-new sessions become active, and selecting an unknown ID raises `KeyError`.
+and new sessions become active. Removing an inactive session preserves the
+selection; removing the active session clears selection so Home can become the
+neutral view. Selecting or removing an unknown ID raises `KeyError`.
 
 Do not declare `stop()` or `restart()` complete until `AgentTerminal` exposes
 explicit, reliable, tested lifecycle operations for them.
@@ -478,15 +498,15 @@ Ctrl+G toggles keyboard ownership
    ├── Locked + active terminal → other hub actions fail check_action()
    │                              and their original keys reach the PTY
    │
-   └── Unlocked → Ctrl+N creates OpenCode, Ctrl+1...9 open Fish slots, and
-                  the remaining hub shortcuts execute their AgentHub actions
+   └── Unlocked → Ctrl+N creates OpenCode, Ctrl+A/Ctrl+S focus a sidebar group,
+                  and a following plain digit selects its numbered entry
 ```
 
 Home is the intentional exception: with no active terminal, application
-shortcuts work even while the authoritative mode remains Locked. Ctrl+0 is
-intentionally unbound. Distinct Ctrl+digit input requires a modern enhanced
-keyboard protocol; legacy terminal encoding cannot distinguish every
-Ctrl+digit combination from a plain digit.
+shortcuts work even while the authoritative mode remains Locked. Ctrl+A followed
+by 1…9 selects a numbered agent; Ctrl+S followed by 1…9 opens or selects a Fish
+slot. Ctrl+digit combinations remain unbound by AgentHub and reach the active
+terminal.
 
 This policy does not belong inside `AgentTerminal`; that boundary continues to
 forward terminal input without knowing AgentHub navigation rules.
@@ -545,10 +565,7 @@ needed for the first multi-session implementation.
 
 ## Process-Exit Handling
 
-The current app exits whenever its only terminal emits `ProcessExited`. That is
-acceptable for preserving one-session prototype behavior.
-
-With multiple sessions, the desired flow becomes:
+The implemented process-exit flow is:
 
 ```text
 AgentTerminal emits ProcessExited
@@ -559,15 +576,17 @@ AgentHubApp resolves the affected AgentSession
         ▼
 SessionManager updates session/runtime coordination
         │
-        ├── preserve or remove the stopped session
-        ├── select another session if necessary
-        └── optionally quit if no sessions remain
+        ├── remove the exited session
+        ├── release its Ctrl+S shell slot, if any
+        ├── keep an active sibling visible when a hidden child exited
+        └── show Home when the active child exited
 ```
 
-The terminal should not decide to quit the entire application. The
-implementation also needs a reliable mapping from the Textual message sender to
-the corresponding session without making `AgentTerminal` depend on
-`SessionManager`.
+The app resolves the Textual message sender to its owning session, coordinates
+manager mutation with DOM removal, and keeps AgentHub running even when no
+sessions remain. Home uses contextual guidance when other live sessions remain.
+The terminal reports process exit but does not know about the manager, slot
+mapping, selection, Home, or application quit policy.
 
 ## Terminal Boundary and Bitty
 
@@ -677,7 +696,7 @@ Normal empty startup uses a persistent application shell:
 ┌──────────────────────┬────────────────────────────────────┐
 │ AgentHub sidebar     │ HomeScreen                         │
 │                      │                                    │
-│                      │ Empty-state guidance               │
+│                      │ Contextual session guidance        │
 │                      │ Shortcut quick reference           │
 ├──────────────────────┴────────────────────────────────────┤
 │ ○ Unlocked  Ctrl+G Lock     Sessions 0           Agents 0 │
@@ -705,10 +724,12 @@ The implemented sidebar-to-terminal relationship is conceptually:
 The sidebar always renders `AGENTS` and `SHELLS` as equal-height sections, even
 when either collection is empty. Both collections use `AgentSession`, one
 `SessionManager`, and the same selected-session message.
-Agent rows intentionally have no numeric prefix, while Ctrl+1…9 label stable
-Fish slots. Agent sessions remain selectable directly from the sidebar. The sidebar does
-not operate directly on `SessionManager` or terminal internals. Ctrl+N remains
-the immediate OpenCode creation path; configuration UI is future work.
+The first nine agent rows use creation-order numbers selected through Ctrl+A,
+then 1…9. Fish rows display their stable slot numbers and are opened or selected
+through Ctrl+S, then 1…9. Agent sessions remain selectable directly from the
+sidebar. The sidebar does not operate directly on `SessionManager` or terminal
+internals. Ctrl+N remains the immediate OpenCode creation path; configuration UI
+is future work.
 
 ## Repository Structure
 
@@ -802,19 +823,23 @@ The architectural foundation is implemented:
    to the active terminal, exit events map to the correct session, and app
    shutdown terminates both processes.
 8. A persistent application shell, Textual's built-in Tokyo Night theme,
-   responsive Home empty state, clean zero-session sidebar, and real status bar
+   responsive Home landing state, clean zero-session sidebar, and real status bar
    establish the shared UI foundation.
 9. Sidebar presentation accepts `AGENTS` and `SHELLS` collections backed by the
    same manager and selection flow.
-10. Ctrl+N immediately creates OpenCode and Ctrl+1…9 lazily create stable Fish
-    slots.
+10. Ctrl+N immediately creates OpenCode; Ctrl+A or Ctrl+S followed by 1…9
+    selects numbered agents or lazily creates and selects stable Fish slots.
+11. Sessions carry explicit agent-or-shell identity, while the separate slot map
+    only assigns shell keyboard shortcuts.
+12. Exited runtimes are removed, active exits return to contextual Home, hidden
+    exits do not interrupt the current terminal, and Fish slots become reusable.
 
 The remaining sequence is:
 
 1. Replace immediate default creation with the user-facing New Session modal so
    users can choose a harness and working directory.
-2. Add explicit terminal lifecycle operations before session stop, restart, or
-   removal.
+2. Add explicit terminal lifecycle operations before user-initiated stop or
+   restart of live sessions.
 3. Add persistence and native session resumption only when the runtime model is
    stable.
 
@@ -832,6 +857,9 @@ Validated with the installed dependency versions:
   reaches the child terminal.
 - Hidden terminals continue buffering output and retain their screen state.
 - A terminal-exit event can be mapped to the exact owning session.
+- Active exits return to Home, while hidden exits are removed without changing
+  the current view or focus.
+- Exited Fish slots are released and can create fresh shell runtimes.
 - Two concurrent children inherit distinct session working directories while
   AgentHub's own working directory remains unchanged.
 - App shutdown terminates all owned child processes reliably.
@@ -856,8 +884,8 @@ The tiers can be run independently with `python -m pytest tests/unit` and
 The architectural foundation now has automated coverage for:
 
 - immutable harness configuration and stable registry identity;
-- manager invariants and active-session selection;
-- behavior when selecting an unknown session;
+- manager invariants, active-session selection, and logical removal;
+- behavior when selecting or removing an unknown session;
 - terminal semantic-key to Bitty translation;
 - application creation with one managed session;
 - launch-directory validation and shell-free command wrapping;
@@ -870,6 +898,8 @@ The architectural foundation now has automated coverage for:
 - Home shortcut behavior without an active terminal;
 - stable Fish-slot navigation with persistent sidebar groups;
 - process-exit routing to the owning session;
+- active-exit navigation to Home and silent hidden-exit cleanup;
+- shell-slot release and recreation after process exit;
 - warning-free reader-task and child-process cleanup during application
   shutdown.
 
@@ -890,6 +920,7 @@ SessionRecord
 ─────────────
 id
 name
+kind
 harness_id
 cwd
 native_harness_session_id
@@ -948,7 +979,8 @@ Future work should preserve these rules:
 2. `AgentHarness` is immutable semantic configuration, not a widget factory.
 3. Harness IDs are stable machine identifiers; display names are UI text.
 4. Bitty and PTY details remain inside the terminal boundary.
-5. `AgentSession` represents one AgentHub-managed runtime and identity.
+5. `AgentSession` represents one AgentHub-managed runtime with explicit semantic
+   identity; keyboard slot assignment remains separate.
 6. `SessionManager` coordinates sessions but never manipulates the Textual DOM.
 7. `AgentHubApp` owns mounting, visibility, focus, navigation, and application
    policy.
@@ -978,7 +1010,7 @@ not recreate agent UIs.
 
 Harness        = immutable agent description and semantic terminal behavior
 Terminal       = native-terminal adapter and Bitty boundary
-Session        = AgentHub identity + cwd + harness + terminal runtime
+Session        = AgentHub identity + kind + cwd + harness + terminal runtime
 SessionManager = session collection/lifecycle coordinator; no DOM or Bitty
 App            = Textual DOM, visibility, focus, navigation, and policy
 
@@ -991,12 +1023,14 @@ covered by an integration test.
 Current state: the harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
 ownership, grouped sidebar presentation, immediate OpenCode creation, fixed Fish
-slots, and multi-session switching runtime are implemented and tested. Normal
-startup creates no session or child process. Multiple terminals have been
-proven to survive repeated switching, retain hidden output and screen state,
-isolate input, route exit events to their owning sessions, run concurrently in
-distinct working directories, and shut down with the app. Locked hub shortcuts
-have been proven to fall through at the PTY-write boundary. Next: replace the
-immediate defaults with the incremental New Session configuration workflow.
-Persistence and native resume are deferred.
+slots, explicit session kinds, exited-runtime cleanup, and multi-session
+switching runtime are implemented and tested. Normal startup creates no session
+or child process. Multiple terminals have been proven to survive repeated
+switching, retain hidden output and screen state, isolate input, run concurrently
+in distinct working directories, and shut down with the app. Active exits return
+to Home, hidden exits are removed without interrupting the current terminal, and
+Fish slots become reusable. Locked hub shortcuts have been proven to fall through
+at the PTY-write boundary. Next: replace the immediate defaults with the
+incremental New Session configuration workflow. Persistence and native resume
+are deferred.
 ```

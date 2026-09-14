@@ -1,14 +1,18 @@
 """Unit tests for application orchestration and ownership."""
 
+from pathlib import Path
+
 from agenthub.app import AgentHubApp
+from agenthub.harnesses import AgentHarness
+from agenthub.sessions import SessionKind
 from agenthub.ui.bindings import (
     APPLICATION_BINDINGS,
     COMMAND_PALETTE_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
     NEW_SESSION_BINDING,
+    NUMBERED_SESSION_BINDINGS,
     QUIT_BINDING,
-    SHELL_SLOT_BINDINGS,
     TOGGLE_HUB_LOCK_BINDING,
 )
 
@@ -25,6 +29,22 @@ def test_app_uses_the_agenthub_theme() -> None:
     app = AgentHubApp()
 
     assert app.theme == "tokyo-night"
+
+
+def test_session_kind_is_independent_from_shell_shortcut_slots(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = AgentHubApp()
+    shell = app.session_manager.create(
+        name="Unslotted shell",
+        kind=SessionKind.SHELL,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+
+    assert app.shell_session_slots == {}
+    assert app._agent_sessions() == ()
+    assert app._shell_sessions() == (shell,)
 
 
 def test_application_bindings_are_priority_candidates_for_keyboard_ownership() -> None:
@@ -55,10 +75,8 @@ def test_application_navigation_bindings_are_reserved() -> None:
     assert COMMAND_PALETTE_BINDING.key == "ctrl+p"
     assert COMMAND_PALETTE_BINDING.action == "command_palette"
     assert COMMAND_PALETTE_BINDING.priority is True
-    assert [binding.key for binding in SHELL_SLOT_BINDINGS] == [
-        f"ctrl+{slot}" for slot in range(1, 10)
+    assert [binding.key for binding in NUMBERED_SESSION_BINDINGS] == [
+        str(number) for number in range(1, 10)
     ]
-    assert [binding.description for binding in SHELL_SLOT_BINDINGS] == [
-        f"Fish shell {slot}" for slot in range(1, 10)
-    ]
-    assert all(binding.priority for binding in SHELL_SLOT_BINDINGS)
+    assert all(not binding.priority for binding in NUMBERED_SESSION_BINDINGS)
+    assert all(binding not in APPLICATION_BINDINGS for binding in NUMBERED_SESSION_BINDINGS)

@@ -50,15 +50,14 @@ QUIT_BINDING = Binding(
     priority=True,
 )
 
-SHELL_SLOT_BINDINGS = tuple(
+NUMBERED_SESSION_BINDINGS = tuple(
     Binding(
-        f"ctrl+{slot}",
-        f"open_shell({slot})",
-        f"Fish shell {slot}",
-        key_display=f"Ctrl+{slot}",
-        priority=True,
+        str(number),
+        f"select_numbered_session({number})",
+        f"Select session {number}",
+        show=False,
     )
-    for slot in range(1, 10)
+    for number in range(1, 10)
 )
 
 # These actions belong to AgentHub only while the hub owns navigation keys. A
@@ -69,7 +68,6 @@ TERMINAL_GATED_ACTIONS = frozenset(
         "focus_agents",
         "focus_shells",
         "new_session",
-        "open_shell",
         "quit",
     }
 )
@@ -81,7 +79,6 @@ APPLICATION_BINDINGS = (
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
     QUIT_BINDING,
-    *SHELL_SLOT_BINDINGS,
 )
 
 HOME_SHORTCUTS = (
@@ -91,11 +88,10 @@ HOME_SHORTCUTS = (
             TOGGLE_HUB_LOCK_BINDING,
             NEW_SESSION_BINDING,
             COMMAND_PALETTE_BINDING,
-            FOCUS_AGENTS_BINDING,
-            FOCUS_SHELLS_BINDING,
         )
     ),
-    ("Ctrl+1…9", "Open / switch shell 1…9"),
+    ("Ctrl+A, then 1…9", "Switch agent session"),
+    ("Ctrl+S, then 1…9", "Open / switch shell"),
 )
 
 __all__ = [
@@ -105,8 +101,8 @@ __all__ = [
     "FOCUS_SHELLS_BINDING",
     "HOME_SHORTCUTS",
     "NEW_SESSION_BINDING",
+    "NUMBERED_SESSION_BINDINGS",
     "QUIT_BINDING",
-    "SHELL_SLOT_BINDINGS",
     "TERMINAL_GATED_ACTIONS",
     "TOGGLE_HUB_LOCK_BINDING",
 ]
