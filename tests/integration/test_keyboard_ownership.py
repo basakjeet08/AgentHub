@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 from textual.command import CommandPalette
-from textual.widgets import OptionList, Static
+from textual.screen import ModalScreen
+from textual.widgets import Input, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
@@ -220,6 +221,72 @@ async def test_locking_from_command_palette_closes_it_and_refocuses_terminal(
         assert app.hub_locked
         assert not isinstance(app.screen, CommandPalette)
         assert session.terminal.has_focus
+
+
+@pytest.mark.parametrize(
+    ("stage", "expected_modal"),
+    [
+        ("harness", HarnessSelectionModal),
+        ("name", SessionNameModal),
+    ],
+)
+async def test_locking_cancels_new_session_modal_with_active_terminal(
+    sleeping_harness: AgentHarness,
+    stage: str,
+    expected_modal: type[ModalScreen],
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+n")
+        if stage == "name":
+            await pilot.press("enter")
+            await pilot.pause()
+        assert isinstance(app.screen, expected_modal)
+
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+
+        assert app.hub_locked
+        assert not isinstance(app.screen, (HarnessSelectionModal, SessionNameModal))
+        assert app.session_manager.sessions == (session,)
+        assert app.session_manager.active_session is session
+        assert session.terminal.is_mounted
+        assert session.terminal.is_process_running
+        assert session.terminal.has_focus
+
+
+@pytest.mark.parametrize(
+    ("stage", "expected_modal", "focus_selector", "focus_type"),
+    [
+        ("harness", HarnessSelectionModal, "#harness-selection-list", OptionList),
+        ("name", SessionNameModal, "#session-name-input", Input),
+    ],
+)
+async def test_locking_on_home_keeps_new_session_modal_open(
+    sleeping_harness: AgentHarness,
+    stage: str,
+    expected_modal: type[ModalScreen],
+    focus_selector: str,
+    focus_type: type[OptionList] | type[Input],
+) -> None:
+    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+n")
+        if stage == "name":
+            await pilot.press("enter")
+            await pilot.pause()
+        assert isinstance(app.screen, expected_modal)
+
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+
+        assert app.hub_locked
+        assert isinstance(app.screen, expected_modal)
+        assert app.screen.query_one(focus_selector, focus_type).has_focus
+        assert app.session_manager.sessions == ()
 
 
 async def test_unbound_ctrl_0_reaches_pty_while_unlocked(

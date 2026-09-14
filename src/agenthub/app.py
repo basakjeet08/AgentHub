@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult, SystemCommand
 from textual.command import CommandPalette
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher
 
 from agenthub.harnesses import FISH, HARNESSES, AgentHarness
@@ -154,8 +154,12 @@ class AgentHubApp(App):
         if not self.hub_locked:
             return
 
-        if isinstance(self.screen, CommandPalette):
-            self.screen.dismiss()
+        current_screen = self.screen
+        terminal_is_active = self.session_manager.active_session is not None
+        if isinstance(current_screen, CommandPalette) or (
+            terminal_is_active and isinstance(current_screen, ModalScreen)
+        ):
+            current_screen.dismiss()
         self.call_after_refresh(self._focus_active_terminal)
 
     async def action_open_shell(self, slot: int) -> None:

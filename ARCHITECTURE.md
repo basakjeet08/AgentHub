@@ -514,6 +514,12 @@ terminal.
 This policy does not belong inside `AgentTerminal`; that boundary continues to
 forward terminal input without knowing AgentHub navigation rules.
 
+When Ctrl+G enters Locked mode with a live active terminal behind a modal, the
+app dismisses that modal as cancellation before restoring terminal focus. This
+includes either stage of the New Agent Session flow and ensures no partial
+runtime is created. On Home, where there is no terminal to receive ownership,
+the active modal remains open under the existing Home shortcut exception.
+
 Conceptually:
 
 ```text
@@ -895,6 +901,8 @@ Validated with the installed dependency versions:
   terminal's PTY unchanged, while Unlocked candidates execute hub actions.
 - Ctrl+G changes the visible ownership state in both directions and never
   reaches the child terminal.
+- Locking with an active terminal dismisses an open New Agent Session modal as
+  cancellation and restores terminal focus; Home modals remain open.
 - Hidden terminals continue buffering output and retain their screen state.
 - A terminal-exit event can be mapped to the exact owning session.
 - Active exits return to Home, while hidden exits are removed without changing
