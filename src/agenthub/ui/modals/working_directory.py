@@ -84,6 +84,15 @@ class FolderTree(DirectoryTree):
 
         return self._name_filter_query
 
+    @property
+    def has_name_filter_matches(self) -> bool:
+        """Return whether the active filter has at least one visible match."""
+
+        if not self._name_filter_query or self._name_filter_directory is None:
+            return True
+        scope_node = self._find_loaded_node(self._name_filter_directory)
+        return scope_node is not None and bool(scope_node.children)
+
     def filter_scope_for_cursor(self) -> Path:
         """Resolve the directory level that owns the current cursor position."""
 
@@ -103,6 +112,13 @@ class FolderTree(DirectoryTree):
         )
         await self.reload()
         self.focus_first_name_filter_match()
+        self.post_message(self.NameFilterChanged())
+
+    def discard_name_filter(self) -> None:
+        """Clear filter state when its scope is no longer present in the tree."""
+
+        self._name_filter_directory = None
+        self._name_filter_query = ""
         self.post_message(self.NameFilterChanged())
 
     def focus_first_name_filter_match(self) -> None:
@@ -125,6 +141,21 @@ class FolderTree(DirectoryTree):
                 return node
             to_check.extend(reversed(node.children))
         return None
+
+    def focus_nearest_loaded_ancestor(self, path: Path) -> None:
+        """Focus the nearest ancestor that remains present in the loaded tree."""
+
+        candidate = path.expanduser().resolve().parent
+        while True:
+            node = self._find_loaded_node(candidate)
+            if node is not None:
+                self.move_cursor(node)
+                return
+            parent = candidate.parent
+            if parent == candidate:
+                self.move_cursor(self.root)
+                return
+            candidate = parent
 
     @work(exit_on_error=False)
     async def _load_directory(self, node: TreeNode) -> list[Path]:
@@ -341,10 +372,11 @@ class WorkingDirectoryModal(ModalScreen[Path]):
             return
 
         character = event.character
+        is_query_space = character == " " and bool(tree.name_filter_query)
         if (
             not event.is_printable
             or character is None
-            or character.isspace()
+            or (character.isspace() and not is_query_space)
             or event.key.startswith(("ctrl+", "alt+", "meta+", "super+"))
         ):
             return
@@ -363,6 +395,10 @@ class WorkingDirectoryModal(ModalScreen[Path]):
         """Confirm the authoritative DirectoryTree selection as a real Path."""
 
         event.stop()
+        tree = self.query_one(FolderTree)
+        if tree.name_filter_query and not tree.has_name_filter_matches:
+            tree.focus()
+            return
         selected_directory = event.path.expanduser().resolve()
         self._selected_directory = selected_directory
         self.query_one("#working-directory-selected-path", Static).update(
@@ -374,9 +410,17 @@ class WorkingDirectoryModal(ModalScreen[Path]):
         """Toggle dot-prefixed directories and preserve the current tree state."""
 
         tree = self.query_one(FolderTree)
+        filter_directory = tree.name_filter_directory
         tree.show_hidden = not tree.show_hidden
         await tree.reload()
-        tree.focus_first_name_filter_match()
+        if (
+            filter_directory is not None
+            and tree._find_loaded_node(filter_directory) is None
+        ):
+            tree.discard_name_filter()
+            tree.focus_nearest_loaded_ancestor(filter_directory)
+        else:
+            tree.focus_first_name_filter_match()
         self.query_one("#working-directory-hidden-help", Static).update(
             self._hidden_help_text(show_hidden=tree.show_hidden)
         )

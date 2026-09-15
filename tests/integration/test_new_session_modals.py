@@ -637,6 +637,77 @@ async def test_filter_is_local_and_filtered_directory_can_be_selected(
         assert session.cwd == payments.resolve()
 
 
+async def test_enter_with_no_filter_matches_does_not_select_scope_directory(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "Projects"
+    (projects / "AgentHub").mkdir(parents=True)
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        modal = await _open_working_directory_modal(app, pilot)
+        tree = modal.query_one(FolderTree)
+        await _load_tree(tree)
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        tree.move_cursor(projects_node)
+        await pilot.press("right")
+        await tree._load_queue.join()
+
+        await pilot.press(*"does-not-exist")
+        await pilot.pause()
+
+        assert not tree.has_name_filter_matches
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.resolve() == projects.resolve()
+
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.screen is modal
+        assert tree.has_focus
+        assert app.session_manager.sessions == ()
+        assert not app.query("AgentTerminal")
+
+
+async def test_filter_query_supports_spaces_in_directory_names(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    matching = tmp_path / "My Project"
+    matching.mkdir()
+    (tmp_path / "MyProject").mkdir()
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        modal = await _open_working_directory_modal(app, pilot)
+        tree = modal.query_one(FolderTree)
+        await _load_tree(tree)
+
+        await pilot.press("M", "y", "space", "P", "r", "o", "j", "e", "c", "t")
+        await pilot.pause()
+
+        assert tree.name_filter_directory == tmp_path.resolve()
+        assert tree.name_filter_query == "My Project"
+        assert tuple(
+            child.data.path.resolve()
+            for child in tree.root.children
+            if child.data is not None
+        ) == (matching.resolve(),)
+        assert tree.cursor_node is tree.root.children[0]
+
+
 async def test_right_enters_filtered_directory_with_a_fresh_filter(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
@@ -735,6 +806,70 @@ async def test_filter_composes_with_hidden_toggle_and_escape_still_cancels(
         await pilot.pause()
 
         assert not isinstance(app.screen, WorkingDirectoryModal)
+        assert app.session_manager.sessions == ()
+
+
+async def test_hiding_active_hidden_filter_scope_clears_filter(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    visible = tmp_path / "visible-project"
+    hidden = visible / ".hidden-project"
+    (hidden / "Backend").mkdir(parents=True)
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        modal = await _open_working_directory_modal(app, pilot)
+        tree = modal.query_one(FolderTree)
+        filter_value = modal.query_one("#working-directory-filter-value", Static)
+        await _load_tree(tree)
+        await pilot.press("ctrl+h")
+        await pilot.pause()
+
+        visible_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == visible.resolve()
+        )
+        tree.move_cursor(visible_node)
+        await pilot.press("right")
+        await tree._load_queue.join()
+        hidden_node = next(
+            child
+            for child in visible_node.children
+            if child.data is not None and child.data.path.resolve() == hidden.resolve()
+        )
+        tree.move_cursor(hidden_node)
+        await pilot.press("right")
+        await tree._load_queue.join()
+        await pilot.press(*"Backend")
+        await pilot.pause()
+
+        assert tree.name_filter_directory == hidden.resolve()
+        assert tree.name_filter_query == "Backend"
+
+        await pilot.press("ctrl+h")
+        await pilot.pause()
+
+        assert not tree.show_hidden
+        assert tree.name_filter_directory is None
+        assert tree.name_filter_query == ""
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.resolve() == visible.resolve()
+        assert tuple(
+            child.data.path.resolve()
+            for child in tree.root.children
+            if child.data is not None
+        ) == (visible.resolve(),)
+        visible_node = tree.root.children[0]
+        assert not visible_node.children
+        assert str(filter_value.content) == "Type to filter current folder"
+        assert not filter_value.has_class("active-filter")
+        assert tree.has_focus
         assert app.session_manager.sessions == ()
 
 

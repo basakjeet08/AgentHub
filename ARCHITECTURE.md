@@ -759,13 +759,16 @@ child on the second; Left collapses an expanded folder on the first press and
 moves to its parent on the next.
 
 Typing while the directory tree is focused applies a case-insensitive substring
-filter to the immediate children of the current directory level. Backspace edits
-the query, and the modal displays both the query and its directory scope. The
-first alphabetically sorted match receives the tree cursor automatically. The
-filter is local rather than a recursive filesystem search. Entering a filtered
-directory with Right clears the previous query, so subsequent typing filters
-the newly entered directory. Filtering also composes with the current Ctrl+H
-hidden-directory state.
+filter to the immediate children of the current directory level. Ordinary spaces
+are accepted after the query begins, and Backspace edits the query. The modal
+displays both the query and its directory scope. The first alphabetically sorted
+match receives the tree cursor automatically. When no matches remain, the scope
+node is focused as a navigation fallback but cannot be confirmed until the query
+changes or is cleared. The filter is local rather than a recursive filesystem
+search. Entering a filtered directory with Right clears the previous query, so
+subsequent typing filters the newly entered directory. Filtering also composes
+with the current Ctrl+H hidden-directory state; hiding an active hidden scope
+clears its filter and focuses the nearest ancestor that remains visible.
 
 Textual 8.2.8 normally loads `DirectoryTree` entries through a threaded worker.
 Under the project's Python 3.13 runtime, that worker prevents the event loop's
