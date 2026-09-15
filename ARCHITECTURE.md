@@ -13,10 +13,10 @@ terminal-native coding-agent sessions from one application.
 
 > Manage multiple native coding-agent terminal sessions from one TUI.
 
-AgentHub does **not** reimplement a coding agent's interface. OpenCode, Codex,
-Claude Code, Devin CLI, and similar tools continue to render and handle input in
-their native terminal interfaces. AgentHub embeds those interfaces through
-`textual-tty` and `bittty`, and adds session management around them.
+AgentHub does **not** reimplement a coding agent's interface. Supported coding
+agents continue to render and handle input in their native terminal interfaces.
+AgentHub embeds those interfaces through `textual-tty` and `bittty`, and adds
+session management around them.
 
 The architecture in this document should guide future implementation work unless
 experience with the real system demonstrates that a boundary needs to change.
@@ -89,20 +89,20 @@ not create widgets or import Bitty.
   child helper that replaces itself with the harness process;
 - converts semantic key modifiers into Bitty constants;
 - converts mouse-wheel movement into agent-specific transcript navigation;
-- retains bounded styled normal-screen scrollback for shell harnesses without
-  their own transcript-scroll policy;
+- retains bounded styled normal-screen scrollback for harnesses without their
+  own transcript-scroll policy, including top-anchored partial scroll regions;
+- maps PageUp/PageDown to retained primary-screen history;
 - awaits Bitty reader-task and child-process cleanup during unmount;
 - associates process-exit messages with the terminal that emitted them;
 - delegates terminal emulation and process interaction to
   `textual-tty`/`bittty`.
 
-Only one coding-agent harness is registered:
+Two coding-agent harnesses are registered:
 
-```text
-registry key: opencode
-command:      opencode
-default:      yes
-```
+| Registry key | Command    | Default | Scroll policy |
+| ------------ | ---------- | ------- | ------------- |
+| `opencode`   | `opencode` | yes     | semantic transcript shortcuts |
+| `codex`      | `codex`    | no      | native terminal behavior |
 
 Fish is a built-in shell definition used directly by the fixed shell slots. It
 is intentionally not part of the coding-agent harness registry.
@@ -115,11 +115,18 @@ scroll up   → Ctrl+Alt+Y
 wheel step  → send the selected shortcut three times
 ```
 
+Codex 0.154.0 was observed using the primary screen with mouse tracking disabled
+for its normal interface inside AgentHub's terminal boundary. Its Ctrl+T
+transcript pager uses the alternate screen and provides native arrow,
+PageUp/PageDown, and Home/End navigation. Codex therefore has no semantic wheel
+shortcut configured: AgentHub retains styled normal-screen history and delegates
+alternate-screen behavior to `textual-tty`.
+
 When the child application has enabled terminal mouse tracking, the child owns
 the wheel and `AgentTerminal` delegates to `textual-tty`. Otherwise AgentHub
 sends a harness's configured transcript-scroll shortcuts. Harnesses without a
-custom policy, such as Fish, use bounded styled history on the normal screen
-and textual-tty's behavior inside alternate-screen applications.
+custom policy, such as Fish, use bounded styled history on the normal screen and
+textual-tty's behavior inside alternate-screen applications.
 
 ### Current repository structure
 
@@ -813,6 +820,7 @@ src/agenthub/
 ├── app.py               # Textual application and DOM ownership
 ├── harnesses/
 │   ├── __init__.py      # public harness API
+│   ├── codex.py         # Codex definition
 │   ├── fish.py          # Fish shell-slot definition
 │   ├── model.py         # immutable semantic models
 │   ├── opencode.py      # OpenCode definition
@@ -1113,16 +1121,16 @@ covered by an integration test.
 
 Current state: the harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
-ownership, grouped sidebar presentation, registry-driven harness selection,
-required session naming, working-directory browsing, fixed Fish slots, explicit
-session kinds, exited-runtime cleanup, and multi-session switching runtime are
-implemented and tested. Normal startup and incomplete or cancelled modal flows
-create no session or child process. Multiple terminals have been proven to
-survive repeated switching, retain hidden output and screen state, isolate
-input, run concurrently in distinct working directories, and shut down with the
-app. Active exits return to Home, hidden exits are removed without interrupting
-the current terminal, and Fish slots become reusable. Locked hub shortcuts have
-been proven to fall through at the PTY-write boundary. Next: add explicit
-terminal lifecycle operations before user-initiated stop or restart of live
-sessions. Persistence and native resume are deferred.
+ownership, grouped sidebar presentation, registry-driven OpenCode and Codex
+selection, required session naming, working-directory browsing, fixed Fish
+slots, explicit session kinds, exited-runtime cleanup, and multi-session
+switching runtime are implemented and tested. Normal startup and incomplete or
+cancelled modal flows create no session or child process. Multiple terminals
+have been proven to survive repeated switching, retain hidden output and screen
+state, isolate input, run concurrently in distinct working directories, and
+shut down with the app. Active exits return to Home, hidden exits are removed
+without interrupting the current terminal, and Fish slots become reusable.
+Locked hub shortcuts have been proven to fall through at the PTY-write
+boundary. Next: add explicit terminal lifecycle operations before user-initiated
+stop or restart of live sessions. Persistence and native resume are deferred.
 ```

@@ -105,14 +105,14 @@ class AgentTerminal(TtyTerminal):
 
     @property
     def scrollback_line_count(self) -> int:
-        """Return the number of native shell-history rows retained in memory."""
+        """Return the number of primary-screen rows retained in memory."""
 
         video = self._scrollback_video
         return 0 if video is None else video.history_line_count
 
     @property
     def scrollback_offset(self) -> int:
-        """Return how many rows above the live shell viewport are displayed."""
+        """Return how many rows above the live primary viewport are displayed."""
 
         return self._scrollback_offset
 
@@ -171,6 +171,23 @@ class AgentTerminal(TtyTerminal):
 
         return True
 
+    def on_key(self, event: events.Key) -> None:
+        """Use page keys for retained primary-screen history when available."""
+
+        if (
+            self.harness.scroll is None
+            and not self.board.blitter.in_alt_screen
+            and event.key in {"pageup", "pagedown"}
+        ):
+            arrow = "up" if event.key == "pageup" else "down"
+            self._scroll_normal_history(arrow, max(self.board.height - 1, 1))
+            event.stop()
+            event.prevent_default()
+            return
+
+        event.prevent_default()
+        super().on_key(event)
+
     def _wheel(self, event: events.MouseEvent, button: int, arrow: str) -> None:
         """Scroll the transcript when the child ignores the wheel; defer otherwise."""
 
@@ -186,7 +203,7 @@ class AgentTerminal(TtyTerminal):
             if self.board.blitter.in_alt_screen:
                 super()._wheel(event, button, arrow)
                 return
-            self._scroll_shell_history(arrow)
+            self._scroll_normal_history(arrow)
             event.stop()
             return
 
@@ -201,7 +218,7 @@ class AgentTerminal(TtyTerminal):
         event.stop()
 
     def _on_history_added(self, count: int) -> None:
-        """Keep a scrolled-back viewport stable while new shell output arrives."""
+        """Keep a scrolled-back viewport stable while new output arrives."""
 
         if self._scrollback_offset:
             self._scrollback_offset = min(
@@ -210,23 +227,27 @@ class AgentTerminal(TtyTerminal):
             )
             self.refresh()
 
-    def _scroll_shell_history(self, arrow: str) -> None:
-        """Move the native shell viewport without sending keys to the child."""
+    def _scroll_normal_history(
+        self,
+        arrow: str,
+        lines: int = _WHEEL_SCROLL_LINES,
+    ) -> None:
+        """Move through primary-screen history without sending keys to the child."""
 
         if arrow == "up":
             next_offset = min(
-                self._scrollback_offset + _WHEEL_SCROLL_LINES,
+                self._scrollback_offset + lines,
                 self.scrollback_line_count,
             )
         else:
-            next_offset = max(self._scrollback_offset - _WHEEL_SCROLL_LINES, 0)
+            next_offset = max(self._scrollback_offset - lines, 0)
 
         if next_offset != self._scrollback_offset:
             self._scrollback_offset = next_offset
             self.refresh()
 
     def render_line(self, y: int) -> Strip:
-        """Render retained shell rows when viewing above the live primary page."""
+        """Render retained rows when viewing above the live primary page."""
 
         video = self._scrollback_video
         if video is None or self._scrollback_offset == 0 or self.board.blitter.in_alt_screen:

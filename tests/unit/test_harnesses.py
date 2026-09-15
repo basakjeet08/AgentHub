@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from agenthub.harnesses import DEFAULT_HARNESS, FISH, HARNESSES, OPENCODE
+from agenthub.harnesses import CODEX, DEFAULT_HARNESS, FISH, HARNESSES, OPENCODE
 
 
 def test_opencode_uses_stable_registry_identity() -> None:
@@ -12,6 +12,15 @@ def test_opencode_uses_stable_registry_identity() -> None:
     assert HARNESSES[DEFAULT_HARNESS] is OPENCODE
     assert OPENCODE.display_name == "OpenCode"
     assert OPENCODE.command == ("opencode",)
+
+
+def test_codex_uses_native_terminal_scrolling() -> None:
+    assert CODEX.id == "codex"
+    assert CODEX.display_name == "Codex"
+    assert CODEX.command == ("codex",)
+    assert CODEX.scroll is None
+    assert HARNESSES[CODEX.id] is CODEX
+    assert set(HARNESSES) == {OPENCODE.id, CODEX.id}
 
 
 def test_fish_is_a_shell_runtime_without_agent_scroll_keys() -> None:

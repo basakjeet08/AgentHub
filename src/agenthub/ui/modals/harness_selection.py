@@ -20,10 +20,12 @@ class HarnessSelectionModal(ModalScreen[str]):
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
     def __init__(self, harnesses: Iterable[AgentHarness]) -> None:
-        """Retain the registry-derived harnesses in their supplied order."""
+        """Retain the registry-derived harnesses in display-name order."""
 
         super().__init__()
-        self._harnesses = tuple(harnesses)
+        self._harnesses = tuple(
+            sorted(harnesses, key=lambda harness: harness.display_name.casefold())
+        )
 
     def compose(self) -> ComposeResult:
         """Compose a compact launcher-style harness picker."""
@@ -57,7 +59,7 @@ class HarnessSelectionModal(ModalScreen[str]):
                 yield Static("Select", classes="modal-shortcut-description")
 
     def on_mount(self) -> None:
-        """Select and focus the first registered harness when available."""
+        """Select and focus the first displayed harness when available."""
 
         harness_list = self.query_one("#harness-selection-list", OptionList)
         if harness_list.options:

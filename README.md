@@ -5,9 +5,9 @@ coding-agent sessions from one application.
 
 > Manage multiple native coding-agent terminal sessions from one TUI.
 
-AgentHub does **not** reimplement a coding agent's interface. OpenCode, Codex,
-Claude Code, Devin CLI, and similar tools continue to run their native terminal
-UIs inside an embedded terminal powered by `textual-tty` and `bittty`.
+AgentHub does **not** reimplement a coding agent's interface. Supported coding
+agents continue to run their native terminal UIs inside an embedded terminal
+powered by `textual-tty` and `bittty`.
 
 For the accepted design, lifecycle constraints, validation work, and
 implementation direction, read **[ARCHITECTURE.md](ARCHITECTURE.md)** before
@@ -47,9 +47,20 @@ multi-session runtime architecture:
 - It starts Unlocked for immediate navigation and lets the user transfer all
   non-toggle shortcuts to the active terminal by locking with Ctrl+G.
 - It adapts mouse-wheel events to OpenCode's transcript-scroll shortcuts and
-  retains native styled scrollback for Fish shells.
+  retains styled main-view scrollback for Codex and Fish, navigable by wheel or
+  PageUp/PageDown.
 
-It does not yet provide:
+## Supported Coding-Agent Harnesses
+
+- OpenCode (`opencode`)
+- Codex (`codex`)
+
+The picker lists harnesses supported by AgentHub even when their executables are
+not installed. Each native CLI owns its authentication and first-run setup.
+
+## Current Limitations
+
+AgentHub does not yet provide:
 
 - a complete shortcuts dialog;
 - user-initiated stopping, restarting, or removal of live sessions;
@@ -102,7 +113,7 @@ lifecycle constraints, and implementation roadmap.
 
 - Python 3.13 or newer
 - A pyenv environment named `agenthub` (selected by `.python-version`)
-- OpenCode available on `PATH` for Ctrl+N sessions
+- OpenCode and/or Codex available on `PATH` for the corresponding Ctrl+N sessions
 - Fish available on `PATH` for numbered shell slots
 
 The environment used during initial development was created with Python

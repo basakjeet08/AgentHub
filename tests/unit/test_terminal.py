@@ -52,6 +52,68 @@ def test_wheel_uses_harness_scroll_policy(
     event.stop.assert_called_once_with()
 
 
+def test_top_anchored_partial_scroll_region_is_retained(tmp_path: Path) -> None:
+    shell_harness = AgentHarness(
+        id="test-shell",
+        display_name="Test Shell",
+        command=("fish",),
+        scroll=None,
+    )
+    terminal = AgentTerminal(shell_harness, working_directory=tmp_path)
+    terminal.board.resize(20, 6)
+    terminal.feed("oldest")
+    video = terminal._scrollback_video
+    assert video is not None
+
+    video.scroll_region_up(0, 3, 1)
+
+    assert terminal.scrollback_line_count == 1
+    assert "".join(cell[1] for cell in video.history_row(0)).startswith("oldest")
+
+
+def test_repeated_partial_scroll_regions_accumulate(tmp_path: Path) -> None:
+    """Codex-style many small top-anchored scrolls must accumulate, not just once."""
+
+    shell_harness = AgentHarness(
+        id="test-shell",
+        display_name="Test Shell",
+        command=("fish",),
+        scroll=None,
+    )
+    terminal = AgentTerminal(shell_harness, working_directory=tmp_path)
+    terminal.board.resize(20, 6)
+    video = terminal._scrollback_video
+    assert video is not None
+
+    # Repeatedly scroll a top-anchored partial region (rows 0-4), as Codex does
+    # when it keeps the composer fixed and scrolls only the transcript. Each
+    # scroll must retain the top row; the count must grow rather than stall.
+    for _ in range(5):
+        video.scroll_region_up(0, 4, 1)
+
+    assert terminal.scrollback_line_count == 5
+
+
+def test_page_keys_scroll_native_history_for_plain_shell(tmp_path: Path) -> None:
+    shell_harness = AgentHarness(
+        id="test-shell",
+        display_name="Test Shell",
+        command=("fish",),
+        scroll=None,
+    )
+    terminal = AgentTerminal(shell_harness, working_directory=tmp_path)
+    terminal.board.resize(20, 4)
+    terminal.feed("one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\n")
+
+    terminal.on_key(events.Key("pageup", None))
+
+    assert terminal.scrollback_offset > 0
+
+    terminal.on_key(events.Key("pagedown", None))
+
+    assert terminal.scrollback_offset == 0
+
+
 def test_wheel_scrolls_native_history_for_plain_shell(tmp_path: Path) -> None:
     shell_harness = AgentHarness(
         id="test-shell",

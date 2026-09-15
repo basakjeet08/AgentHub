@@ -97,7 +97,11 @@ async def test_ctrl_n_opens_registry_derived_harness_modal_without_creating() ->
         )
         assert not app.screen.query("#harness-selection-prompt")
         assert tuple((option.id, str(option.prompt)) for option in harness_list.options) == tuple(
-            (harness.id, harness.display_name) for harness in HARNESSES.values()
+            (harness.id, harness.display_name)
+            for harness in sorted(
+                HARNESSES.values(),
+                key=lambda harness: harness.display_name.casefold(),
+            )
         )
 
 

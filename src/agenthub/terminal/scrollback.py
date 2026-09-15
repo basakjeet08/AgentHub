@@ -1,4 +1,4 @@
-"""Styled normal-screen scrollback storage for embedded shell terminals."""
+"""Styled scrollback storage for embedded primary-screen terminals."""
 
 from collections import deque
 from collections.abc import Callable, Sequence
@@ -50,10 +50,10 @@ class ScrollbackVideo(Video):
         super().scroll_up(count)
 
     def scroll_region_up(self, top: int, bottom: int, count: int) -> None:
-        """Retain rows only when the complete primary page scrolls upward."""
+        """Retain rows leaving a top-anchored primary-screen scroll region."""
 
-        if top == 0 and bottom == self.height - 1 and count > 0:
-            retained_count = min(count, self.height)
+        if top == 0 and count > 0:
+            retained_count = min(count, bottom + 1, self.height)
             self._retain_rows(self.grid[:retained_count])
         super().scroll_region_up(top, bottom, count)
 
@@ -67,19 +67,18 @@ class ScrollbackVideo(Video):
         right: int | None = None,
         style_or_ansi: object = None,
     ) -> None:
-        """Retain full-page scrolls that use a non-default background style."""
+        """Retain styled rows leaving a top-anchored full-width scroll region."""
 
         delegates_to_region = left == 0 and right is None and style_or_ansi is None
         effective_right = self.width - 1 if right is None else right
         if (
             not delegates_to_region
             and top == 0
-            and bottom == self.height - 1
             and left == 0
             and effective_right == self.width - 1
             and count > 0
         ):
-            retained_count = min(count, self.height)
+            retained_count = min(count, bottom + 1, self.height)
             self._retain_rows(self.grid[:retained_count])
         super().scroll_rectangle_up(
             top,
