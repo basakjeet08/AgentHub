@@ -5,12 +5,13 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from textual.command import CommandPalette
 from textual.pilot import Pilot
 from textual.widgets import ContentSwitcher, Input, Label, OptionList, Static
 
 from agenthub.app import AgentHubApp
-from agenthub.harnesses import HARNESSES, AgentHarness
+from agenthub.harnesses import ANTIGRAVITY, DEVIN, AgentHarness
 from agenthub.sessions import SessionKind
 from agenthub.ui import HomeScreen, SessionSidebar
 from agenthub.ui.modals import (
@@ -96,12 +97,13 @@ async def test_ctrl_n_opens_registry_derived_harness_modal_without_creating() ->
             == "Cancel"
         )
         assert not app.screen.query("#harness-selection-prompt")
-        assert tuple((option.id, str(option.prompt)) for option in harness_list.options) == tuple(
-            (harness.id, harness.display_name)
-            for harness in sorted(
-                HARNESSES.values(),
-                key=lambda harness: harness.display_name.casefold(),
-            )
+        assert tuple(
+            (option.id, str(option.prompt)) for option in harness_list.options
+        ) == (
+            ("antigravity", "Antigravity"),
+            ("codex", "Codex"),
+            ("devin", "Devin"),
+            ("opencode", "OpenCode"),
         )
 
 
@@ -970,6 +972,51 @@ async def test_selected_directory_creates_and_focuses_named_agent(
         assert Path.cwd() == original_cwd
 
 
+@pytest.mark.parametrize(
+    "harness_template",
+    [ANTIGRAVITY, DEVIN],
+    ids=["antigravity", "devin"],
+)
+async def test_new_native_harnesses_reuse_complete_generic_session_flow(
+    harness_template: AgentHarness,
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / f"{harness_template.id}-project"
+    project.mkdir()
+    harness = replace(harness_template, command=sleeping_harness.command)
+    app = AgentHubApp(
+        agent_harnesses={harness.id: harness},
+        working_directory_root=tmp_path,
+    )
+    original_cwd = Path.cwd()
+
+    async with app.run_test() as pilot:
+        await _open_working_directory_modal(
+            app,
+            pilot,
+            f"{harness.display_name} Work",
+        )
+        await _confirm_directory(app, pilot, project)
+
+        session = app.session_manager.active_session
+        assert session is not None
+        assert session.kind is SessionKind.AGENT
+        assert session.harness is harness
+        assert session.harness.id == harness_template.id
+        assert session.name == f"{harness.display_name} Work"
+        assert session.cwd == project.resolve()
+        assert session.terminal.working_directory == project.resolve()
+        assert session.terminal.is_mounted
+        assert session.terminal.is_process_running
+        assert session.terminal.has_focus
+        assert app.query_one(SessionSidebar).visible_session_ids == (session.id,)
+        assert app.query_one("#session-content", ContentSwitcher).current == (
+            app._terminal_dom_id(session.id)
+        )
+        assert Path.cwd() == original_cwd
+
+
 async def test_selected_directory_reaches_the_actual_child_process(tmp_path: Path) -> None:
     project = tmp_path / "backend"
     project.mkdir()
@@ -1210,3 +1257,34 @@ async def test_agent_creation_mount_failure_rolls_back_to_previous_session(
         assert existing.terminal.is_mounted
         assert existing.terminal.is_process_running
         assert Path.cwd() == original_cwd
+
+
+async def test_missing_harness_binary_is_removed_without_ghost_session(
+    tmp_path: Path,
+) -> None:
+    harness = AgentHarness(
+        id="missing-binary",
+        display_name="Missing Binary",
+        command=("agenthub-guaranteed-missing-command",),
+        scroll=None,
+    )
+    app = AgentHubApp(
+        agent_harnesses={harness.id: harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        await _open_working_directory_modal(app, pilot, "Missing Runtime")
+        await _confirm_directory(app, pilot, tmp_path)
+        for _ in range(40):
+            if not app.session_manager.sessions:
+                break
+            await pilot.pause(0.05)
+        await pilot.pause()
+
+        assert app.session_manager.sessions == ()
+        assert app.session_manager.active_session is None
+        assert not app.query("AgentTerminal")
+        assert app.query_one(SessionSidebar).visible_session_ids == ()
+        assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
+        assert app.query_one(HomeScreen).has_focus

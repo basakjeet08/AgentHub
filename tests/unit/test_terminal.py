@@ -5,7 +5,11 @@ from unittest.mock import Mock
 
 import pytest
 from bittty import constants
+from rich.segment import Segment
+from rich.style import Style as RichStyle
 from textual import events
+from textual.strip import Strip
+from textual_tty import Terminal as TtyTerminal
 
 from agenthub._terminal_launcher import build_launch_command
 from agenthub.harnesses import AgentHarness, KeyStroke
@@ -168,3 +172,18 @@ def test_launch_command_uses_python_module_without_a_shell(tmp_path: Path) -> No
 
     assert command[1:4] == ("-m", "agenthub._terminal_launcher", str(tmp_path))
     assert command[4:] == ("agent", "--flag", "value with spaces")
+
+
+def test_live_terminal_rows_replace_unstyled_padding_before_textual_filters(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    unstyled_padding = Strip([Segment("output", RichStyle()), Segment("   ")], 9)
+    monkeypatch.setattr(TtyTerminal, "render_line", lambda _terminal, _y: unstyled_padding)
+
+    rendered = terminal.render_line(0)
+
+    assert rendered.text == "output   "
+    assert rendered.cell_length == 9
+    assert all(segment.style is not None for segment in rendered)

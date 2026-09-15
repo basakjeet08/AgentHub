@@ -1,13 +1,22 @@
 """Integration tests for manager-backed session navigation."""
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 from textual.widgets import ContentSwitcher, OptionList, Static
 
 from agenthub.app import AgentHubApp
-from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
+from agenthub.harnesses import (
+    ANTIGRAVITY,
+    CODEX,
+    DEVIN,
+    OPENCODE,
+    AgentHarness,
+    KeyStroke,
+    ScrollKeys,
+)
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.ui import HomeScreen, SessionSidebar
 
@@ -123,6 +132,62 @@ async def test_sidebar_switches_managed_sessions(
 
     assert first_process.wait(timeout=1) is not None
     assert second_process.wait(timeout=1) is not None
+
+
+async def test_all_registered_agent_types_coexist_and_survive_switching(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    harnesses = tuple(
+        replace(harness, command=sleeping_harness.command)
+        for harness in (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
+    )
+    directories = tuple(tmp_path / harness.id for harness in harnesses)
+    for directory in directories:
+        directory.mkdir()
+    app = AgentHubApp(
+        agent_harnesses={harness.id: harness for harness in harnesses},
+        working_directory_root=tmp_path,
+    )
+    agenthub_directory = Path.cwd()
+
+    async with app.run_test() as pilot:
+        sessions = tuple(
+            [
+                await app._create_agent_session(
+                    harness=harness,
+                    name=f"{harness.display_name} Work",
+                    cwd=directory,
+                )
+                for harness, directory in zip(harnesses, directories, strict=True)
+            ]
+        )
+        await pilot.pause()
+        processes = tuple(session.terminal.board.process for session in sessions)
+
+        assert app.session_manager.sessions == sessions
+        assert tuple(session.harness for session in sessions) == harnesses
+        assert tuple(session.cwd for session in sessions) == tuple(
+            directory.resolve() for directory in directories
+        )
+        assert all(session.terminal.is_mounted for session in sessions)
+        assert all(session.terminal.is_process_running for session in sessions)
+        assert all(process is not None for process in processes)
+        assert app.session_manager.active_session is sessions[-1]
+        assert sessions[-1].terminal.has_focus
+
+        for selected in sessions:
+            app.show_session(selected.id)
+            await pilot.pause()
+
+            assert app.session_manager.active_session is selected
+            assert selected.terminal.has_focus
+            assert all(session.terminal.is_process_running for session in sessions)
+            assert tuple(session.terminal.board.process for session in sessions) == processes
+
+        assert Path.cwd() == agenthub_directory
+
+    assert Path.cwd() == agenthub_directory
 
 
 async def test_process_exit_is_resolved_to_owning_session(

@@ -251,7 +251,7 @@ class AgentTerminal(TtyTerminal):
 
         video = self._scrollback_video
         if video is None or self._scrollback_offset == 0 or self.board.blitter.in_alt_screen:
-            return super().render_line(y)
+            return self._with_explicit_styles(super().render_line(y))
 
         history_lines = video.history_line_count
         viewport_start = history_lines - self._scrollback_offset
@@ -264,7 +264,25 @@ class AgentTerminal(TtyTerminal):
                 return Strip.blank(self.size.width, RichStyle())
             row = video.grid[live_row]
 
-        return self._render_scrollback_row(row)
+        return self._with_explicit_styles(self._render_scrollback_row(row))
+
+    @staticmethod
+    def _with_explicit_styles(strip: Strip) -> Strip:
+        """Make terminal rows safe for Textual filters that require a style."""
+
+        if all(segment.style is not None for segment in strip):
+            return strip
+        return Strip(
+            (
+                Segment(
+                    segment.text,
+                    segment.style if segment.style is not None else RichStyle(),
+                    segment.control,
+                )
+                for segment in strip
+            ),
+            strip.cell_length,
+        )
 
     def _render_scrollback_row(self, row: Sequence[Cell]) -> Strip:
         """Convert one retained Bitty row to a Textual strip with original styles."""

@@ -47,13 +47,15 @@ multi-session runtime architecture:
 - It starts Unlocked for immediate navigation and lets the user transfer all
   non-toggle shortcuts to the active terminal by locking with Ctrl+G.
 - It adapts mouse-wheel events to OpenCode's transcript-scroll shortcuts and
-  retains styled main-view scrollback for Codex and Fish, navigable by wheel or
-  PageUp/PageDown.
+  retains styled main-view scrollback for Antigravity, Codex, Devin, and Fish,
+  while delegating alternate-screen interaction to each native TUI.
 
 ## Supported Coding-Agent Harnesses
 
-- OpenCode (`opencode`)
+- Antigravity (`agy`)
 - Codex (`codex`)
+- Devin (`devin`)
+- OpenCode (`opencode`)
 
 The picker lists harnesses supported by AgentHub even when their executables are
 not installed. Each native CLI owns its authentication and first-run setup.
@@ -97,6 +99,9 @@ without requiring an unlock. After Ctrl+A or Ctrl+S focuses a sidebar group,
 press a plain digit from 1 through 9 to select the numbered entry. Ctrl+digit
 combinations are intentionally left to the active terminal.
 
+Ctrl+G remains AgentHub's ownership toggle even when a hosted CLI also assigns
+that key. AgentHub does not rewrite the native CLI's other bindings.
+
 ## Architecture
 
 AgentHub manages native coding-agent processes through embedded terminal
@@ -113,7 +118,8 @@ lifecycle constraints, and implementation roadmap.
 
 - Python 3.13 or newer
 - A pyenv environment named `agenthub` (selected by `.python-version`)
-- OpenCode and/or Codex available on `PATH` for the corresponding Ctrl+N sessions
+- Any desired coding-agent CLIs available on `PATH`: `agy`, `codex`, `devin`,
+  and/or `opencode`
 - Fish available on `PATH` for numbered shell slots
 
 The environment used during initial development was created with Python

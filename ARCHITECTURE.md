@@ -92,17 +92,21 @@ not create widgets or import Bitty.
 - retains bounded styled normal-screen scrollback for harnesses without their
   own transcript-scroll policy, including top-anchored partial scroll regions;
 - maps PageUp/PageDown to retained primary-screen history;
+- ensures every rendered terminal segment has an explicit Rich style before
+  Textual applies global line filters;
 - awaits Bitty reader-task and child-process cleanup during unmount;
 - associates process-exit messages with the terminal that emitted them;
 - delegates terminal emulation and process interaction to
   `textual-tty`/`bittty`.
 
-Two coding-agent harnesses are registered:
+Four coding-agent harnesses are registered:
 
-| Registry key | Command    | Default | Scroll policy |
-| ------------ | ---------- | ------- | ------------- |
-| `opencode`   | `opencode` | yes     | semantic transcript shortcuts |
-| `codex`      | `codex`    | no      | native terminal behavior |
+| Registry key  | Command    | Default | Scroll policy |
+| ------------- | ---------- | ------- | ------------- |
+| `antigravity` | `agy`      | no      | native terminal behavior |
+| `codex`       | `codex`    | no      | native terminal behavior |
+| `devin`       | `devin`    | no      | native terminal behavior |
+| `opencode`    | `opencode` | yes     | semantic transcript shortcuts |
 
 Fish is a built-in shell definition used directly by the fixed shell slots. It
 is intentionally not part of the coding-agent harness registry.
@@ -122,11 +126,25 @@ PageUp/PageDown, and Home/End navigation. Codex therefore has no semantic wheel
 shortcut configured: AgentHub retains styled normal-screen history and delegates
 alternate-screen behavior to `textual-tty`.
 
+Antigravity CLI 1.2.2 and Devin CLI 3000.10.27 were exercised through the same
+native terminal path. Both launch interactively with their bare commands, use
+the selected child working directory, survive resize and session switching,
+and clean up through the existing process-exit flow. Antigravity's retained
+primary-screen output and alternate-screen views fit the existing native
+history policy. Devin's native model overlay likewise requires no semantic
+transcript shortcut. Both therefore use `scroll=None`; AgentHub adds no
+provider-specific terminal branches.
+
 When the child application has enabled terminal mouse tracking, the child owns
 the wheel and `AgentTerminal` delegates to `textual-tty`. Otherwise AgentHub
 sends a harness's configured transcript-scroll shortcuts. Harnesses without a
 custom policy, such as Fish, use bounded styled history on the normal screen and
 textual-tty's behavior inside alternate-screen applications.
+
+`textual-tty` may pad live rows with unstyled Rich segments. Textual's global
+monochrome filter requires concrete styles, so `AgentTerminal` normalizes those
+segments at the rendering boundary. This is a generic terminal compatibility
+rule rather than a harness identity check.
 
 ### Current repository structure
 
@@ -257,6 +275,11 @@ OPENCODE = AgentHarness(
     ),
 )
 ```
+
+Antigravity, Codex, and Devin use the same model with `scroll=None`; adding
+each new harness required only its immutable definition, public export,
+registry entry, and tests. Authentication, models, prompts, tools, permissions,
+and provider behavior remain owned by each native CLI.
 
 The stable `id` is used by code, configuration, CLI arguments, and eventual
 persistence. `display_name` is used by the UI. A tuple keeps `command` actually
@@ -689,9 +712,9 @@ belong in semantic harness configuration consumed by `AgentTerminal`.
 Prefer:
 
 ```text
-OpenCode harness
+Harness registry entry
 ├── command
-└── semantic scroll policy
+└── semantic terminal policy
 ```
 
 over conditionals scattered through the application:
@@ -820,7 +843,9 @@ src/agenthub/
 ├── app.py               # Textual application and DOM ownership
 ├── harnesses/
 │   ├── __init__.py      # public harness API
+│   ├── antigravity.py   # Antigravity definition
 │   ├── codex.py         # Codex definition
+│   ├── devin.py         # Devin definition
 │   ├── fish.py          # Fish shell-slot definition
 │   ├── model.py         # immutable semantic models
 │   ├── opencode.py      # OpenCode definition
@@ -923,6 +948,9 @@ The architectural foundation is implemented:
     only assigns shell keyboard shortcuts.
 12. Exited runtimes are removed, active exits return to contextual Home, hidden
     exits do not interrupt the current terminal, and Fish slots become reusable.
+13. Antigravity and Devin are registry-driven harnesses using the same name,
+    working-directory, session, terminal, switching, and cleanup paths as the
+    existing coding agents.
 
 The remaining sequence is:
 
@@ -956,6 +984,13 @@ Validated with the installed dependency versions:
 - Exited Fish slots are released and can create fresh shell runtimes.
 - Two concurrent children inherit distinct session working directories while
   AgentHub's own working directory remains unchanged.
+- OpenCode, Codex, Antigravity, and Devin-shaped sessions coexist, preserve
+  independent working directories, and remain alive across repeated switching.
+- The real `agy` and `devin` CLIs launch in a selected repository, survive
+  switching and resize, render their native interfaces, and exit through normal
+  session cleanup without leaving ghost sidebar or manager state.
+- Live terminal rows remain renderable when Textual's monochrome filter is
+  active, including rows padded by `textual-tty` without an explicit style.
 - App shutdown terminates all owned child processes reliably.
 
 These experiments may influence implementation details, but they do not by
@@ -978,6 +1013,7 @@ The tiers can be run independently with `python -m pytest tests/unit` and
 The architectural foundation now has automated coverage for:
 
 - immutable harness configuration and stable registry identity;
+- exact four-agent registry membership and alphabetically sorted picker output;
 - manager invariants, active-session selection, and logical removal;
 - behavior when selecting or removing an unknown session;
 - terminal semantic-key to Bitty translation;
@@ -991,6 +1027,7 @@ The architectural foundation now has automated coverage for:
 - Locked/Unlocked keyboard fall-through at the real PTY-write boundary;
 - Home shortcut behavior without an active terminal;
 - registry-derived harness selection and stable-ID modal results;
+- complete Antigravity- and Devin-shaped generic modal/session creation flows;
 - required, trimmed user-provided session names and cancellation at all stages;
 - directory-only browsing and normalized `Path` selection;
 - deferred runtime creation until all three New Agent Session modals are confirmed;
@@ -999,13 +1036,18 @@ The architectural foundation now has automated coverage for:
 - process-exit routing to the owning session;
 - active-exit navigation to Home and silent hidden-exit cleanup;
 - shell-slot release and recreation after process exit;
+- missing-binary cleanup without a ghost session, sidebar row, or active-session
+  reference;
+- simultaneous four-harness switching without process restart or cwd leakage;
+- terminal-row style normalization for compatibility with Textual line filters;
 - warning-free reader-task and child-process cleanup during application
   shutdown.
 
 Future tests should cover the installed `agenthub` command.
 
-Tests that launch processes should use a harmless controllable test command or
-fake harness, not require an actual OpenCode conversation.
+Automated tests that launch processes use a harmless controllable test command
+or fake harness and do not require real provider authentication. Real CLI
+acceptance remains an explicit local/manual check.
 
 ## Future Persistence
 
@@ -1121,9 +1163,9 @@ covered by an integration test.
 
 Current state: the harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
-ownership, grouped sidebar presentation, registry-driven OpenCode and Codex
-selection, required session naming, working-directory browsing, fixed Fish
-slots, explicit session kinds, exited-runtime cleanup, and multi-session
+ownership, grouped sidebar presentation, registry-driven Antigravity, Codex,
+Devin, and OpenCode selection, required session naming, working-directory
+browsing, fixed Fish slots, explicit session kinds, exited-runtime cleanup, and multi-session
 switching runtime are implemented and tested. Normal startup and incomplete or
 cancelled modal flows create no session or child process. Multiple terminals
 have been proven to survive repeated switching, retain hidden output and screen
