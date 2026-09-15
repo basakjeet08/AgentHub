@@ -259,6 +259,27 @@ async def test_name_confirmation_opens_focused_directory_modal_without_creating(
         )
 
 
+async def test_directory_modal_uses_compact_height_and_header_spacing(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test(size=(100, 36)) as pilot:
+        modal = await _open_working_directory_modal(app, pilot)
+        dialog = modal.query_one("#working-directory-dialog")
+        header = modal.query_one("#working-directory-header")
+        title = modal.query_one("#working-directory-title")
+        tree = modal.query_one(FolderTree)
+
+        assert dialog.region.height == 25
+        assert header.region.height == 2
+        assert tree.region.y == title.region.bottom + 1
+
+
 async def test_ctrl_n_does_not_stack_a_second_workflow_over_directory_modal(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
@@ -421,6 +442,302 @@ async def test_ctrl_h_toggles_hidden_directories_without_creating_runtime(
         assert app.session_manager.sessions == ()
 
 
+async def test_typing_filters_current_directory_and_backspace_restores_entries(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "Projects"
+    directories = tuple(
+        projects / name
+        for name in ("api", "docs", "portfolio", "prototype")
+    )
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+    (projects / "project-notes.txt").touch()
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        modal = await _open_working_directory_modal(app, pilot)
+        tree = modal.query_one(FolderTree)
+        filter_value = modal.query_one("#working-directory-filter-value", Static)
+        await _load_tree(tree)
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        tree.move_cursor(projects_node)
+        await pilot.press("right")
+        await tree._load_queue.join()
+        api_node = next(
+            child
+            for child in projects_node.children
+            if child.data is not None and child.data.path.name == "api"
+        )
+        tree.move_cursor(api_node)
+        await pilot.press("right")
+        await tree._load_queue.join()
+        assert api_node.is_expanded
+        tree.move_cursor(projects_node)
+
+        await pilot.press("P")
+        await pilot.pause()
+
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        assert tree.name_filter_directory == projects.resolve()
+        assert tree.name_filter_query == "P"
+        assert tuple(
+            child.data.path.name
+            for child in projects_node.children
+            if child.data is not None
+        ) == ("api", "portfolio", "prototype")
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.name == "api"
+
+        await pilot.press("o")
+        await pilot.pause()
+
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        assert tree.name_filter_query == "Po"
+        assert tuple(
+            child.data.path.name
+            for child in projects_node.children
+            if child.data is not None
+        ) == ("portfolio",)
+        assert tree.name_filter_directory == projects.resolve()
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.name == "portfolio"
+        assert str(filter_value.content) == f"{projects.resolve()}: Po"
+        assert filter_value.has_class("active-filter")
+        assert app.session_manager.sessions == ()
+
+        await pilot.press("backspace")
+        await pilot.pause()
+
+        assert tree.name_filter_query == "P"
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.name == "api"
+
+        await pilot.press("backspace")
+        await pilot.pause()
+
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        assert tree.name_filter_directory is None
+        assert tree.name_filter_query == ""
+        assert tuple(
+            child.data.path.name
+            for child in projects_node.children
+            if child.data is not None
+        ) == ("api", "docs", "portfolio", "prototype")
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.name == "api"
+        assert str(filter_value.content) == "Type to filter current folder"
+        assert not filter_value.has_class("active-filter")
+
+
+async def test_filter_is_local_and_filtered_directory_can_be_selected(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "Projects"
+    api = projects / "api"
+    payments = api / "payments"
+    payments.mkdir(parents=True)
+    (projects / "docs").mkdir()
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        modal = await _open_working_directory_modal(app, pilot, "Payments Work")
+        tree = modal.query_one(FolderTree)
+        await _load_tree(tree)
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        tree.move_cursor(projects_node)
+        await pilot.press("right")
+        await tree._load_queue.join()
+
+        await pilot.press("p", "a", "y")
+        await pilot.pause()
+
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        assert not projects_node.children
+        assert tree.cursor_node is projects_node
+
+        await pilot.press("backspace", "backspace", "backspace")
+        await pilot.pause()
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        api_node = next(
+            child
+            for child in projects_node.children
+            if child.data is not None and child.data.path.resolve() == api.resolve()
+        )
+        tree.move_cursor(api_node)
+        await pilot.press("right")
+        await tree._load_queue.join()
+
+        await pilot.press("P", "A", "Y")
+        await pilot.pause()
+
+        projects_node = next(
+            child
+            for child in tree.root.children
+            if child.data is not None and child.data.path.resolve() == projects.resolve()
+        )
+        api_node = next(
+            child
+            for child in projects_node.children
+            if child.data is not None and child.data.path.resolve() == api.resolve()
+        )
+        assert tree.name_filter_directory == api.resolve()
+        assert tuple(
+            child.data.path.resolve()
+            for child in api_node.children
+            if child.data is not None
+        ) == (payments.resolve(),)
+        assert tree.cursor_node is api_node.children[0]
+        await pilot.press("enter")
+        await pilot.pause()
+
+        session = app.session_manager.active_session
+        assert session is not None
+        assert session.name == "Payments Work"
+        assert session.cwd == payments.resolve()
+
+
+async def test_right_enters_filtered_directory_with_a_fresh_filter(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "Projects"
+    agenthub = projects / "AgentHub"
+    backend = projects / "Backend"
+    agenthub.mkdir(parents=True)
+    backend.mkdir()
+    (tmp_path / "Downloads").mkdir()
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        modal = await _open_working_directory_modal(app, pilot)
+        tree = modal.query_one(FolderTree)
+        filter_value = modal.query_one("#working-directory-filter-value", Static)
+        await _load_tree(tree)
+
+        await pilot.press(*"Projects")
+        await pilot.pause()
+
+        assert tree.name_filter_directory == tmp_path.resolve()
+        assert tree.name_filter_query == "Projects"
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.resolve() == projects.resolve()
+
+        await pilot.press("right")
+        await tree._load_queue.join()
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.resolve() == projects.resolve()
+        assert tree.cursor_node.is_expanded
+
+        await pilot.press("right")
+        await pilot.pause()
+
+        assert tree.name_filter_directory is None
+        assert tree.name_filter_query == ""
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.resolve() == agenthub.resolve()
+        assert str(filter_value.content) == "Type to filter current folder"
+
+        await pilot.press(*"Backend")
+        await pilot.pause()
+
+        assert tree.name_filter_directory == projects.resolve()
+        assert tree.name_filter_query == "Backend"
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data is not None
+        assert tree.cursor_node.data.path.resolve() == backend.resolve()
+        assert str(filter_value.content) == f"{projects.resolve()}: Backend"
+
+
+async def test_filter_composes_with_hidden_toggle_and_escape_still_cancels(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    hidden = tmp_path / ".private-project"
+    hidden.mkdir()
+    (tmp_path / "public-project").mkdir()
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
+
+    async with app.run_test() as pilot:
+        modal = await _open_working_directory_modal(app, pilot)
+        tree = modal.query_one(FolderTree)
+        await _load_tree(tree)
+
+        await pilot.press("p", "r", "i", "v", "a", "t", "e")
+        await pilot.pause()
+
+        assert tree.name_filter_directory == tmp_path.resolve()
+        assert tree.name_filter_query == "private"
+        assert not tree.root.children
+
+        await pilot.press("ctrl+h")
+        await pilot.pause()
+
+        assert tree.show_hidden
+        assert tree.name_filter_query == "private"
+        assert tuple(
+            child.data.path.resolve()
+            for child in tree.root.children
+            if child.data is not None
+        ) == (hidden.resolve(),)
+        assert tree.cursor_node is tree.root.children[0]
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, WorkingDirectoryModal)
+        assert app.session_manager.sessions == ()
+
+
 async def test_directory_modal_expands_and_selects_a_nested_folder(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
@@ -452,20 +769,26 @@ async def test_directory_modal_expands_and_selects_a_nested_folder(
             if node.data is not None and node.data.path.resolve() == project.resolve()
         )
         assert projects_node.is_expanded
+        assert tree.cursor_node is projects_node
 
         await pilot.press("right")
         assert tree.cursor_node is project_node
 
         await pilot.press("left")
         assert tree.cursor_node is projects_node
+        assert projects_node.is_expanded
 
         await pilot.press("left")
+        assert tree.cursor_node is projects_node
         assert not projects_node.is_expanded
 
         await pilot.press("right")
         assert projects_node.is_expanded
+        assert tree.cursor_node is projects_node
 
-        tree.move_cursor(project_node)
+        await pilot.press("right")
+        assert tree.cursor_node is project_node
+
         await pilot.press("enter")
         await pilot.pause()
 
@@ -635,6 +958,15 @@ async def test_cancelling_directory_with_existing_terminal_preserves_runtime(
 
         assert existing.terminal.is_mounted
         assert existing.terminal.is_process_running
+        pty = existing.terminal.board.pty
+        assert pty is not None
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press("p")
+            await pilot.pause()
+
+        assert app.screen.query_one(FolderTree).name_filter_query == "p"
+        write_spy.assert_not_called()
+
         await pilot.press("escape")
         await pilot.pause()
 

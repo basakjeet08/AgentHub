@@ -36,7 +36,8 @@ multi-session runtime architecture:
   working-directory browser with Ctrl+N, then launches the selected coding
   agent in the chosen directory after all three steps are confirmed. The
   directory browser hides dot-prefixed folders by default and toggles them with
-  Ctrl+H.
+  Ctrl+H; typing filters the current directory's immediate child folders by
+  name.
 - It lazily creates reusable Fish sessions by pressing Ctrl+S followed by a
   slot number from 1…9.
 - It removes sessions whose child processes exit, releases their Fish slots,

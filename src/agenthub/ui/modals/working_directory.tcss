@@ -53,8 +53,27 @@ WorkingDirectoryModal {
     text-style: bold;
 }
 
+#working-directory-filter-row {
+    width: 100%;
+    height: 1;
+}
+
+#working-directory-filter-label {
+    width: 10;
+    color: $text-muted;
+}
+
+#working-directory-filter-value {
+    width: 1fr;
+    color: $text-muted;
+}
+
+#working-directory-filter-value.active-filter {
+    color: $secondary;
+    text-style: bold;
+}
+
 #working-directory-help {
     width: 100%;
-    height: 5;
-    margin-top: 1;
+    height: 7;
 }

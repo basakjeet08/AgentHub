@@ -754,8 +754,18 @@ the previous Home or live-session state usable.
 The directory tree excludes dot-prefixed folders by default. Ctrl+H toggles
 those folders and reloads the native tree while preserving expansion and cursor
 state where the remaining paths permit it. Regular files remain excluded in
-both modes. Right expands a folder or enters its first child; Left collapses a
-folder or returns the cursor to its parent.
+both modes. Right expands a folder on the first press and focuses its first
+child on the second; Left collapses an expanded folder on the first press and
+moves to its parent on the next.
+
+Typing while the directory tree is focused applies a case-insensitive substring
+filter to the immediate children of the current directory level. Backspace edits
+the query, and the modal displays both the query and its directory scope. The
+first alphabetically sorted match receives the tree cursor automatically. The
+filter is local rather than a recursive filesystem search. Entering a filtered
+directory with Right clears the previous query, so subsequent typing filters
+the newly entered directory. Filtering also composes with the current Ctrl+H
+hidden-directory state.
 
 Textual 8.2.8 normally loads `DirectoryTree` entries through a threaded worker.
 Under the project's Python 3.13 runtime, that worker prevents the event loop's
