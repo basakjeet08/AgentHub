@@ -8,7 +8,7 @@ from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
@@ -86,7 +86,20 @@ class SessionNameModal(ModalScreen[str]):
         """Compose the focused name input and keyboard guidance."""
 
         with Vertical(id="session-name-dialog"):
-            yield Label("Name Session", id="session-name-title")
+            with Horizontal(id="session-name-header"):
+                yield Label("Name Session", id="session-name-title")
+                with Horizontal(
+                    id="session-name-cancel",
+                    classes="modal-cancel",
+                ):
+                    yield Static(
+                        "Esc",
+                        classes="modal-shortcut-key modal-cancel-key",
+                    )
+                    yield Static(
+                        "Cancel",
+                        classes="modal-shortcut-description modal-cancel-description",
+                    )
             yield Static(
                 f"Harness: {self._harness_display_name}",
                 id="session-name-harness",
@@ -94,10 +107,9 @@ class SessionNameModal(ModalScreen[str]):
             yield Label("Name", id="session-name-label")
             yield SessionNameInput(id="session-name-input")
             yield Static("", id="session-name-error")
-            yield Static(
-                "Enter Create                 Esc Cancel",
-                id="session-name-help",
-            )
+            with Grid(id="session-name-help", classes="modal-shortcut-grid"):
+                yield Static("Enter", classes="modal-shortcut-key")
+                yield Static("Create", classes="modal-shortcut-description")
 
     def on_mount(self) -> None:
         """Place keyboard focus in the empty session-name input."""

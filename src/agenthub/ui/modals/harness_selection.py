@@ -5,7 +5,7 @@ from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
@@ -29,7 +29,20 @@ class HarnessSelectionModal(ModalScreen[str]):
         """Compose a compact launcher-style harness picker."""
 
         with Vertical(id="harness-selection-dialog"):
-            yield Label("Select a harness", id="harness-selection-title")
+            with Horizontal(id="harness-selection-header"):
+                yield Label("Select a harness", id="harness-selection-title")
+                with Horizontal(
+                    id="harness-selection-cancel",
+                    classes="modal-cancel",
+                ):
+                    yield Static(
+                        "Esc",
+                        classes="modal-shortcut-key modal-cancel-key",
+                    )
+                    yield Static(
+                        "Cancel",
+                        classes="modal-shortcut-description modal-cancel-description",
+                    )
             yield OptionList(
                 *(
                     Option(harness.display_name, id=harness.id)
@@ -37,10 +50,11 @@ class HarnessSelectionModal(ModalScreen[str]):
                 ),
                 id="harness-selection-list",
             )
-            yield Static(
-                "↑/↓ Navigate     Enter Select     Esc Close",
-                id="harness-selection-help",
-            )
+            with Grid(id="harness-selection-help", classes="modal-shortcut-grid"):
+                yield Static("↑/↓", classes="modal-shortcut-key")
+                yield Static("Navigate", classes="modal-shortcut-description")
+                yield Static("Enter", classes="modal-shortcut-key")
+                yield Static("Select", classes="modal-shortcut-description")
 
     def on_mount(self) -> None:
         """Select and focus the first registered harness when available."""

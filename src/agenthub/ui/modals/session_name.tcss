@@ -12,9 +12,14 @@ SessionNameModal {
     border: tall $panel;
 }
 
-#session-name-title {
+#session-name-header {
     width: 100%;
     height: 2;
+}
+
+#session-name-title {
+    width: 1fr;
+    height: 1;
     color: $foreground;
     text-style: bold;
 }
@@ -56,6 +61,4 @@ SessionNameModal {
 #session-name-help {
     width: 100%;
     height: 1;
-    color: $text-muted;
-    text-align: center;
 }

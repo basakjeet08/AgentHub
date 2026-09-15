@@ -58,8 +58,9 @@ bittty / PTY → coding agent`.
   for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, and sidebar-group focus;
 - gates hub navigation through `check_action()` while a terminal is active so
   rejected key events continue unchanged to `AgentTerminal`;
-- coordinates a registry-driven harness picker and required session-name modal
-  from Ctrl+N, creating no runtime until both are confirmed;
+- coordinates a registry-driven harness picker, required session-name modal,
+  and directory picker from Ctrl+N, creating no runtime until all three are
+  confirmed;
 - lazily creates one Fish session for each Ctrl+S, then 1…9 shell slot;
 - maps terminal-exit events back to their owning sessions, removes exited
   runtimes, releases their shell slots, and shows Home after an active exit.
@@ -127,8 +128,8 @@ The authoritative source and test layout is documented in
 
 The core ownership boundaries, Home-first shell, persistent sidebar and status
 bar, and switching runtime are now implemented. Normal startup creates no
-session. Ctrl+N collects a registered harness and user-provided session name
-before creating the selected agent runtime.
+session. Ctrl+N collects a registered harness, user-provided session name, and
+working directory before creating the selected agent runtime.
 
 ## Architecture
 
@@ -516,7 +517,7 @@ forward terminal input without knowing AgentHub navigation rules.
 
 When Ctrl+G enters Locked mode with a live active terminal behind a modal, the
 app dismisses that modal as cancellation before restoring terminal focus. This
-includes either stage of the New Agent Session flow and ensures no partial
+includes any stage of the New Agent Session flow and ensures no partial
 runtime is created. On Home, where there is no terminal to receive ownership,
 the active modal remains open under the existing Home shortcut exception.
 
@@ -656,8 +657,9 @@ long-lived wrapper process, shell composition, or process-wide directory change
 inside AgentHub.
 
 The terminal validates that the normalized launch path exists and is a
-directory both when constructed and immediately before mount. A user-facing
-directory picker remains part of the New Session workflow.
+directory both when constructed and immediately before mount. The New Agent
+Session workflow uses a directory-only Textual `DirectoryTree` rooted at the
+user's home directory to collect that launch path.
 
 `textual_tty.Terminal.cwd` already stores a child-reported OSC 7 path. AgentHub
 therefore uses the distinct `working_directory` attribute for launch
@@ -717,7 +719,7 @@ keyboard-ownership state and Ctrl+G action remain grouped on the right.
 The Home screen is a content view inside the application shell rather than a
 separate Textual screen stack entry. This keeps shared navigation and status
 chrome mounted while future content changes inside the `ContentSwitcher`.
-Agent creation begins as a keyboard action and is configured through two small
+Agent creation begins as a keyboard action and is configured through three small
 modal screens:
 
 ```text
@@ -733,17 +735,34 @@ AgentHubApp resolves registry
 SessionNameModal
    │ trimmed non-empty name or cancellation
    ▼
+WorkingDirectoryModal
+   │ confirmed normalized Path or cancellation
+   ▼
 AgentHubApp._create_agent_session(...)
    │
    ▼
 _create_and_mount_session(...)
 ```
 
-The harness picker derives its entries from the coding-agent registry and the
-name modal displays the selected harness while collecting the AgentHub session
-name. Both modals only return user choices. `AgentHubApp` owns their sequencing,
-registry resolution, and eventual runtime creation. Cancelling either stage
-creates nothing and leaves the previous Home or live-session state usable.
+The harness picker derives its entries from the coding-agent registry, the name
+modal displays the selected harness while collecting the AgentHub session name,
+and the directory modal presents a folder-only tree. All three modals only
+return user choices. `AgentHubApp` owns their sequencing, registry resolution,
+and eventual runtime creation. Cancelling any stage creates nothing and leaves
+the previous Home or live-session state usable.
+
+The directory tree excludes dot-prefixed folders by default. Ctrl+H toggles
+those folders and reloads the native tree while preserving expansion and cursor
+state where the remaining paths permit it. Regular files remain excluded in
+both modes. Right expands a folder or enters its first child; Left collapses a
+folder or returns the cursor to its parent.
+
+Textual 8.2.8 normally loads `DirectoryTree` entries through a threaded worker.
+Under the project's Python 3.13 runtime, that worker prevents the event loop's
+default executor from shutting down after the picker is used. `FolderTree`
+therefore retains Textual's loading queue and filesystem error handling while
+performing directory scans and entry checks in cooperative async handlers. This
+version-sensitive adapter behavior is protected by integration tests.
 
 The implemented sidebar-to-terminal relationship is conceptually:
 
@@ -765,8 +784,8 @@ The first nine agent rows use creation-order numbers selected through Ctrl+A,
 then 1…9. Fish rows display their stable slot numbers and are opened or selected
 through Ctrl+S, then 1…9. Agent sessions remain selectable directly from the
 sidebar. The sidebar does not operate directly on `SessionManager` or terminal
-internals. Ctrl+N uses the agent-only harness-and-name modal flow; Fish creation
-continues to use the independent fixed-slot workflow.
+internals. Ctrl+N uses the agent-only harness, name, and working-directory modal
+flow; Fish creation continues to use the independent fixed-slot workflow.
 
 ## Repository Structure
 
@@ -803,7 +822,9 @@ src/agenthub/
     │   ├── harness_selection.py   # registry-driven agent harness picker
     │   ├── harness_selection.tcss # compact picker presentation
     │   ├── session_name.py        # required AgentHub session name input
-    │   └── session_name.tcss      # compact name-prompt presentation
+    │   ├── session_name.tcss      # compact name-prompt presentation
+    │   ├── working_directory.py   # directory-only tree picker
+    │   └── working_directory.tcss # directory-picker presentation
     ├── screens/
     │   ├── __init__.py
     │   ├── home.py      # neutral empty-state presentation and intent
@@ -823,7 +844,8 @@ tests/
 │   ├── test_main.py
 │   ├── test_session_manager.py
 │   ├── test_session_name_modal.py
-│   └── test_terminal.py
+│   ├── test_terminal.py
+│   └── test_working_directory_modal.py
 └── integration/
     ├── test_app_lifecycle.py
     ├── test_command_palette.py
@@ -873,9 +895,9 @@ The architectural foundation is implemented:
 9. Sidebar presentation accepts `AGENTS` and `SHELLS` collections backed by the
    same manager and selection flow.
 10. Ctrl+N opens a registry-driven harness picker followed by a required
-    session-name prompt; confirming both creates and focuses the selected agent.
-    Ctrl+A or Ctrl+S followed by 1…9 selects numbered agents or lazily creates
-    and selects stable Fish slots.
+    session-name prompt and working-directory browser; confirming all three
+    creates and focuses the selected agent. Ctrl+A or Ctrl+S followed by 1…9
+    selects numbered agents or lazily creates and selects stable Fish slots.
 11. Sessions carry explicit agent-or-shell identity, while the separate slot map
     only assigns shell keyboard shortcuts.
 12. Exited runtimes are removed, active exits return to contextual Home, hidden
@@ -883,10 +905,9 @@ The architectural foundation is implemented:
 
 The remaining sequence is:
 
-1. Extend the New Agent Session workflow with working-directory selection.
-2. Add explicit terminal lifecycle operations before user-initiated stop or
+1. Add explicit terminal lifecycle operations before user-initiated stop or
    restart of live sessions.
-3. Add persistence and native session resumption only when the runtime model is
+2. Add persistence and native session resumption only when the runtime model is
    stable.
 
 ## Validation Tasks
@@ -901,8 +922,12 @@ Validated with the installed dependency versions:
   terminal's PTY unchanged, while Unlocked candidates execute hub actions.
 - Ctrl+G changes the visible ownership state in both directions and never
   reaches the child terminal.
-- Locking with an active terminal dismisses an open New Agent Session modal as
-  cancellation and restores terminal focus; Home modals remain open.
+- Locking with an active terminal dismisses an open New Agent Session modal at
+  any stage as cancellation and restores terminal focus; Home modals remain
+  open.
+- The directory picker displays folders while hiding ordinary files, toggles
+  dot-prefixed folders with Ctrl+H, and shuts down its loading workers cleanly
+  after confirmation or cancellation.
 - Hidden terminals continue buffering output and retain their screen state.
 - A terminal-exit event can be mapped to the exact owning session.
 - Active exits return to Home, while hidden exits are removed without changing
@@ -945,8 +970,10 @@ The architectural foundation now has automated coverage for:
 - Locked/Unlocked keyboard fall-through at the real PTY-write boundary;
 - Home shortcut behavior without an active terminal;
 - registry-derived harness selection and stable-ID modal results;
-- required, trimmed user-provided session names and cancellation at both stages;
-- deferred runtime creation until both New Agent Session modals are confirmed;
+- required, trimmed user-provided session names and cancellation at all stages;
+- directory-only browsing and normalized `Path` selection;
+- deferred runtime creation until all three New Agent Session modals are confirmed;
+- child-process cwd inheritance from the directory picker;
 - stable Fish-slot navigation with persistent sidebar groups;
 - process-exit routing to the owning session;
 - active-exit navigation to Home and silent hidden-exit cleanup;
@@ -1074,14 +1101,15 @@ covered by an integration test.
 Current state: the harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
 ownership, grouped sidebar presentation, registry-driven harness selection,
-required session naming, fixed Fish slots, explicit session kinds,
-exited-runtime cleanup, and multi-session switching runtime are implemented and
-tested. Normal startup and incomplete or cancelled modal flows create no session
-or child process. Multiple terminals have been proven to survive repeated
-switching, retain hidden output and screen state, isolate input, run concurrently
-in distinct working directories, and shut down with the app. Active exits return
-to Home, hidden exits are removed without interrupting the current terminal, and
-Fish slots become reusable. Locked hub shortcuts have been proven to fall through
-at the PTY-write boundary. Next: add working-directory selection to the New Agent
-Session workflow. Persistence and native resume are deferred.
+required session naming, working-directory browsing, fixed Fish slots, explicit
+session kinds, exited-runtime cleanup, and multi-session switching runtime are
+implemented and tested. Normal startup and incomplete or cancelled modal flows
+create no session or child process. Multiple terminals have been proven to
+survive repeated switching, retain hidden output and screen state, isolate
+input, run concurrently in distinct working directories, and shut down with the
+app. Active exits return to Home, hidden exits are removed without interrupting
+the current terminal, and Fish slots become reusable. Locked hub shortcuts have
+been proven to fall through at the PTY-write boundary. Next: add explicit
+terminal lifecycle operations before user-initiated stop or restart of live
+sessions. Persistence and native resume are deferred.
 ```

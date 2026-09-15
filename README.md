@@ -32,8 +32,11 @@ multi-session runtime architecture:
 - It provides a session sidebar for switching between managed sessions.
 - It keeps equal-height `AGENTS` and `SHELLS` sidebar groups visible at all
   times without adding a second manager.
-- It opens a registry-driven harness picker and session-name prompt with Ctrl+N,
-  then launches the selected coding agent after both steps are confirmed.
+- It opens a registry-driven harness picker, session-name prompt, and
+  working-directory browser with Ctrl+N, then launches the selected coding
+  agent in the chosen directory after all three steps are confirmed. The
+  directory browser hides dot-prefixed folders by default and toggles them with
+  Ctrl+H.
 - It lazily creates reusable Fish sessions by pressing Ctrl+S followed by a
   slot number from 1…9.
 - It removes sessions whose child processes exit, releases their Fish slots,
@@ -47,15 +50,15 @@ multi-session runtime architecture:
 
 It does not yet provide:
 
-- working-directory selection in the New Agent Session flow;
 - a complete shortcuts dialog;
 - user-initiated stopping, restarting, or removal of live sessions;
 - persisted session metadata;
 - harness-native conversation resumption.
 
 Normal startup remains empty. Ctrl+N opens a harness picker followed by a
-required session-name prompt. Confirming both launches the selected harness in
-AgentHub's current working directory; directory selection remains deferred.
+required session-name prompt and working-directory browser. Confirming all
+three launches the selected harness in the chosen directory. Fish shell slots
+continue to use AgentHub's current working directory.
 
 ## Keyboard Ownership
 

@@ -21,7 +21,17 @@ from agenthub.ui import (
     SessionSidebar,
 )
 from agenthub.ui.bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
-from agenthub.ui.modals import HarnessSelectionModal, SessionNameModal
+from agenthub.ui.modals import (
+    HarnessSelectionModal,
+    SessionNameModal,
+    WorkingDirectoryModal,
+)
+
+_NEW_SESSION_MODALS = (
+    HarnessSelectionModal,
+    SessionNameModal,
+    WorkingDirectoryModal,
+)
 
 
 class AgentHubApp(App):
@@ -44,6 +54,7 @@ class AgentHubApp(App):
         *,
         agent_harnesses: Mapping[str, AgentHarness] | None = None,
         shell_harness: AgentHarness = FISH,
+        working_directory_root: Path | None = None,
     ) -> None:
         """Create the AgentHub shell without launching a coding harness."""
 
@@ -54,6 +65,9 @@ class AgentHubApp(App):
             HARNESSES if agent_harnesses is None else agent_harnesses
         )
         self._shell_harness = shell_harness
+        self._working_directory_root = (
+            Path.home() if working_directory_root is None else working_directory_root
+        )
         self._shell_session_slots: dict[int, str] = {}
 
     @property
@@ -174,6 +188,7 @@ class AgentHubApp(App):
             name=f"Shell {slot}",
             harness=self._shell_harness,
             kind=SessionKind.SHELL,
+            cwd=Path.cwd(),
             shell_slot=slot,
         )
         self._refresh_sidebar()
@@ -197,7 +212,7 @@ class AgentHubApp(App):
     def action_new_session(self) -> None:
         """Begin the user-driven New Agent Session modal workflow."""
 
-        if isinstance(self.screen, (HarnessSelectionModal, SessionNameModal)):
+        if isinstance(self.screen, _NEW_SESSION_MODALS):
             return
 
         self.push_screen(
@@ -217,12 +232,12 @@ class AgentHubApp(App):
             partial(self._on_session_name_selected, harness),
         )
 
-    async def _on_session_name_selected(
+    def _on_session_name_selected(
         self,
         harness: AgentHarness,
         name: str | None,
     ) -> None:
-        """Create the runtime only after both modal stages are confirmed."""
+        """Continue the workflow by prompting for the working directory."""
 
         if name is None:
             return
@@ -231,13 +246,34 @@ class AgentHubApp(App):
         if not normalized_name:
             return
 
-        await self._create_agent_session(harness=harness, name=normalized_name)
+        self.push_screen(
+            WorkingDirectoryModal(root=self._working_directory_root),
+            partial(self._on_working_directory_selected, harness, normalized_name),
+        )
+
+    async def _on_working_directory_selected(
+        self,
+        harness: AgentHarness,
+        name: str,
+        cwd: Path | None,
+    ) -> None:
+        """Create the runtime only after all three modal stages are confirmed."""
+
+        if cwd is None:
+            return
+
+        await self._create_agent_session(
+            harness=harness,
+            name=name,
+            cwd=cwd,
+        )
 
     async def _create_agent_session(
         self,
         *,
         harness: AgentHarness,
         name: str,
+        cwd: Path,
     ) -> AgentSession:
         """Apply Agent-session policy around generic runtime creation."""
 
@@ -245,6 +281,7 @@ class AgentHubApp(App):
             name=name,
             harness=harness,
             kind=SessionKind.AGENT,
+            cwd=cwd,
         )
         self._refresh_sidebar()
         if session in self.session_manager.sessions:
@@ -267,6 +304,7 @@ class AgentHubApp(App):
         name: str,
         harness: AgentHarness,
         kind: SessionKind,
+        cwd: Path,
         shell_slot: int | None = None,
     ) -> AgentSession:
         """Create one manager-owned session and mount its terminal in the shell."""
@@ -275,7 +313,7 @@ class AgentHubApp(App):
         session = self.session_manager.create(
             name=name,
             kind=kind,
-            cwd=Path.cwd(),
+            cwd=cwd,
             harness=harness,
         )
         session.terminal.id = self._terminal_dom_id(session.id)

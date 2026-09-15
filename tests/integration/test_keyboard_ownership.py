@@ -12,17 +12,24 @@ from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.ui import AgentHubStatusBar, SessionSidebar
-from agenthub.ui.modals import HarnessSelectionModal, SessionNameModal
+from agenthub.ui.modals import (
+    HarnessSelectionModal,
+    SessionNameModal,
+    WorkingDirectoryModal,
+)
+from agenthub.ui.modals.working_directory import FolderTree
 from agenthub.ui.panels.status_bar import LOCKED_ICON, UNLOCKED_ICON
 
 
 def _app_with_sessions(
     harness: AgentHarness,
     count: int = 1,
+    working_directory_root: Path | None = None,
 ) -> tuple[AgentHubApp, tuple[AgentSession, ...]]:
     app = AgentHubApp(
         agent_harnesses={harness.id: harness},
         shell_harness=harness,
+        working_directory_root=working_directory_root,
     )
     sessions = tuple(
         app.session_manager.create(
@@ -70,7 +77,10 @@ async def test_locked_hub_binding_reaches_pty(
         assert app.hub_locked
         assert app.is_running
         assert not isinstance(app.screen, CommandPalette)
-        assert not isinstance(app.screen, (HarnessSelectionModal, SessionNameModal))
+        assert not isinstance(
+            app.screen,
+            (HarnessSelectionModal, SessionNameModal, WorkingDirectoryModal),
+        )
         assert app.session_manager.sessions == (session,)
 
 
@@ -228,19 +238,28 @@ async def test_locking_from_command_palette_closes_it_and_refocuses_terminal(
     [
         ("harness", HarnessSelectionModal),
         ("name", SessionNameModal),
+        ("cwd", WorkingDirectoryModal),
     ],
 )
 async def test_locking_cancels_new_session_modal_with_active_terminal(
     sleeping_harness: AgentHarness,
     stage: str,
     expected_modal: type[ModalScreen],
+    tmp_path: Path,
 ) -> None:
-    app, (session,) = _app_with_sessions(sleeping_harness)
+    app, (session,) = _app_with_sessions(
+        sleeping_harness,
+        working_directory_root=tmp_path,
+    )
 
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("ctrl+n")
-        if stage == "name":
+        if stage in {"name", "cwd"}:
+            await pilot.press("enter")
+            await pilot.pause()
+        if stage == "cwd":
+            app.screen.query_one("#session-name-input", Input).value = "Test Agent"
             await pilot.press("enter")
             await pilot.pause()
         assert isinstance(app.screen, expected_modal)
@@ -249,7 +268,10 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
         await pilot.pause()
 
         assert app.hub_locked
-        assert not isinstance(app.screen, (HarnessSelectionModal, SessionNameModal))
+        assert not isinstance(
+            app.screen,
+            (HarnessSelectionModal, SessionNameModal, WorkingDirectoryModal),
+        )
         assert app.session_manager.sessions == (session,)
         assert app.session_manager.active_session is session
         assert session.terminal.is_mounted
@@ -262,6 +284,7 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
     [
         ("harness", HarnessSelectionModal, "#harness-selection-list", OptionList),
         ("name", SessionNameModal, "#session-name-input", Input),
+        ("cwd", WorkingDirectoryModal, "#working-directory-tree", FolderTree),
     ],
 )
 async def test_locking_on_home_keeps_new_session_modal_open(
@@ -269,13 +292,21 @@ async def test_locking_on_home_keeps_new_session_modal_open(
     stage: str,
     expected_modal: type[ModalScreen],
     focus_selector: str,
-    focus_type: type[OptionList] | type[Input],
+    focus_type: type[OptionList] | type[Input] | type[FolderTree],
+    tmp_path: Path,
 ) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        working_directory_root=tmp_path,
+    )
 
     async with app.run_test() as pilot:
         await pilot.press("ctrl+n")
-        if stage == "name":
+        if stage in {"name", "cwd"}:
+            await pilot.press("enter")
+            await pilot.pause()
+        if stage == "cwd":
+            app.screen.query_one("#session-name-input", Input).value = "Test Agent"
             await pilot.press("enter")
             await pilot.pause()
         assert isinstance(app.screen, expected_modal)

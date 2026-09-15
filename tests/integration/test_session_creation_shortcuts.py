@@ -12,6 +12,7 @@ from agenthub.harnesses import AgentHarness
 from agenthub.sessions import SessionKind
 from agenthub.terminal import AgentTerminal
 from agenthub.ui import AgentHubStatusBar, SessionSidebar
+from agenthub.ui.modals import WorkingDirectoryModal
 
 
 async def _create_named_agent(
@@ -19,12 +20,15 @@ async def _create_named_agent(
     pilot,
     name: str,
 ) -> None:
-    """Complete the two-stage New Agent Session workflow."""
+    """Complete the three-stage New Agent Session workflow."""
 
     await pilot.press("ctrl+n")
     await pilot.press("enter")
     await pilot.pause()
     app.screen.query_one("#session-name-input", Input).value = name
+    await pilot.press("enter")
+    await pilot.pause()
+    assert isinstance(app.screen, WorkingDirectoryModal)
     await pilot.press("enter")
     await pilot.pause()
 
@@ -74,7 +78,10 @@ async def test_ctrl_s_then_1_to_9_create_stable_fish_slots(
         shell_one = app.session_manager.active_session
         assert shell_one is not None
         assert shell_one.kind is SessionKind.SHELL
+        assert shell_one.cwd == Path.cwd().resolve()
+        assert shell_one.terminal.working_directory == Path.cwd().resolve()
         assert shell_one is not first_agent
+        assert not isinstance(app.screen, WorkingDirectoryModal)
         assert app.shell_session_slots == {1: shell_one.id}
         agent_list = app.query_one("#agent-session-list", OptionList)
         shell_list = app.query_one("#shell-session-list", OptionList)
