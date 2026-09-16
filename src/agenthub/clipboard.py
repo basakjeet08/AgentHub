@@ -107,23 +107,15 @@ def _is_image_or_non_text_targets(targets: list[str]) -> bool:
         or t in {"png", "jpeg", "image", "image/png", "image/jpeg", "image/bmp", "image/webp"}
         for t in normalized
     )
-    has_plain_text = any(
-        t == "text/plain"
-        or t.startswith("text/plain;")
-        or t in {"utf8_string", "string", "text"}
-        for t in normalized
-    )
     has_any_text = any(
         t.startswith("text/")
         or t in {"utf8_string", "string", "text", "compound_text"}
         for t in normalized
     )
 
-    if has_image and not has_plain_text:
+    if has_image:
         return True
-    if not has_any_text:
-        return True
-    return False
+    return not has_any_text
 
 
 async def read_clipboard() -> ClipboardContent:

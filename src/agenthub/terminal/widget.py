@@ -19,7 +19,7 @@ from textual.strip import Strip
 from textual_tty import Terminal as TtyTerminal
 
 from agenthub._terminal_launcher import build_launch_command
-from agenthub.clipboard import ClipboardKind, read_clipboard, read_clipboard_text
+from agenthub.clipboard import ClipboardKind, read_clipboard
 from agenthub.harnesses import AgentHarness, KeyStroke
 from agenthub.terminal.scrollback import ScrollbackVideo
 

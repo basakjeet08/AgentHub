@@ -190,6 +190,24 @@ async def test_read_clipboard_detects_wayland_image_types() -> None:
         assert await clipboard.read_clipboard_text() is None
 
 
+async def test_read_clipboard_image_precedes_plain_text() -> None:
+    process = _fake_process(stdout=b"image/png\ntext/plain\ntext/html\n")
+
+    with (
+        patch(
+            "agenthub.clipboard.resolve_clipboard_command",
+            return_value=("wl-paste", "--no-newline"),
+        ),
+        patch(
+            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            AsyncMock(return_value=process),
+        ),
+    ):
+        content = await clipboard.read_clipboard()
+        assert content.kind == clipboard.ClipboardKind.NON_TEXT
+        assert content.text is None
+
+
 async def test_read_clipboard_wayland_empty_nothing_copied() -> None:
     process = _fake_process(stderr=b"Nothing is copied\n", returncode=1)
 
