@@ -688,25 +688,35 @@ modules remain independent of Bitty.
 
 `agenthub.clipboard` is the only module that talks to desktop clipboard
 utilities. It resolves the first available backend (`wl-paste`, `xclip`,
-`xsel`, `pbpaste`) and exposes an async `read_clipboard_text()` that never
-blocks the Textual event loop. The desired dependency boundary is:
+`xsel`, `pbpaste`) and exposes an async `read_clipboard()` (and backwards-compatible
+`read_clipboard_text()`) that never blocks the Textual event loop. It categorizes
+clipboard content into four semantic kinds:
+
+- `TEXT`: Decodable UTF-8 text payload ready for terminal paste.
+- `EMPTY`: Clipboard is accessible but contains no data.
+- `NON_TEXT`: Clipboard contains non-text or image data (e.g. `image/png`, binary bytes).
+- `UNAVAILABLE`: No functional system clipboard backend is installed or reachable.
+
+The desired dependency boundary is:
 
 ```text
 OS clipboard
      ↓
-agenthub.clipboard
+agenthub.clipboard (inspect kind & content)
      ↓
 AgentTerminal (focused Ctrl+V)
-     ↓
-textual-tty input_paste()
-     ↓
-Bitty → PTY
+ ├── TEXT → textual-tty input_paste() → Bitty → PTY
+ ├── EMPTY → no-op
+ ├── NON_TEXT → forward_ctrl_v() → Bitty (KEY_MOD_CTRL) → PTY (harness handles image)
+ └── UNAVAILABLE → fallback to AgentHub internal clipboard / warning
 ```
 
-`AgentTerminal` owns Ctrl+V while focused: it reads the system clipboard in a
-worker and delivers the text through the terminal's native paste port, falling
-back to AgentHub's internal clipboard when no desktop backend exists. Textual
-`Input` widgets keep their own Ctrl+V semantics. Ctrl+V and outer-terminal
+`AgentTerminal` owns Ctrl+V while focused: it inspects the system clipboard in a
+worker. For textual content, it delivers the text through the terminal's native paste port, falling
+back to AgentHub's internal clipboard when no desktop backend exists. For non-text or image
+content, it forwards `Ctrl+V` through Bitty directly to the PTY so that native harnesses
+(such as OpenCode or Codex) can detect the image and perform their own file attachment workflow.
+Textual `Input` widgets keep their own Ctrl+V semantics. Ctrl+V and outer-terminal
 `events.Paste` input converge on one serialized writer that preserves a single
 bracketed-paste envelope while draining partial non-blocking PTY writes.
 

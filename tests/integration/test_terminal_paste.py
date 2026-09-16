@@ -8,6 +8,7 @@ import pytest
 from textual import events
 from textual.app import App, ComposeResult
 
+from agenthub.clipboard import ClipboardContent, ClipboardKind
 from agenthub.harnesses import AgentHarness
 from agenthub.terminal import AgentTerminal
 
@@ -45,10 +46,19 @@ async def _settle(pilot) -> None:
         await pilot.pause()
 
 
-def _patch_clipboard(text: str | None):
+def _patch_clipboard(value: str | ClipboardContent | None):
+    if isinstance(value, ClipboardContent):
+        content = value
+    elif value is None:
+        content = ClipboardContent(ClipboardKind.UNAVAILABLE)
+    elif value == "":
+        content = ClipboardContent(ClipboardKind.EMPTY)
+    else:
+        content = ClipboardContent(ClipboardKind.TEXT, value)
+
     return patch(
-        "agenthub.terminal.widget.read_clipboard_text",
-        AsyncMock(return_value=text),
+        "agenthub.terminal.widget.read_clipboard",
+        AsyncMock(return_value=content),
     )
 
 
@@ -118,7 +128,7 @@ async def test_repeated_ctrl_v_events_submit_one_paste(
 ) -> None:
     app = TerminalPasteApp(sleeping_harness)
     text = "one clipboard paste"
-    clipboard_reader = AsyncMock(return_value=text)
+    clipboard_reader = AsyncMock(return_value=ClipboardContent(ClipboardKind.TEXT, text))
 
     async with app.run_test(size=(80, 24)) as pilot:
         terminal = app.terminal
@@ -126,7 +136,7 @@ async def test_repeated_ctrl_v_events_submit_one_paste(
         assert pty is not None
 
         with (
-            patch("agenthub.terminal.widget.read_clipboard_text", clipboard_reader),
+            patch("agenthub.terminal.widget.read_clipboard", clipboard_reader),
             patch.object(pty, "write_bytes", wraps=pty.write_bytes) as write_spy,
         ):
             for _ in range(20):
@@ -198,6 +208,28 @@ async def test_unavailable_clipboard_warns_and_sends_nothing(
         assert write_spy.call_args_list == []
         assert notify_spy.call_count == 1
         assert notify_spy.call_args.kwargs.get("severity") == "warning"
+
+
+async def test_ctrl_v_forwards_control_character_for_non_text_clipboard(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = TerminalPasteApp(sleeping_harness)
+
+    async with app.run_test(size=(80, 24)) as pilot:
+        terminal = app.terminal
+        pty = terminal.board.pty
+        assert pty is not None
+
+        with (
+            _patch_clipboard(ClipboardContent(ClipboardKind.NON_TEXT)),
+            patch.object(pty, "write_bytes", wraps=pty.write_bytes) as write_spy,
+            patch.object(app, "notify", wraps=app.notify) as notify_spy,
+        ):
+            await pilot.press("ctrl+v")
+            await _settle(pilot)
+
+        assert (b"\x16",) in _written_calls(write_spy)
+        assert notify_spy.call_count == 0
 
 
 async def test_textual_paste_event_still_reaches_the_paste_port(

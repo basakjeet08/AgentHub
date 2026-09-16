@@ -19,7 +19,7 @@ from textual.strip import Strip
 from textual_tty import Terminal as TtyTerminal
 
 from agenthub._terminal_launcher import build_launch_command
-from agenthub.clipboard import read_clipboard_text
+from agenthub.clipboard import ClipboardKind, read_clipboard, read_clipboard_text
 from agenthub.harnesses import AgentHarness, KeyStroke
 from agenthub.terminal.scrollback import ScrollbackVideo
 
@@ -315,26 +315,40 @@ class AgentTerminal(TtyTerminal):
             exit_on_error=False,
         )
 
+    def forward_ctrl_v(self) -> None:
+        """Forward Ctrl+V to the child process so harnesses can handle non-text content."""
+
+        self.board.display.input_key("v", _bittty_constants.KEY_MOD_CTRL)
+
     async def _paste_system_clipboard(self) -> None:
-        """Read the desktop clipboard and paste it through the terminal's port."""
+        """Inspect the desktop clipboard and deliver text or forward Ctrl+V."""
 
         try:
-            text = await read_clipboard_text()
+            content = await read_clipboard()
             if not self.is_mounted or not self.is_process_running:
                 return
 
-            if text is None:
-                text = self.app.clipboard
-                if not text:
-                    self.notify(
-                        "No system clipboard is available to paste from.",
-                        title="Paste unavailable",
-                        severity="warning",
-                    )
-                    return
+            if content.kind == ClipboardKind.TEXT and content.text:
+                await self.paste_text(content.text)
+                return
 
-            if text:
-                await self.paste_text(text)
+            if content.kind == ClipboardKind.EMPTY:
+                return
+
+            if content.kind == ClipboardKind.NON_TEXT:
+                self.forward_ctrl_v()
+                return
+
+            if content.kind == ClipboardKind.UNAVAILABLE:
+                text = self.app.clipboard
+                if text:
+                    await self.paste_text(text)
+                    return
+                self.notify(
+                    "No system clipboard is available to paste from.",
+                    title="Paste unavailable",
+                    severity="warning",
+                )
         finally:
             self._paste_in_progress = False
 
