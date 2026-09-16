@@ -36,12 +36,14 @@ AgentHubApp
    │
    ├── SessionSidebar
    ├── HomeScreen
-   └── AgentHubStatusBar
+   ├── AgentHubStatusBar
+   └── native-session adapters → unloaded AgentSession entries
 ```
 
-No `AgentSession`, `AgentTerminal`, PTY, or coding-agent process is created just
-to display Home. When sessions are explicitly present, the established runtime
-path remains `SessionManager → AgentSession → AgentTerminal → textual-tty →
+No `AgentTerminal`, PTY, or coding-agent process is created just to display
+Home. Provider-specific adapters discover native conversations in the
+background and normalize them into unloaded `AgentSession` objects. Selecting
+one follows `SessionManager → AgentSession → AgentTerminal → textual-tty →
 bittty / PTY → coding agent`.
 
 ### Current responsibilities
@@ -49,11 +51,17 @@ bittty / PTY → coding agent`.
 `AgentHubApp`:
 
 - owns one `SessionManager`;
-- starts with that manager empty and shows the neutral Home content;
+- shows neutral Home content while provider discovery runs independently;
+- discovers Codex, OpenCode, Devin, and Antigravity conversations without
+  allowing one provider failure to prevent startup;
+- resumes unloaded conversations by exact native ID and reuses an existing
+  terminal when one is already running;
 - owns the persistent sidebar, main content area, and status bar shell;
-- mounts every session known at composition time inside a `ContentSwitcher`;
+- mounts every terminal runtime known at composition time inside a
+  `ContentSwitcher`;
 - owns the session sidebar, active-terminal visibility, and focus;
-- routes sidebar selection through one `show_session()` operation;
+- routes sidebar selection through an activation operation that either resumes
+  an unloaded session or shows its existing runtime;
 - owns terminal-first Locked/Unlocked keyboard policy and priority candidates
   for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, and sidebar-group focus;
 - gates hub navigation through `check_action()` while a terminal is active so
@@ -72,10 +80,15 @@ bittty / PTY → coding agent`.
 - selects existing sessions by ID;
 - removes exited sessions and clears selection when the active session is removed;
 - constructs terminal runtimes without mounting them.
+- retains discovered logical sessions without terminal runtimes;
+- deduplicates native conversations by harness ID and native session ID;
+- attaches and detaches disposable terminal runtimes.
 
-`AgentSession` currently connects an AgentHub ID and name with its intended
-working directory, explicit agent-or-shell kind, hosted CLI definition, and
-terminal runtime. The same model is used for coding-agent and Fish sessions.
+`AgentSession` currently connects an ephemeral AgentHub ID and name with its
+native session ID, optional working directory, explicit agent-or-shell kind,
+hosted CLI definition, lifecycle state, and optional terminal runtime. The same
+model is used for coding-agent and Fish sessions; Fish has no native ID and is
+not discovered.
 
 `AgentHarness` is immutable semantic data containing a stable ID, display name,
 tuple command, and an optional terminal-independent scrolling policy. It does
@@ -152,9 +165,9 @@ The authoritative source and test layout is documented in
 [Repository Structure](#repository-structure) below.
 
 The core ownership boundaries, Home-first shell, persistent sidebar and status
-bar, and switching runtime are now implemented. Normal startup creates no
-session. Ctrl+N collects a registered harness, user-provided session name, and
-working directory before creating the selected agent runtime.
+bar, native-session discovery and exact-ID resume, and switching runtime are
+now implemented. Normal startup creates no terminal or child process. Ctrl+N
+retains the legacy runtime-only creation path until native creation is added.
 
 ## Architecture
 
@@ -360,7 +373,8 @@ AgentTerminal = live native-terminal adapter
 
 ### AgentSession
 
-`AgentSession` represents one AgentHub-managed agent runtime and its identity.
+`AgentSession` represents one in-memory logical conversation and its optional
+AgentHub-managed runtime.
 It connects:
 
 ```text
@@ -368,11 +382,13 @@ AgentHub identity
         +
 semantic session kind
         +
-working directory
+optional working directory
         +
 harness definition
         +
-terminal runtime
+native session identity
+        +
+optional terminal runtime
 ```
 
 The implemented model is:
@@ -388,9 +404,11 @@ class AgentSession:
     id: str
     name: str
     kind: SessionKind
-    cwd: Path
+    cwd: Path | None
     harness: AgentHarness
-    terminal: AgentTerminal
+    terminal: AgentTerminal | None
+    native_session_id: str | None
+    state: SessionState
 ```
 
 Conceptual example:
@@ -404,21 +422,22 @@ harness:  OpenCode
 terminal: mounted OpenCode terminal runtime
 ```
 
-The session conceptually owns the terminal runtime, but `AgentHubApp` remains
-responsible for mounting that widget and controlling its visibility in the
-Textual DOM.
+The session conceptually owns an attached terminal runtime when loaded, but
+`AgentHubApp` remains responsible for constructing and mounting that widget and
+controlling its visibility in the Textual DOM. Discovered sessions begin with
+`terminal=None` and `state=UNLOADED`.
 
 `SessionKind` describes semantic identity independently from keyboard shortcut
 addressability. The Fish slot map answers which Ctrl+digit opens a session; it
-does not decide whether a session is an agent or shell. Do not add
-lifecycle-state enums, native harness session IDs, persistence records, or
-separate runtime objects until stopped sessions are retained or another
-implementation need requires them.
+does not decide whether a session is an agent or shell. Native IDs and
+lifecycle state are now required because logical sessions can exist without a
+running terminal. Persistence records and a separate runtime object remain
+unnecessary.
 
 Conceptually:
 
 ```text
-AgentSession = AgentHub identity around one agent runtime
+AgentSession = in-memory native conversation + optional runtime
 ```
 
 ### SessionManager
@@ -820,9 +839,10 @@ The implemented sidebar-to-terminal relationship is conceptually:
 └──────────────────────┴────────────────────────────────────┘
 ```
 
-The sidebar always renders `AGENTS` and `SHELLS` as equal-height sections, even
-when either collection is empty. Both collections use `AgentSession`, one
-`SessionManager`, and the same selected-session message.
+The sidebar always renders `AGENTS` and `SHELLS`, even when either collection is
+empty, and allocates them 70% and 30% of the available section space
+respectively. Both collections use `AgentSession`, one `SessionManager`, and the
+same selected-session message.
 The first nine agent rows use creation-order numbers selected through Ctrl+A,
 then 1…9. Fish rows display their stable slot numbers and are opened or selected
 through Ctrl+S, then 1…9. Agent sessions remain selectable directly from the
@@ -850,6 +870,17 @@ src/agenthub/
 │   ├── model.py         # immutable semantic models
 │   ├── opencode.py      # OpenCode definition
 │   └── registry.py      # built-in harness lookup
+├── native_sessions/
+│   ├── __init__.py      # public native-session API
+│   ├── _normalize.py     # shared provider-record validation
+│   ├── _sqlite.py        # read-only provider database access
+│   ├── adapter.py       # provider adapter protocol and failures
+│   ├── model.py         # normalized discovery and launch models
+│   ├── registry.py      # built-in adapter lookup
+│   ├── antigravity.py   # Antigravity discovery/resume adapter
+│   ├── codex.py         # Codex discovery/resume adapter
+│   ├── devin.py         # Devin discovery/resume adapter
+│   └── opencode.py      # OpenCode discovery/resume adapter
 ├── sessions/
 │   ├── __init__.py      # public session API
 │   ├── model.py         # AgentSession runtime model
@@ -888,6 +919,7 @@ tests/
 │   ├── test_app.py
 │   ├── test_harnesses.py
 │   ├── test_main.py
+│   ├── test_native_session_adapters.py
 │   ├── test_session_manager.py
 │   ├── test_session_name_modal.py
 │   ├── test_terminal.py
@@ -898,6 +930,7 @@ tests/
     ├── test_home_screen.py
     ├── test_keyboard_ownership.py
     ├── test_new_session_modals.py
+    ├── test_native_session_discovery.py
     ├── test_session_creation_shortcuts.py
     ├── test_sidebar_groups.py
     ├── test_session_switching.py
@@ -926,9 +959,10 @@ The architectural foundation is implemented:
 2. Bitty translation is isolated inside `AgentTerminal`.
 3. AgentHub starts Unlocked; Ctrl+G toggles keyboard ownership, and hub actions
    fall through to the active terminal while locked.
-4. `AgentSession` and `SessionManager` represent and coordinate runtimes.
-5. The app starts empty on Home without constructing a terminal or child
-   process, while retaining support for sessions created before mount.
+4. `AgentSession` and `SessionManager` represent logical sessions and coordinate
+   their optional runtimes.
+5. The app starts on Home without constructing a terminal or child process,
+   while native-session discovery populates unloaded logical sessions.
 6. A minimal sidebar routes selection through one app-owned switching
    operation.
 7. Integration tests prove that two manager-owned terminals remain mounted and
@@ -951,13 +985,15 @@ The architectural foundation is implemented:
 13. Antigravity and Devin are registry-driven harnesses using the same name,
     working-directory, session, terminal, switching, and cleanup paths as the
     existing coding agents.
+14. Provider-specific adapters discover Codex, OpenCode, Devin, and Antigravity
+    conversations, normalize them into unloaded sessions, and construct
+    exact-ID resume launches on selection.
 
 The remaining sequence is:
 
-1. Add explicit terminal lifecycle operations before user-initiated stop or
-   restart of live sessions.
-2. Add persistence and native session resumption only when the runtime model is
-   stable.
+1. Create and title native conversations through the provider adapters.
+2. Retain coding-agent sessions as unloaded when their child process exits.
+3. Add explicit native-session deletion.
 
 ## Validation Tasks
 
@@ -1013,6 +1049,9 @@ The tiers can be run independently with `python -m pytest tests/unit` and
 The architectural foundation now has automated coverage for:
 
 - immutable harness configuration and stable registry identity;
+- provider-native discovery normalization and exact-ID resume launch specs;
+- unloaded sidebar sessions, lazy terminal creation, and running-runtime reuse;
+- independent provider-discovery failure containment;
 - exact four-agent registry membership and alphabetically sorted picker output;
 - manager invariants, active-session selection, and logical removal;
 - behavior when selecting or removing an unknown session;
@@ -1088,10 +1127,10 @@ persistent session ≠ currently running process
 SQLite is likely appropriate when persistence becomes necessary. Do not add it
 before the session runtime and lifecycle are proven.
 
-## Future Harness Resume
+## Native Harness Resume
 
 A human-readable AgentHub session name is not sufficient to resume a native
-coding-agent conversation. Resume support will eventually require:
+coding-agent conversation. Implemented resume support uses:
 
 ```text
 AgentHub session ID
@@ -1109,8 +1148,10 @@ Harness session:  abc123
 Project:           ~/Projects/backend
 ```
 
-The harness abstraction may eventually describe how its agent creates and
-resumes native sessions. This is deliberately deferred.
+Provider-specific native-session adapters discover this metadata from each
+harness and produce exact-ID launch specifications. The immutable
+`AgentHarness` remains terminal presentation and default-command configuration;
+it does not absorb provider storage or conversation lifecycle behavior.
 
 ## Architectural Rules
 
@@ -1120,8 +1161,8 @@ Future work should preserve these rules:
 2. `AgentHarness` is immutable semantic configuration, not a widget factory.
 3. Harness IDs are stable machine identifiers; display names are UI text.
 4. Bitty and PTY details remain inside the terminal boundary.
-5. `AgentSession` represents one AgentHub-managed runtime with explicit semantic
-   identity; keyboard slot assignment remains separate.
+5. `AgentSession` represents one in-memory logical conversation with an optional
+   runtime; keyboard slot assignment remains separate.
 6. `SessionManager` coordinates sessions but never manipulates the Textual DOM.
 7. `AgentHubApp` owns mounting, visibility, focus, navigation, and application
    policy.
@@ -1151,7 +1192,7 @@ not recreate agent UIs.
 
 Harness        = immutable agent description and semantic terminal behavior
 Terminal       = native-terminal adapter and Bitty boundary
-Session        = AgentHub identity + kind + cwd + harness + terminal runtime
+Session        = native identity + kind + cwd + harness + optional runtime
 SessionManager = session collection/lifecycle coordinator; no DOM or Bitty
 App            = Textual DOM, visibility, focus, navigation, and policy
 
@@ -1161,7 +1202,10 @@ mount and stops it on unmount, session switching should hide/show mounted
 terminals rather than unmounting them; the core process-survival behavior is
 covered by an integration test.
 
-Current state: the harness/terminal/session/manager boundaries, Home-first
+Current state: native-session adapters discover Codex, OpenCode, Devin, and
+Antigravity conversations at startup. They appear unloaded, resume by exact
+native ID when selected, and reuse an already-running terminal. The
+harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
 ownership, grouped sidebar presentation, registry-driven Antigravity, Codex,
 Devin, and OpenCode selection, required session naming, working-directory
@@ -1173,6 +1217,7 @@ state, isolate input, run concurrently in distinct working directories, and
 shut down with the app. Active exits return to Home, hidden exits are removed
 without interrupting the current terminal, and Fish slots become reusable.
 Locked hub shortcuts have been proven to fall through at the PTY-write
-boundary. Next: add explicit terminal lifecycle operations before user-initiated
-stop or restart of live sessions. Persistence and native resume are deferred.
+boundary. Next: create native conversations through the adapters, retain agent
+sessions as unloaded when their CLI exits, and add native deletion. AgentHub
+persistence remains deferred.
 ```

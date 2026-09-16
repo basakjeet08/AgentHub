@@ -4,9 +4,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from agenthub.harnesses import AgentHarness
+from agenthub.native_sessions import NativeSession
 from agenthub.terminal import AgentTerminal
 
-from .model import AgentSession, SessionKind
+from .model import AgentSession, SessionKind, SessionState
 
 
 class SessionManager:
@@ -29,6 +30,11 @@ class SessionManager:
         if self._active_session_id is None:
             return None
         return self._sessions[self._active_session_id]
+
+    def get(self, session_id: str) -> AgentSession:
+        """Return one managed session by its ephemeral AgentHub identity."""
+
+        return self._sessions[session_id]
 
     def create(
         self,
@@ -55,6 +61,88 @@ class SessionManager:
         self._sessions[session.id] = session
         self._active_session_id = session.id
         return session
+
+    def add_discovered(
+        self,
+        *,
+        native_session: NativeSession,
+        harness: AgentHarness,
+    ) -> AgentSession:
+        """Add one unloaded native conversation unless it is already managed."""
+
+        if native_session.harness_id != harness.id:
+            raise ValueError("native session and harness IDs do not match")
+        existing = self.find_by_native_identity(
+            native_session.harness_id,
+            native_session.native_session_id,
+        )
+        if existing is not None:
+            return existing
+
+        session = AgentSession(
+            id=uuid4().hex,
+            name=native_session.name,
+            kind=SessionKind.AGENT,
+            cwd=native_session.cwd,
+            harness=harness,
+            terminal=None,
+            native_session_id=native_session.native_session_id,
+            state=SessionState.UNLOADED,
+        )
+        self._sessions[session.id] = session
+        return session
+
+    def find_by_native_identity(
+        self,
+        harness_id: str,
+        native_session_id: str,
+    ) -> AgentSession | None:
+        """Find a session by its provider-owned stable identity."""
+
+        return next(
+            (
+                session
+                for session in self._sessions.values()
+                if session.harness.id == harness_id
+                and session.native_session_id == native_session_id
+            ),
+            None,
+        )
+
+    def find_by_terminal(self, terminal: AgentTerminal) -> AgentSession | None:
+        """Find the logical session currently owning ``terminal``."""
+
+        return next(
+            (
+                session
+                for session in self._sessions.values()
+                if session.terminal is terminal
+            ),
+            None,
+        )
+
+    def attach_terminal(
+        self,
+        session_id: str,
+        terminal: AgentTerminal,
+    ) -> AgentSession:
+        """Attach a newly constructed runtime to an unloaded session."""
+
+        session = self._sessions[session_id]
+        if session.terminal is not None:
+            raise ValueError(f"session {session_id!r} already has a terminal")
+        session.terminal = terminal
+        session.state = SessionState.RUNNING
+        return session
+
+    def detach_terminal(self, session_id: str) -> AgentTerminal | None:
+        """Detach and return a session's disposable runtime."""
+
+        session = self._sessions[session_id]
+        terminal = session.terminal
+        session.terminal = None
+        session.state = SessionState.UNLOADED
+        return terminal
 
     def select(self, session_id: str) -> AgentSession:
         """Select and return an existing session.

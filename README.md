@@ -18,20 +18,23 @@ making structural changes.
 AgentHub currently has a Home-first application shell backed by the accepted
 multi-session runtime architecture:
 
-- It starts on a neutral Home screen without launching a coding-agent process.
+- It starts on a neutral Home screen, discovers native conversations in the
+  background, and does not launch a coding-agent process until one is selected.
 - It provides a persistent session sidebar, Home content area, and application
   status bar.
 - It uses Textual's built-in Tokyo Night theme with shared semantic component
   styles.
-- It represents that runtime with `AgentSession` and coordinates it through
-  `SessionManager`.
+- It represents logical native conversations with `AgentSession`, keeps their
+  terminal runtime optional, and coordinates them through `SessionManager`.
 - It launches each terminal child in its session's normalized working directory
   without changing AgentHub's own directory or using a shell command.
-- It mounts every session known at application composition time and displays
-  the active one through a `ContentSwitcher`.
+- It discovers Codex, OpenCode, Devin, and Antigravity sessions through
+  provider-specific adapters and displays them as unloaded sidebar entries.
+- It resumes an unloaded conversation by its exact native ID on selection,
+  mounts the resulting terminal, and reuses that runtime on later selections.
 - It provides a session sidebar for switching between managed sessions.
-- It keeps equal-height `AGENTS` and `SHELLS` sidebar groups visible at all
-  times without adding a second manager.
+- It keeps `AGENTS` and `SHELLS` sidebar groups visible at all times, allocating
+  more space to agent conversations with a 70/30 split.
 - It opens a registry-driven harness picker, session-name prompt, and
   working-directory browser with Ctrl+N, then launches the selected coding
   agent in the chosen directory after all three steps are confirmed. The
@@ -67,12 +70,13 @@ AgentHub does not yet provide:
 - a complete shortcuts dialog;
 - user-initiated stopping, restarting, or removal of live sessions;
 - persisted session metadata;
-- harness-native conversation resumption.
+- creation, renaming, or deletion of native harness conversations.
 
-Normal startup remains empty. Ctrl+N opens a harness picker followed by a
-required session-name prompt and working-directory browser. Confirming all
-three launches the selected harness in the chosen directory. Fish shell slots
-continue to use AgentHub's current working directory.
+Normal startup begins native-session discovery and may populate the agent
+sidebar without starting any child process. Ctrl+N retains the current legacy
+creation flow until native creation is implemented. Fish shell slots continue
+to use AgentHub's current working directory and do not participate in native
+discovery.
 
 ## Keyboard Ownership
 
@@ -104,8 +108,8 @@ that key. AgentHub does not rewrite the native CLI's other bindings.
 
 ## Architecture
 
-AgentHub manages native coding-agent processes through embedded terminal
-sessions:
+AgentHub manages native conversations and their disposable embedded terminal
+runtimes:
 
 ```text
 AgentHubApp → SessionManager → AgentSession → AgentTerminal → textual-tty/Bitty

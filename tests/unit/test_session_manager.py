@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from agenthub.harnesses import AgentHarness
-from agenthub.sessions import SessionKind, SessionManager
+from agenthub.native_sessions import NativeSession
+from agenthub.sessions import SessionKind, SessionManager, SessionState
 
 
 def test_manager_starts_empty() -> None:
@@ -62,6 +63,28 @@ def test_select_changes_only_logical_selection(
     assert manager.sessions == (first, second)
     assert not first.terminal.is_mounted
     assert not second.terminal.is_mounted
+
+
+def test_add_discovered_session_is_unloaded_and_deduplicated(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    native = NativeSession(
+        harness_id=sleeping_harness.id,
+        native_session_id="native-1",
+        name="Existing work",
+        cwd=Path.cwd(),
+    )
+
+    session = manager.add_discovered(native_session=native, harness=sleeping_harness)
+    duplicate = manager.add_discovered(native_session=native, harness=sleeping_harness)
+
+    assert duplicate is session
+    assert manager.sessions == (session,)
+    assert manager.active_session is None
+    assert session.native_session_id == "native-1"
+    assert session.terminal is None
+    assert session.state is SessionState.UNLOADED
 
 
 def test_select_rejects_unknown_session_without_changing_selection(

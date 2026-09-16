@@ -15,13 +15,26 @@ class SessionKind(StrEnum):
     SHELL = "shell"
 
 
+class SessionState(StrEnum):
+    """Transient lifecycle state for an in-memory logical session."""
+
+    UNLOADED = "unloaded"
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    DELETING = "deleting"
+    ERROR = "error"
+
+
 @dataclass
 class AgentSession:
-    """AgentHub identity and runtime objects for one hosted CLI process."""
+    """In-memory identity and optional runtime for one hosted conversation."""
 
     id: str
     name: str
     kind: SessionKind
-    cwd: Path
+    cwd: Path | None
     harness: AgentHarness
-    terminal: AgentTerminal
+    terminal: AgentTerminal | None
+    native_session_id: str | None = None
+    state: SessionState = SessionState.RUNNING

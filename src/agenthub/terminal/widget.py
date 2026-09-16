@@ -55,6 +55,7 @@ class AgentTerminal(TtyTerminal):
         self,
         harness: AgentHarness,
         *,
+        command: Sequence[str] | None = None,
         working_directory: Path | None = None,
         name: str | None = None,
         id: str | None = None,
@@ -69,8 +70,9 @@ class AgentTerminal(TtyTerminal):
         self.working_directory = launch_directory
         self._scrollback_offset = 0
         self._scrollback_video: ScrollbackVideo | None = None
+        launch_command = harness.command if command is None else tuple(command)
         super().__init__(
-            command=list(build_launch_command(launch_directory, harness.command)),
+            command=list(build_launch_command(launch_directory, launch_command)),
             name=name,
             id=id,
             classes=classes,

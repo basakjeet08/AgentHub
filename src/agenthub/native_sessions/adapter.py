@@ -1,0 +1,29 @@
+"""Protocol and shared failures for native-session adapters."""
+
+from typing import Protocol
+
+from .model import LaunchSpec, NativeSession
+
+
+class NativeSessionError(RuntimeError):
+    """Base failure raised by a native-session adapter."""
+
+
+class NativeSessionDiscoveryError(NativeSessionError):
+    """A provider's native conversations could not be discovered."""
+
+
+class NativeSessionResumeError(NativeSessionError):
+    """A provider could not construct an exact-session resume launch."""
+
+
+class NativeSessionAdapter(Protocol):
+    """Provider-specific native conversation operations used by AgentHub."""
+
+    harness_id: str
+
+    async def discover(self) -> tuple[NativeSession, ...]:
+        """Return the provider's existing native conversations."""
+
+    async def resume(self, session: NativeSession) -> LaunchSpec:
+        """Return the exact launch needed to resume ``session``."""

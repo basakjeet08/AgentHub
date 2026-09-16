@@ -5,12 +5,16 @@ from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.content import Content
 from textual.message import Message
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.ui.bindings import NUMBERED_SESSION_BINDINGS
+
+_RUNNING_INDICATOR = "●"
+_UNLOADED_INDICATOR = "○"
 
 
 class SessionSidebar(Vertical):
@@ -103,14 +107,47 @@ class SessionSidebar(Vertical):
         session: AgentSession,
         *,
         shortcut: int | None = None,
-    ) -> str:
-        """Format a session, optionally showing its persistent shell slot."""
+    ) -> Content:
+        """Format and style a session independently from the navigation cursor."""
 
         prefix = f"[ {shortcut} ] " if shortcut is not None else ""
-        return f"{prefix}{session.harness.display_name} · {session.name}"
+        is_active = session.id == self._active_session_id
+        is_unloaded = session.kind is SessionKind.AGENT and session.terminal is None
+        indicator = _UNLOADED_INDICATOR if is_unloaded else _RUNNING_INDICATOR
+        indicator_style = (
+            "$success" if is_active else "$text-muted" if is_unloaded else "$foreground"
+        )
+        prompt = Content(
+            f"{indicator} {prefix}{session.harness.display_name} · {session.name}"
+        )
+        prompt = prompt.stylize(indicator_style, 0, 1).stylize("$foreground", 2)
+        return prompt.stylize("bold", 2) if is_active else prompt
+
+    def _refresh_option_prompts(self) -> None:
+        """Refresh row styles after the active session changes."""
+
+        if not self.is_mounted:
+            return
+        for session_list in self.query(OptionList):
+            is_agent_list = session_list.id == "agent-session-list"
+            sessions = self._agent_sessions if is_agent_list else self._shell_sessions
+            for index, session in enumerate(sessions, start=1):
+                shortcut = (
+                    index
+                    if is_agent_list and index <= 9
+                    else self._shortcut_slots.get(session.id)
+                )
+                try:
+                    session_list.replace_option_prompt(
+                        session.id,
+                        self._option_prompt(session, shortcut=shortcut),
+                    )
+                except OptionDoesNotExist:
+                    # Session data may lead the mounted options during recomposition.
+                    continue
 
     def compose(self) -> ComposeResult:
-        """Compose persistent, equally sized agent and shell session groups."""
+        """Compose persistent agent and shell groups using the configured split."""
 
         yield Static(">_  AGENTHUB", id="sidebar-brand")
         with Vertical(id="agent-section", classes="sidebar-section"):
@@ -170,6 +207,7 @@ class SessionSidebar(Vertical):
         """Highlight the row corresponding to the active session."""
 
         self._active_session_id = session_id
+        self._refresh_option_prompts()
         for session_list in self.query(OptionList):
             session_list.highlighted = None
             try:
@@ -181,6 +219,7 @@ class SessionSidebar(Vertical):
         """Clear the retained active identity and all visible highlights."""
 
         self._active_session_id = None
+        self._refresh_option_prompts()
         for session_list in self.query(OptionList):
             session_list.highlighted = None
 

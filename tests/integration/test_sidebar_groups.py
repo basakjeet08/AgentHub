@@ -4,15 +4,19 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from textual.app import App, ComposeResult
+from textual.content import Content
 from textual.widgets import OptionList
 
 from agenthub.harnesses import AgentHarness
+from agenthub.native_sessions import NativeSession
 from agenthub.sessions import AgentSession, SessionKind, SessionManager
 from agenthub.ui import SessionSidebar
 
 
 class SidebarTestApp(App):
     """Mount a sidebar without mounting the sessions' terminal widgets."""
+
+    CSS_PATH = Path(__file__).parents[2] / "src/agenthub/ui/panels/sidebar.tcss"
 
     def __init__(
         self,
@@ -59,7 +63,7 @@ def _sessions(
     )
 
 
-async def test_empty_sidebar_shows_two_equal_empty_session_groups() -> None:
+async def test_empty_sidebar_allocates_more_space_to_agent_sessions() -> None:
     app = SidebarTestApp((), ())
 
     async with app.run_test(size=(100, 36)) as pilot:
@@ -70,8 +74,9 @@ async def test_empty_sidebar_shows_two_equal_empty_session_groups() -> None:
 
         assert headings == ["AGENTS", "SHELLS"]
         assert len(sections) == 2
-        # An odd number of terminal rows necessarily leaves one section a row taller.
-        assert abs(sections[0].size.height - sections[1].size.height) <= 1
+        assert sections[0].size.height > sections[1].size.height
+        assert str(sections[0].styles.height) == "7fr"
+        assert str(sections[1].styles.height) == "3fr"
         assert len(sidebar.query(OptionList).nodes) == 2
         assert all(not option_list.options for option_list in sidebar.query(OptionList))
 
@@ -121,10 +126,10 @@ async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
             for option in option_list.options
         ]
         assert option_prompts == [
-            "[ 1 ] Test Sleeper · AgentHub",
-            "[ 2 ] Test Sleeper · Backend",
-            "[ 1 ] Test Sleeper · AgentHub Shell",
-            "[ 3 ] Test Sleeper · Backend Server",
+            "● [ 1 ] Test Sleeper · AgentHub",
+            "● [ 2 ] Test Sleeper · Backend",
+            "● [ 1 ] Test Sleeper · AgentHub Shell",
+            "● [ 3 ] Test Sleeper · Backend Server",
         ]
 
         shell_list = app.query_one("#shell-session-list", OptionList)
@@ -144,3 +149,56 @@ async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
         sidebar.focus_shells()
         await pilot.press("2")
         assert app.selected_shell_slot == 2
+
+
+async def test_sidebar_styles_active_running_and_unloaded_sessions_independently(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    running = manager.create(
+        name="Running",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    active = manager.create(
+        name="Active",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    unloaded = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-unloaded",
+            "Unloaded",
+            Path.cwd(),
+        ),
+        harness=sleeping_harness,
+    )
+    app = SidebarTestApp((running, active, unloaded), ())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        agent_list = app.query_one("#agent-session-list", OptionList)
+
+        sidebar.set_active(active.id)
+        sidebar.focus_agents()
+        await pilot.pause()
+
+        def prompt_styles(session: AgentSession) -> list[str]:
+            prompt = agent_list.get_option(session.id).prompt
+            assert isinstance(prompt, Content)
+            assert prompt.spans
+            styles = [span.style for span in prompt.spans]
+            assert all(isinstance(style, str) for style in styles)
+            return styles  # type: ignore[return-value]
+
+        assert agent_list.highlighted == 0
+        assert prompt_styles(running) == ["$foreground", "$foreground"]
+        assert prompt_styles(active) == ["$success", "$foreground", "bold"]
+        assert prompt_styles(unloaded) == ["$text-muted", "$foreground"]
+        unloaded_prompt = str(agent_list.get_option(unloaded.id).prompt)
+        assert unloaded_prompt.startswith("○ ")
+        assert "UNLOADED" not in unloaded_prompt

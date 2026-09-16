@@ -176,10 +176,10 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
             for option in option_list.options
         ]
         assert option_prompts == [
-            "[ 1 ] Test Sleeper · First Agent",
-            "[ 2 ] Test Sleeper · Second Agent",
-            "[ 1 ] Test Sleeper · Shell 1",
-            "[ 2 ] Test Sleeper · Shell 2",
+            "● [ 1 ] Test Sleeper · First Agent",
+            "● [ 2 ] Test Sleeper · Second Agent",
+            "● [ 1 ] Test Sleeper · Shell 1",
+            "● [ 2 ] Test Sleeper · Shell 2",
         ]
 
         status = app.query_one(AgentHubStatusBar)

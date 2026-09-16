@@ -1,6 +1,8 @@
 """Application shell: Home layout, key bindings, and widget orchestration."""
 
+import asyncio
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import ClassVar
@@ -13,7 +15,12 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher
 
 from agenthub.harnesses import FISH, HARNESSES, AgentHarness
-from agenthub.sessions import AgentSession, SessionKind, SessionManager
+from agenthub.native_sessions import (
+    NATIVE_SESSION_ADAPTERS,
+    NativeSession,
+    NativeSessionAdapter,
+)
+from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
 from agenthub.ui import (
     AgentHubStatusBar,
@@ -32,6 +39,14 @@ _NEW_SESSION_MODALS = (
     SessionNameModal,
     WorkingDirectoryModal,
 )
+
+
+@dataclass(frozen=True)
+class _DiscoveryResult:
+    """Sessions or failure details returned by one provider discovery."""
+
+    sessions: tuple[NativeSession, ...] = ()
+    error: str | None = None
 
 
 class AgentHubApp(App):
@@ -54,6 +69,7 @@ class AgentHubApp(App):
         *,
         agent_harnesses: Mapping[str, AgentHarness] | None = None,
         shell_harness: AgentHarness = FISH,
+        native_session_adapters: Mapping[str, NativeSessionAdapter] | None = None,
         working_directory_root: Path | None = None,
     ) -> None:
         """Create the AgentHub shell without launching a coding harness."""
@@ -65,6 +81,11 @@ class AgentHubApp(App):
             HARNESSES if agent_harnesses is None else agent_harnesses
         )
         self._shell_harness = shell_harness
+        self._native_session_adapters = dict(
+            NATIVE_SESSION_ADAPTERS
+            if native_session_adapters is None
+            else native_session_adapters
+        )
         self._working_directory_root = (
             Path.home() if working_directory_root is None else working_directory_root
         )
@@ -82,11 +103,12 @@ class AgentHubApp(App):
         sessions = self.session_manager.sessions
         active_session = self.session_manager.active_session
         for session in sessions:
-            session.terminal.id = self._terminal_dom_id(session.id)
+            if session.terminal is not None:
+                session.terminal.id = self._terminal_dom_id(session.id)
 
         initial = (
             self._terminal_dom_id(active_session.id)
-            if active_session is not None
+            if active_session is not None and active_session.terminal is not None
             else "home-screen"
         )
         with Vertical(id="app-shell"):
@@ -99,7 +121,11 @@ class AgentHubApp(App):
                 )
                 yield ContentSwitcher(
                     HomeScreen(id="home-screen"),
-                    *(session.terminal for session in sessions),
+                    *(
+                        session.terminal
+                        for session in sessions
+                        if session.terminal is not None
+                    ),
                     initial=initial,
                     id="session-content",
                 )
@@ -119,6 +145,11 @@ class AgentHubApp(App):
         else:
             self.query_one(HomeScreen).focus()
         self.call_after_refresh(self._refresh_status)
+        if self._native_session_adapters:
+            self.run_worker(
+                self._discover_native_sessions(),
+                group="native-session-discovery",
+            )
 
     @staticmethod
     def _terminal_dom_id(session_id: str) -> str:
@@ -129,7 +160,10 @@ class AgentHubApp(App):
     def show_session(self, session_id: str) -> AgentSession:
         """Select, display, and focus one managed session."""
 
-        session = self.session_manager.select(session_id)
+        session = self.session_manager.get(session_id)
+        if session.terminal is None:
+            raise ValueError(f"session {session_id!r} is unloaded")
+        self.session_manager.select(session_id)
         self.query_one("#session-content", ContentSwitcher).current = self._terminal_dom_id(
             session.id
         )
@@ -137,6 +171,130 @@ class AgentHubApp(App):
         self.call_after_refresh(self._highlight_active_sidebar)
         self.set_focus(session.terminal)
         return session
+
+    async def activate_session(self, session_id: str) -> AgentSession:
+        """Show a running session or resume and mount an unloaded native one."""
+
+        session = self.session_manager.get(session_id)
+        if session.terminal is not None:
+            return self.show_session(session.id)
+        if session.state is SessionState.STARTING:
+            return session
+        if session.kind is not SessionKind.AGENT or session.native_session_id is None:
+            raise ValueError(f"session {session_id!r} cannot be resumed")
+
+        adapter = self._native_session_adapters.get(session.harness.id)
+        if adapter is None:
+            self.notify(
+                f"No native-session adapter is available for {session.harness.display_name}.",
+                severity="error",
+            )
+            return session
+
+        session.state = SessionState.STARTING
+        self._refresh_sidebar()
+        native_session = NativeSession(
+            harness_id=session.harness.id,
+            native_session_id=session.native_session_id,
+            name=session.name,
+            cwd=session.cwd,
+        )
+        terminal: AgentTerminal | None = None
+        try:
+            launch = await adapter.resume(native_session)
+            terminal = AgentTerminal(
+                session.harness,
+                command=launch.command,
+                working_directory=launch.working_directory,
+            )
+            terminal.id = self._terminal_dom_id(session.id)
+            self.session_manager.attach_terminal(session.id, terminal)
+            await self.query_one("#session-content", ContentSwitcher).mount(terminal)
+        except Exception as error:  # noqa: BLE001 - isolate provider/runtime boundary
+            if session.terminal is terminal:
+                self.session_manager.detach_terminal(session.id)
+            else:
+                session.state = SessionState.UNLOADED
+            self._refresh_sidebar()
+            self._refresh_status()
+            self.notify(
+                f"Could not resume {session.name}: {error}",
+                severity="error",
+            )
+            return session
+
+        self._refresh_sidebar()
+        self._refresh_status()
+        return self.show_session(session.id)
+
+    async def _discover_native_sessions(self) -> None:
+        """Discover each provider independently without blocking app startup."""
+
+        providers = tuple(
+            (harness, adapter)
+            for harness_id, adapter in self._native_session_adapters.items()
+            if (harness := self._agent_harnesses.get(harness_id)) is not None
+        )
+        if not providers:
+            return
+
+        self.notify(
+            "Discovering sessions…",
+            title="Session discovery",
+            markup=False,
+        )
+        discoveries = await asyncio.gather(
+            *(self._discover_from_adapter(adapter) for _harness, adapter in providers)
+        )
+        summary_lines: list[str] = []
+        discovery_failed = False
+        for (harness, _adapter), result in zip(
+            providers,
+            discoveries,
+            strict=True,
+        ):
+            if result.error is not None:
+                discovery_failed = True
+                summary_lines.append(f"{harness.display_name} - failed: {result.error}")
+                continue
+
+            summary_lines.append(f"{harness.display_name} - {len(result.sessions)}")
+            for native_session in result.sessions:
+                if native_session.harness_id != harness.id:
+                    continue
+                self.session_manager.add_discovered(
+                    native_session=native_session,
+                    harness=harness,
+                )
+        self._refresh_sidebar()
+        self._refresh_status()
+
+        if discovery_failed:
+            completion_message = "Session discovery completed with errors:"
+            severity = "warning"
+        else:
+            completion_message = "Session discovery was successful. Sessions found:"
+            severity = "information"
+        self.notify(
+            "\n".join((completion_message, *summary_lines)),
+            title="Session discovery",
+            severity=severity,
+            markup=False,
+        )
+
+    async def _discover_from_adapter(
+        self,
+        adapter: NativeSessionAdapter,
+    ) -> _DiscoveryResult:
+        """Normalize one provider's discoveries while containing its failures."""
+
+        try:
+            async with asyncio.timeout(10):
+                native_sessions = await adapter.discover()
+        except Exception as error:  # noqa: BLE001 - providers fail independently
+            detail = str(error) or type(error).__name__
+            return _DiscoveryResult(error=detail)
+        return _DiscoveryResult(sessions=native_sessions)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Gate hub-owned keys while an active terminal owns the keyboard."""
@@ -316,6 +474,8 @@ class AgentHubApp(App):
             cwd=cwd,
             harness=harness,
         )
+        if session.terminal is None:
+            raise RuntimeError("new runtime session did not create a terminal")
         session.terminal.id = self._terminal_dom_id(session.id)
         if shell_slot is not None:
             self._shell_session_slots[shell_slot] = session.id
@@ -389,17 +549,17 @@ class AgentHubApp(App):
         """Restore active-row context and focus after entering terminal-first mode."""
 
         session = self.session_manager.active_session
-        if session is not None:
+        if session is not None and session.terminal is not None:
             self.query_one(SessionSidebar).set_active(session.id)
             self.set_focus(session.terminal)
 
-    def on_session_sidebar_session_selected(
+    async def on_session_sidebar_session_selected(
         self,
         message: SessionSidebar.SessionSelected,
     ) -> None:
         """Route sidebar navigation through the shared switching operation."""
 
-        self.show_session(message.session_id)
+        await self.activate_session(message.session_id)
 
     async def on_session_sidebar_shell_slot_selected(
         self,
@@ -415,14 +575,7 @@ class AgentHubApp(App):
     ) -> None:
         """Resolve terminal exit events to their owning AgentHub session."""
 
-        session = next(
-            (
-                session
-                for session in self.session_manager.sessions
-                if session.terminal is message.control
-            ),
-            None,
-        )
+        session = self.session_manager.find_by_terminal(message.control)
         if session is not None:
             await self._handle_session_process_exited(session, message.exit_code)
 
@@ -431,7 +584,8 @@ class AgentHubApp(App):
 
         sessions = self.session_manager.sessions
         running_agents = sum(
-            session.terminal.is_process_running for session in self._agent_sessions()
+            session.terminal is not None and session.terminal.is_process_running
+            for session in self._agent_sessions()
         )
         self.query_one(AgentHubStatusBar).update_state(
             session_count=len(sessions),
@@ -455,6 +609,7 @@ class AgentHubApp(App):
             return
 
         was_active = self.session_manager.active_session is session
+        terminal = session.terminal
         for slot, session_id in tuple(self._shell_session_slots.items()):
             if session_id == session.id:
                 del self._shell_session_slots[slot]
@@ -463,8 +618,8 @@ class AgentHubApp(App):
         if was_active:
             self._show_home()
 
-        if session.terminal.is_mounted:
-            await session.terminal.remove()
+        if terminal is not None and terminal.is_mounted:
+            await terminal.remove()
 
         self._refresh_sidebar()
         self._refresh_status()
