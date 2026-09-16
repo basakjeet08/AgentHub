@@ -1,5 +1,6 @@
 """Unit tests for the AgentTerminal-to-Bitty translation boundary."""
 
+from collections.abc import Coroutine
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -67,6 +68,145 @@ def test_ctrl_backspace_sends_terminal_word_erase(
     terminal.on_key(events.Key("ctrl+backspace", None))
 
     input_data.assert_called_once_with("\x17")
+
+
+def test_ctrl_v_schedules_a_system_clipboard_worker(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    run_worker = Mock()
+    monkeypatch.setattr(terminal, "run_worker", run_worker)
+
+    terminal.on_key(events.Key("ctrl+v", None))
+
+    assert run_worker.call_count == 1
+    scheduled_paste = run_worker.call_args.args[0]
+    assert isinstance(scheduled_paste, Coroutine)
+    assert run_worker.call_args.kwargs["group"] == "clipboard-paste"
+    scheduled_paste.close()
+
+
+async def test_paste_text_uses_the_native_paste_port(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    terminal.board.host.connection = Mock()
+    input_paste = Mock()
+    monkeypatch.setattr(terminal.board.display, "input_paste", input_paste)
+
+    await terminal.paste_text("one\ntwo\t🚀")
+
+    input_paste.assert_called_once_with("one\ntwo\t🚀")
+
+
+async def test_paste_text_retries_partial_writes_inside_one_bracketed_paste(
+    sleeping_harness: AgentHarness,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    written_chunks: list[bytes] = []
+    connection = Mock()
+
+    def write_partial(data: bytes) -> int:
+        chunk = data[:7]
+        written_chunks.append(chunk)
+        return len(chunk)
+
+    connection.write_bytes = write_partial
+    terminal.board.host.connection = connection
+    terminal.board.modes.bracketed_paste = True
+
+    await terminal.paste_text("one\ntwo")
+
+    assert b"".join(written_chunks) == b"\x1b[200~one\ntwo\x1b[201~"
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "super+a",
+        "super+v",
+        "hyper+a",
+        "ctrl+super+a",
+        "shift+hyper+x",
+        "super+enter",
+    ],
+)
+def test_unsupported_modifier_keys_are_consumed_without_raising(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+    key: str,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    parent_on_key = Mock()
+    input_key = Mock()
+    input_data = Mock()
+    input_paste = Mock()
+    monkeypatch.setattr(TtyTerminal, "on_key", parent_on_key)
+    monkeypatch.setattr(terminal.board.display, "input_key", input_key)
+    monkeypatch.setattr(terminal.board.display, "input", input_data)
+    monkeypatch.setattr(terminal.board.display, "input_paste", input_paste)
+
+    terminal.on_key(events.Key(key, None))
+
+    parent_on_key.assert_not_called()
+    input_key.assert_not_called()
+    input_data.assert_not_called()
+    input_paste.assert_not_called()
+
+
+@pytest.mark.parametrize("key", ["ctrl+a", "alt+a", "meta+a", "shift+a", "a"])
+def test_supported_modifier_keys_still_delegate_to_textual_tty(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+    key: str,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    parent_on_key = Mock()
+    monkeypatch.setattr(TtyTerminal, "on_key", parent_on_key)
+    event = events.Key(key, None)
+
+    terminal.on_key(event)
+
+    parent_on_key.assert_called_once_with(event)
+
+
+def test_super_c_still_copies_when_text_is_selected(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    screen = Mock()
+    screen.get_selected_text.return_value = "selected text"
+    monkeypatch.setattr(AgentTerminal, "screen", property(lambda _self: screen))
+    parent_on_key = Mock()
+    monkeypatch.setattr(TtyTerminal, "on_key", parent_on_key)
+
+    terminal.on_key(events.Key("super+c", None))
+
+    screen.action_copy_text.assert_called_once_with()
+    parent_on_key.assert_not_called()
+
+
+def test_super_c_without_selection_is_consumed_without_terminal_input(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    screen = Mock()
+    screen.get_selected_text.return_value = None
+    monkeypatch.setattr(AgentTerminal, "screen", property(lambda _self: screen))
+    parent_on_key = Mock()
+    input_key = Mock()
+    monkeypatch.setattr(TtyTerminal, "on_key", parent_on_key)
+    monkeypatch.setattr(terminal.board.display, "input_key", input_key)
+
+    terminal.on_key(events.Key("super+c", None))
+
+    screen.action_copy_text.assert_not_called()
+    parent_on_key.assert_not_called()
+    input_key.assert_not_called()
 
 
 def test_top_anchored_partial_scroll_region_is_retained(tmp_path: Path) -> None:

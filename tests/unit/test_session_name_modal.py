@@ -1,62 +1,24 @@
-"""Unit coverage for native clipboard handling in the session-name modal."""
+"""Unit coverage for clipboard ownership in the session-name modal."""
 
-import subprocess
-from unittest.mock import patch
+from collections.abc import Coroutine
+from unittest.mock import Mock
 
-from agenthub.ui.modals.session_name import _read_system_clipboard, _system_clipboard_command
-
-
-def test_wayland_clipboard_command_requests_text_content() -> None:
-    """Wayland paste must not request an image clipboard's default MIME type."""
-
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-1"}),
-        patch("agenthub.ui.modals.session_name.shutil.which", return_value="/usr/bin/wl-paste"),
-    ):
-        assert _system_clipboard_command() == (
-            "wl-paste",
-            "--no-newline",
-            "--type",
-            "text",
-        )
+from agenthub.ui.modals.session_name import SessionNameInput
 
 
-def test_system_clipboard_ignores_non_text_content() -> None:
-    """Image clipboard bytes must not be decoded or inserted as a name."""
+def test_ctrl_v_schedules_a_widget_owned_clipboard_worker(monkeypatch) -> None:
+    name_input = SessionNameInput()
+    run_worker = Mock()
+    monkeypatch.setattr(name_input, "run_worker", run_worker)
 
-    png_bytes = b"\x89PNG\r\n\x1a\n"
-    completed = subprocess.CompletedProcess(
-        args=("wl-paste", "--no-newline", "--type", "text"),
-        returncode=0,
-        stdout=png_bytes,
-        stderr=b"",
-    )
+    name_input.action_paste()
 
-    with (
-        patch(
-            "agenthub.ui.modals.session_name._system_clipboard_command",
-            return_value=completed.args,
-        ),
-        patch("agenthub.ui.modals.session_name.subprocess.run", return_value=completed),
-    ):
-        assert _read_system_clipboard() == ""
-
-
-def test_system_clipboard_decodes_utf8_text() -> None:
-    """Valid UTF-8 clipboard bytes remain available to Ctrl+V."""
-
-    completed = subprocess.CompletedProcess(
-        args=("wl-paste", "--no-newline", "--type", "text"),
-        returncode=0,
-        stdout=b"AgentHub Refactor",
-        stderr=b"",
-    )
-
-    with (
-        patch(
-            "agenthub.ui.modals.session_name._system_clipboard_command",
-            return_value=completed.args,
-        ),
-        patch("agenthub.ui.modals.session_name.subprocess.run", return_value=completed),
-    ):
-        assert _read_system_clipboard() == "AgentHub Refactor"
+    assert run_worker.call_count == 1
+    scheduled_paste = run_worker.call_args.args[0]
+    assert isinstance(scheduled_paste, Coroutine)
+    assert run_worker.call_args.kwargs == {
+        "group": "clipboard-paste",
+        "exclusive": True,
+        "exit_on_error": False,
+    }
+    scheduled_paste.close()

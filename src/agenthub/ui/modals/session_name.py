@@ -1,9 +1,5 @@
 """Session-name input for the New Agent Session workflow."""
 
-import os
-import shutil
-import subprocess
-import sys
 from typing import ClassVar
 
 from textual.app import ComposeResult
@@ -12,52 +8,28 @@ from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
-
-def _system_clipboard_command() -> tuple[str, ...] | None:
-    """Return the first available native command for reading clipboard text."""
-
-    if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-paste"):
-        return ("wl-paste", "--no-newline", "--type", "text")
-    if os.environ.get("DISPLAY"):
-        if shutil.which("xclip"):
-            return ("xclip", "-selection", "clipboard", "-o")
-        if shutil.which("xsel"):
-            return ("xsel", "--clipboard", "--output")
-    if sys.platform == "darwin" and shutil.which("pbpaste"):
-        return ("pbpaste",)
-    return None
-
-
-def _read_system_clipboard() -> str | None:
-    """Read OS clipboard text, falling back when no supported command exists."""
-
-    command = _system_clipboard_command()
-    if command is None:
-        return None
-    try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            timeout=1,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return ""
-    try:
-        return result.stdout.decode("utf-8")
-    except UnicodeDecodeError:
-        return ""
+from agenthub.clipboard import read_clipboard_text
 
 
 class SessionNameInput(Input):
     """Input whose Ctrl+V can read the surrounding OS clipboard."""
 
     def action_paste(self) -> None:
+        """Read external clipboard text without blocking the Textual event loop."""
+
+        self.run_worker(
+            self._paste_system_clipboard(),
+            group="clipboard-paste",
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    async def _paste_system_clipboard(self) -> None:
         """Paste external clipboard text or use Textual's local fallback."""
 
-        clipboard = _read_system_clipboard()
+        clipboard = await read_clipboard_text()
+        if not self.is_mounted:
+            return
         if clipboard is None:
             super().action_paste()
             return

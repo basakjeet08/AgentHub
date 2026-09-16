@@ -4,6 +4,7 @@ import asyncio
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from time import monotonic
 from typing import cast
 
 from bittty import constants as _bittty_constants
@@ -17,12 +18,15 @@ from textual.strip import Strip
 from textual_tty import Terminal as TtyTerminal
 
 from agenthub._terminal_launcher import build_launch_command
+from agenthub.clipboard import read_clipboard_text
 from agenthub.harnesses import AgentHarness, KeyStroke
 from agenthub.terminal.scrollback import ScrollbackVideo
 
 _SCROLLBACK_LINES = 10_000
 _WHEEL_SCROLL_LINES = 3
 _WORD_ERASE = "\x17"  # Ctrl+W, the conventional terminal erase-word character.
+_PASTE_REPEAT_GAP_SECONDS = 1.0
+_UNSUPPORTED_TERMINAL_MODIFIERS = frozenset({"super", "hyper"})
 
 _BITTTY_MODIFIERS = {
     (False, False, False): _bittty_constants.KEY_MOD_NONE,
@@ -40,6 +44,61 @@ def _bittty_modifier(key_stroke: KeyStroke) -> int:
     """Translate a semantic key description into Bitty's modifier encoding."""
 
     return _BITTTY_MODIFIERS[(key_stroke.shift, key_stroke.alt, key_stroke.ctrl)]
+
+
+class _BufferedPasteConnection:
+    """Buffer one logical paste while draining every byte to a non-blocking PTY."""
+
+    def __init__(self, connection) -> None:
+        self._connection = connection
+        self._buffer = bytearray()
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
+
+    def write(self, data: str) -> int:
+        encoded = data.encode("utf-8")
+        self._buffer.extend(encoded)
+        return len(encoded)
+
+    def write_bytes(self, data: bytes) -> int:
+        self._buffer.extend(data)
+        return len(data)
+
+    async def drain(self) -> None:
+        writer = self._connection.write_bytes
+        while self._buffer:
+            try:
+                written = writer(bytes(self._buffer))
+            except BlockingIOError:
+                written = 0
+            if written:
+                del self._buffer[:written]
+                continue
+            await self._wait_until_writable()
+
+    async def _wait_until_writable(self) -> None:
+        file_descriptor = getattr(self._connection, "master_fd", None)
+        if not isinstance(file_descriptor, int):
+            await asyncio.sleep(0.01)
+            return
+
+        loop = asyncio.get_running_loop()
+        writable = loop.create_future()
+
+        def mark_writable() -> None:
+            if not writable.done():
+                writable.set_result(None)
+
+        try:
+            loop.add_writer(file_descriptor, mark_writable)
+        except (NotImplementedError, OSError):
+            await asyncio.sleep(0.01)
+            return
+        try:
+            await writable
+        finally:
+            loop.remove_writer(file_descriptor)
 
 
 class AgentTerminal(TtyTerminal):
@@ -74,6 +133,8 @@ class AgentTerminal(TtyTerminal):
         self._scrollback_offset = 0
         self._scrollback_video: ScrollbackVideo | None = None
         self._suppress_upstream_selection_style = False
+        self._paste_in_progress = False
+        self._last_paste_key_at = 0.0
         launch_command = harness.command if command is None else tuple(command)
         super().__init__(
             command=list(build_launch_command(launch_directory, launch_command)),
@@ -197,6 +258,22 @@ class AgentTerminal(TtyTerminal):
             event.prevent_default()
             return
 
+        if event.key == "ctrl+v":
+            now = monotonic()
+            repeated = now - self._last_paste_key_at < _PASTE_REPEAT_GAP_SECONDS
+            self._last_paste_key_at = now
+            if not repeated and not self._paste_in_progress:
+                self._paste_in_progress = True
+                self.run_worker(
+                    self._paste_system_clipboard(),
+                    group="clipboard-paste",
+                    exclusive=False,
+                    exit_on_error=False,
+                )
+            event.stop()
+            event.prevent_default()
+            return
+
         if event.key == "ctrl+backspace":
             self.board.display.input(_WORD_ERASE)
             event.stop()
@@ -214,8 +291,54 @@ class AgentTerminal(TtyTerminal):
             event.prevent_default()
             return
 
+        modifiers = event.key.split("+")[:-1]
+        if _UNSUPPORTED_TERMINAL_MODIFIERS.intersection(modifiers):
+            event.stop()
+            event.prevent_default()
+            return
+
         event.prevent_default()
         super().on_key(event)
+
+    async def _paste_system_clipboard(self) -> None:
+        """Read the desktop clipboard and paste it through the terminal's port."""
+
+        try:
+            text = await read_clipboard_text()
+            if not self.is_mounted or not self.is_process_running:
+                return
+
+            if text is None:
+                text = self.app.clipboard
+                if not text:
+                    self.notify(
+                        "No system clipboard is available to paste from.",
+                        title="Paste unavailable",
+                        severity="warning",
+                    )
+                    return
+
+            if text:
+                await self.paste_text(text)
+        finally:
+            self._paste_in_progress = False
+
+    async def paste_text(self, text: str) -> None:
+        """Deliver every byte through one native terminal paste operation."""
+
+        host = self.board.host
+        connection = host.connection
+        if connection is None:
+            return
+
+        buffered_connection = _BufferedPasteConnection(connection)
+        host.connection = buffered_connection
+        try:
+            self.board.display.input_paste(text)
+            await buffered_connection.drain()
+        finally:
+            if host.connection is buffered_connection:
+                host.connection = connection
 
     def _wheel(self, event: events.MouseEvent, button: int, arrow: str) -> None:
         """Scroll the transcript when the child ignores the wheel; defer otherwise."""

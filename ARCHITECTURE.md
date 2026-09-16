@@ -681,6 +681,32 @@ The implementation imports `bittty.constants` only from the terminal adapter
 and declares Bitty as a direct dependency. Harness, session, manager, and app
 modules remain independent of Bitty.
 
+## System Clipboard
+
+`agenthub.clipboard` is the only module that talks to desktop clipboard
+utilities. It resolves the first available backend (`wl-paste`, `xclip`,
+`xsel`, `pbpaste`) and exposes an async `read_clipboard_text()` that never
+blocks the Textual event loop. The desired dependency boundary is:
+
+```text
+OS clipboard
+     ↓
+agenthub.clipboard
+     ↓
+AgentTerminal (focused Ctrl+V)
+     ↓
+textual-tty input_paste()
+     ↓
+Bitty → PTY
+```
+
+`AgentTerminal` owns Ctrl+V while focused: it reads the system clipboard in a
+worker and delivers the text through the terminal's native paste port, falling
+back to AgentHub's internal clipboard when no desktop backend exists. Textual
+`Input` widgets keep their own Ctrl+V semantics, and bracketed paste from the
+outer terminal emulator continues to flow through the existing
+`events.Paste` path.
+
 ## Working Directories
 
 Every useful session needs an explicit working directory:
@@ -861,6 +887,7 @@ src/agenthub/
 ├── _terminal_launcher.py # child-side cwd setup and exec
 ├── main.py              # entry point
 ├── app.py               # Textual application and DOM ownership
+├── clipboard.py         # system-clipboard backend resolution and reads
 ├── harnesses/
 │   ├── __init__.py      # public harness API
 │   ├── antigravity.py   # Antigravity definition
@@ -917,6 +944,7 @@ tests/
 ├── conftest.py          # shared harmless process fixture
 ├── unit/
 │   ├── test_app.py
+│   ├── test_clipboard.py
 │   ├── test_harnesses.py
 │   ├── test_main.py
 │   ├── test_native_session_adapters.py
@@ -934,7 +962,8 @@ tests/
     ├── test_session_creation_shortcuts.py
     ├── test_sidebar_groups.py
     ├── test_session_switching.py
-    └── test_terminal_lifecycle.py
+    ├── test_terminal_lifecycle.py
+    └── test_terminal_paste.py
 ```
 
 Packages are appropriate here because harnesses, sessions, and terminal hosting

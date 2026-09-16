@@ -1,7 +1,7 @@
 """Integration coverage for terminal-first keyboard ownership."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from textual.command import CommandPalette
@@ -83,6 +83,70 @@ async def test_locked_hub_binding_reaches_pty(
             (HarnessSelectionModal, SessionNameModal, WorkingDirectoryModal),
         )
         assert app.session_manager.sessions == (session,)
+
+
+async def test_super_a_is_consumed_without_crashing_or_reaching_pty(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+g")
+        assert app.hub_locked
+        assert session.terminal.has_focus
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press("super+a")
+            await pilot.pause()
+
+        assert app.is_running
+        assert session.terminal.has_focus
+        write_spy.assert_not_called()
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press("a")
+            await pilot.pause()
+
+        write_spy.assert_called_once_with("a")
+        assert session.terminal.has_focus
+
+
+async def test_session_name_input_owns_ctrl_v_over_a_mounted_terminal(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+n")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, SessionNameModal)
+        name_input = app.screen.query_one("#session-name-input", Input)
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with (
+            patch(
+                "agenthub.ui.modals.session_name.read_clipboard_text",
+                AsyncMock(return_value="Clipboard Session"),
+            ),
+            patch(
+                "agenthub.terminal.widget.read_clipboard_text",
+                AsyncMock(return_value="must not reach terminal"),
+            ) as terminal_clipboard,
+            patch.object(pty, "write", wraps=pty.write) as write_spy,
+        ):
+            await pilot.press("ctrl+v")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        assert name_input.value == "Clipboard Session"
+        assert name_input.has_focus
+        terminal_clipboard.assert_not_awaited()
+        write_spy.assert_not_called()
 
 
 async def test_ctrl_g_toggles_mode_without_reaching_pty(

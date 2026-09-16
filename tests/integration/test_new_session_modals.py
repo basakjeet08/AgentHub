@@ -204,10 +204,11 @@ async def test_ctrl_v_pastes_external_clipboard_text_into_name(
         name_input = name_modal.query_one("#session-name-input", Input)
 
         with patch(
-            "agenthub.ui.modals.session_name._read_system_clipboard",
-            return_value="Clipboard Session",
+            "agenthub.ui.modals.session_name.read_clipboard_text",
+            AsyncMock(return_value="Clipboard Session"),
         ):
             await pilot.press("ctrl+v")
+            await app.workers.wait_for_complete()
             await pilot.pause()
 
         assert name_input.value == "Clipboard Session"
@@ -227,13 +228,36 @@ async def test_non_text_clipboard_does_not_change_name_input(
         name_input.select_all()
 
         with patch(
-            "agenthub.ui.modals.session_name._read_system_clipboard",
-            return_value="",
+            "agenthub.ui.modals.session_name.read_clipboard_text",
+            AsyncMock(return_value=""),
         ):
             await pilot.press("ctrl+v")
+            await app.workers.wait_for_complete()
             await pilot.pause()
 
         assert name_input.value == "Keep this name"
+        assert name_input.has_focus
+
+
+async def test_name_input_falls_back_to_textual_clipboard(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
+
+    async with app.run_test() as pilot:
+        name_modal = await _open_name_modal(app, pilot)
+        name_input = name_modal.query_one("#session-name-input", Input)
+        app.copy_to_clipboard("Textual Clipboard")
+
+        with patch(
+            "agenthub.ui.modals.session_name.read_clipboard_text",
+            AsyncMock(return_value=None),
+        ):
+            await pilot.press("ctrl+v")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        assert name_input.value == "Textual Clipboard"
         assert name_input.has_focus
 
 
