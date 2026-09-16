@@ -35,7 +35,7 @@ class OpenCodeSessionAdapter:
         )
         self._database = database or data_home / "opencode/opencode.db"
 
-    async def discover(self) -> tuple[NativeSession, ...]:
+    def discover(self) -> tuple[NativeSession, ...]:
         if not self._database.is_file():
             return ()
         try:

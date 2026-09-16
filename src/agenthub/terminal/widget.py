@@ -20,6 +20,7 @@ from agenthub.terminal.scrollback import ScrollbackVideo
 
 _SCROLLBACK_LINES = 10_000
 _WHEEL_SCROLL_LINES = 3
+_WORD_ERASE = "\x17"  # Ctrl+W, the conventional terminal erase-word character.
 
 _BITTTY_MODIFIERS = {
     (False, False, False): _bittty_constants.KEY_MOD_NONE,
@@ -175,6 +176,12 @@ class AgentTerminal(TtyTerminal):
 
     def on_key(self, event: events.Key) -> None:
         """Use page keys for retained primary-screen history when available."""
+
+        if event.key == "ctrl+backspace":
+            self.board.display.input(_WORD_ERASE)
+            event.stop()
+            event.prevent_default()
+            return
 
         if (
             self.harness.scroll is None

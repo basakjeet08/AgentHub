@@ -26,6 +26,14 @@ COMMAND_PALETTE_BINDING = Binding(
     priority=True,
 )
 
+RESYNC_SESSIONS_BINDING = Binding(
+    "ctrl+shift+r",
+    "resync_sessions",
+    "Re-sync native sessions",
+    key_display="Ctrl+Shift+R",
+    priority=True,
+)
+
 FOCUS_AGENTS_BINDING = Binding(
     "ctrl+a",
     "focus_agents",
@@ -69,6 +77,7 @@ TERMINAL_GATED_ACTIONS = frozenset(
         "focus_shells",
         "new_session",
         "quit",
+        "resync_sessions",
     }
 )
 
@@ -76,6 +85,7 @@ APPLICATION_BINDINGS = (
     TOGGLE_HUB_LOCK_BINDING,
     NEW_SESSION_BINDING,
     COMMAND_PALETTE_BINDING,
+    RESYNC_SESSIONS_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
     QUIT_BINDING,
@@ -88,6 +98,7 @@ HOME_SHORTCUTS = (
             TOGGLE_HUB_LOCK_BINDING,
             NEW_SESSION_BINDING,
             COMMAND_PALETTE_BINDING,
+            RESYNC_SESSIONS_BINDING,
         )
     ),
     ("Ctrl+A, then 1…9", "Switch agent session"),
@@ -103,6 +114,7 @@ __all__ = [
     "NEW_SESSION_BINDING",
     "NUMBERED_SESSION_BINDINGS",
     "QUIT_BINDING",
+    "RESYNC_SESSIONS_BINDING",
     "TERMINAL_GATED_ACTIONS",
     "TOGGLE_HUB_LOCK_BINDING",
 ]

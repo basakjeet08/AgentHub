@@ -32,6 +32,8 @@ multi-session runtime architecture:
   provider-specific adapters and displays them as unloaded sidebar entries.
 - It resumes an unloaded conversation by its exact native ID on selection,
   mounts the resulting terminal, and reuses that runtime on later selections.
+- It re-syncs native conversations in place with Ctrl+Shift+R while preserving
+  running terminals and reconciling unloaded sidebar entries.
 - It provides a session sidebar for switching between managed sessions.
 - It keeps `AGENTS` and `SHELLS` sidebar groups visible at all times, allocating
   more space to agent conversations with a 70/30 split.

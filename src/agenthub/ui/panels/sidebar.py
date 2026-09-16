@@ -51,6 +51,8 @@ class SessionSidebar(Vertical):
         self._agent_sessions = tuple(agent_sessions)
         self._shell_sessions = tuple(shell_sessions)
         self._visible_sessions = self._agent_sessions + self._shell_sessions
+        self._agent_session_snapshot = self._session_snapshot(self._agent_sessions)
+        self._shell_session_snapshot = self._session_snapshot(self._shell_sessions)
         self._shortcut_slots = dict(shortcut_slots or {})
         self._active_session_id: str | None = None
         self._focused_kind: SessionKind | None = None
@@ -78,10 +80,12 @@ class SessionSidebar(Vertical):
 
         next_agents = tuple(agent_sessions)
         next_shells = tuple(shell_sessions)
+        next_agent_snapshot = self._session_snapshot(next_agents)
+        next_shell_snapshot = self._session_snapshot(next_shells)
         next_shortcuts = dict(shortcut_slots or {})
         if (
-            next_agents == self._agent_sessions
-            and next_shells == self._shell_sessions
+            next_agent_snapshot == self._agent_session_snapshot
+            and next_shell_snapshot == self._shell_session_snapshot
             and next_shortcuts == self._shortcut_slots
         ):
             return
@@ -89,9 +93,28 @@ class SessionSidebar(Vertical):
         self._agent_sessions = next_agents
         self._shell_sessions = next_shells
         self._visible_sessions = self._agent_sessions + self._shell_sessions
+        self._agent_session_snapshot = next_agent_snapshot
+        self._shell_session_snapshot = next_shell_snapshot
         self._shortcut_slots = next_shortcuts
         if self.is_mounted:
             self.call_next(self._recompose_sessions)
+
+    @staticmethod
+    def _session_snapshot(
+        sessions: tuple[AgentSession, ...],
+    ) -> tuple[tuple[str, str, str, SessionKind, bool], ...]:
+        """Capture the session fields that affect sidebar presentation."""
+
+        return tuple(
+            (
+                session.id,
+                session.name,
+                session.harness.display_name,
+                session.kind,
+                session.terminal is None,
+            )
+            for session in sessions
+        )
 
     async def _recompose_sessions(self) -> None:
         """Rebuild session rows before restoring the active-row highlight."""

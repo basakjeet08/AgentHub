@@ -1,5 +1,6 @@
 """Codex native conversation discovery and exact-ID resume."""
 
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -18,7 +19,19 @@ class CodexSessionAdapter:
     harness_id = "codex"
 
     def __init__(self, data_directory: Path | None = None) -> None:
-        self._data_directory = data_directory or Path.home() / ".codex"
+        self._data_directory = (
+            data_directory if data_directory is not None else self._configured_data_directory()
+        )
+
+    @staticmethod
+    def _configured_data_directory() -> Path:
+        """Resolve Codex's SQLite directory using its environment precedence."""
+
+        for variable in ("CODEX_SQLITE_HOME", "CODEX_HOME"):
+            configured = os.environ.get(variable, "").strip()
+            if configured:
+                return Path(configured).expanduser()
+        return Path.home() / ".codex"
 
     def _database(self) -> Path | None:
         candidates = (
@@ -28,7 +41,7 @@ class CodexSessionAdapter:
         )
         return max(candidates, default=(0, None), key=lambda candidate: candidate[0])[1]
 
-    async def discover(self) -> tuple[NativeSession, ...]:
+    def discover(self) -> tuple[NativeSession, ...]:
         database = self._database()
         if database is None:
             return ()

@@ -51,6 +51,7 @@ def _app_with_sessions(
         ("ctrl+n", "\x0e"),
         ("ctrl+p", "\x10"),
         ("ctrl+q", "\x11"),
+        ("ctrl+backspace", "\x17"),
         ("ctrl+0", "0"),
         ("ctrl+1", "1"),
     ],

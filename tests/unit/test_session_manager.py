@@ -7,6 +7,7 @@ import pytest
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import NativeSession
 from agenthub.sessions import SessionKind, SessionManager, SessionState
+from agenthub.terminal import AgentTerminal
 
 
 def test_manager_starts_empty() -> None:
@@ -85,6 +86,62 @@ def test_add_discovered_session_is_unloaded_and_deduplicated(
     assert session.native_session_id == "native-1"
     assert session.terminal is None
     assert session.state is SessionState.UNLOADED
+
+
+def test_reconcile_discovered_updates_metadata_and_removes_only_stale_unloaded(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    manager = SessionManager()
+    stale = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "stale-native",
+            "Stale",
+            tmp_path,
+        ),
+        harness=sleeping_harness,
+    )
+    running = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "running-native",
+            "Running",
+            tmp_path,
+        ),
+        harness=sleeping_harness,
+    )
+    manager.attach_terminal(
+        running.id,
+        AgentTerminal(sleeping_harness, working_directory=tmp_path),
+    )
+    renamed_cwd = tmp_path / "renamed"
+
+    reconciled = manager.reconcile_discovered(
+        native_sessions=(
+            NativeSession(
+                sleeping_harness.id,
+                "running-native",
+                "Renamed",
+                renamed_cwd,
+            ),
+            NativeSession(
+                sleeping_harness.id,
+                "new-native",
+                "New",
+                tmp_path,
+            ),
+        ),
+        harness=sleeping_harness,
+    )
+
+    assert stale not in manager.sessions
+    assert manager.sessions == (running, reconciled[1])
+    assert reconciled[0] is running
+    assert running.name == "Renamed"
+    assert running.cwd == renamed_cwd
+    assert running.terminal is not None
+    assert running.state is SessionState.RUNNING
 
 
 def test_select_rejects_unknown_session_without_changing_selection(

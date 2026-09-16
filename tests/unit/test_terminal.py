@@ -56,6 +56,19 @@ def test_wheel_uses_harness_scroll_policy(
     event.stop.assert_called_once_with()
 
 
+def test_ctrl_backspace_sends_terminal_word_erase(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    input_data = Mock()
+    monkeypatch.setattr(terminal.board.display, "input", input_data)
+
+    terminal.on_key(events.Key("ctrl+backspace", None))
+
+    input_data.assert_called_once_with("\x17")
+
+
 def test_top_anchored_partial_scroll_region_is_retained(tmp_path: Path) -> None:
     shell_harness = AgentHarness(
         id="test-shell",

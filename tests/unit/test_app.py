@@ -13,6 +13,8 @@ from agenthub.ui.bindings import (
     NEW_SESSION_BINDING,
     NUMBERED_SESSION_BINDINGS,
     QUIT_BINDING,
+    RESYNC_SESSIONS_BINDING,
+    TERMINAL_GATED_ACTIONS,
     TOGGLE_HUB_LOCK_BINDING,
 )
 
@@ -75,6 +77,11 @@ def test_application_navigation_bindings_are_reserved() -> None:
     assert COMMAND_PALETTE_BINDING.key == "ctrl+p"
     assert COMMAND_PALETTE_BINDING.action == "command_palette"
     assert COMMAND_PALETTE_BINDING.priority is True
+    assert RESYNC_SESSIONS_BINDING.key == "ctrl+shift+r"
+    assert RESYNC_SESSIONS_BINDING.action == "resync_sessions"
+    assert RESYNC_SESSIONS_BINDING.priority is True
+    assert RESYNC_SESSIONS_BINDING in APPLICATION_BINDINGS
+    assert "resync_sessions" in TERMINAL_GATED_ACTIONS
     assert [binding.key for binding in NUMBERED_SESSION_BINDINGS] == [
         str(number) for number in range(1, 10)
     ]

@@ -77,6 +77,8 @@ class SessionManager:
             native_session.native_session_id,
         )
         if existing is not None:
+            existing.name = native_session.name
+            existing.cwd = native_session.cwd
             return existing
 
         session = AgentSession(
@@ -91,6 +93,34 @@ class SessionManager:
         )
         self._sessions[session.id] = session
         return session
+
+    def reconcile_discovered(
+        self,
+        *,
+        native_sessions: tuple[NativeSession, ...],
+        harness: AgentHarness,
+    ) -> tuple[AgentSession, ...]:
+        """Synchronize one provider while preserving every live runtime."""
+
+        native_ids = {
+            native_session.native_session_id for native_session in native_sessions
+        }
+        stale_session_ids = tuple(
+            session.id
+            for session in self._sessions.values()
+            if session.harness.id == harness.id
+            and session.native_session_id is not None
+            and session.native_session_id not in native_ids
+            and session.terminal is None
+            and session.state is SessionState.UNLOADED
+        )
+        for session_id in stale_session_ids:
+            self.remove(session_id)
+
+        return tuple(
+            self.add_discovered(native_session=native_session, harness=harness)
+            for native_session in native_sessions
+        )
 
     def find_by_native_identity(
         self,

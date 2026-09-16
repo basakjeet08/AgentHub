@@ -1,12 +1,17 @@
 """Integration coverage for discovery and lazy native-session resumption."""
 
+import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from textual.widgets import OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
 from agenthub.sessions import SessionState
-from agenthub.ui import SessionSidebar
+from agenthub.ui import HomeScreen, SessionSidebar
 
 
 class FakeNativeSessionAdapter:
@@ -27,7 +32,7 @@ class FakeNativeSessionAdapter:
         self._native_sessions = native_sessions
         self.resumed_ids: list[str] = []
 
-    async def discover(self) -> tuple[NativeSession, ...]:
+    def discover(self) -> tuple[NativeSession, ...]:
         if self._error is not None:
             raise self._error
         if self._native_sessions is not None:
@@ -61,8 +66,13 @@ async def test_discovered_session_starts_unloaded_and_resumes_once(
         assert session.state is SessionState.UNLOADED
         sidebar = app.query_one(SessionSidebar)
         assert sidebar.visible_session_ids == (session.id,)
+        assert app.query_one(HomeScreen).query_one("#home-empty-copy", Static).content == (
+            "Select a session from the sidebar\nor start a new coding-agent session."
+        )
+        assert app._discovery_executor is None
 
-        await app.activate_session(session.id)
+        await pilot.press("ctrl+a")
+        await pilot.press("enter")
         await pilot.pause()
         terminal = session.terminal
         process = terminal.board.process if terminal is not None else None
@@ -72,7 +82,8 @@ async def test_discovered_session_starts_unloaded_and_resumes_once(
         assert terminal.is_process_running
         assert terminal.has_focus
 
-        await app.activate_session(session.id)
+        await pilot.press("ctrl+a")
+        await pilot.press("enter")
         await pilot.pause()
 
         assert session.terminal is terminal
@@ -93,6 +104,93 @@ async def test_discovered_session_starts_unloaded_and_resumes_once(
                 "information",
                 False,
             ),
+        ]
+
+
+async def test_provider_discovery_does_not_block_the_event_loop(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    class SlowAdapter(FakeNativeSessionAdapter):
+        def discover(self) -> tuple[NativeSession, ...]:
+            time.sleep(0.2)
+            return ()
+
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        native_session_adapters={},
+    )
+    adapter = SlowAdapter(sleeping_harness, tmp_path)
+    executor = ThreadPoolExecutor(max_workers=1)
+    started_at = time.monotonic()
+    try:
+        discovery = asyncio.create_task(app._discover_from_adapter(adapter, executor))
+        await asyncio.sleep(0.02)
+
+        assert time.monotonic() - started_at < 0.1
+        assert not discovery.done()
+        result = await discovery
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    assert result.sessions == ()
+    assert result.error is None
+
+
+async def test_resync_shortcut_reconciles_unloaded_native_sessions(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    adapter = FakeNativeSessionAdapter(sleeping_harness, tmp_path)
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        native_session_adapters={sleeping_harness.id: adapter},
+    )
+
+    async with app.run_test() as pilot:
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        stale = app.session_manager.sessions[0]
+        adapter._native_sessions = (
+            NativeSession(
+                sleeping_harness.id,
+                "native-2",
+                "New native session",
+                tmp_path,
+            ),
+        )
+
+        await pilot.press("ctrl+shift+r")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        sessions = app.session_manager.sessions
+        assert stale not in sessions
+        assert len(sessions) == 1
+        assert sessions[0].native_session_id == "native-2"
+        assert sessions[0].terminal is None
+        assert app.query_one(SessionSidebar).visible_session_ids == (sessions[0].id,)
+
+        retained = sessions[0]
+        adapter._native_sessions = (
+            NativeSession(
+                sleeping_harness.id,
+                "native-2",
+                "Renamed native session",
+                tmp_path,
+            ),
+        )
+        await pilot.press("ctrl+shift+r")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert app.session_manager.sessions == (retained,)
+        assert retained.name == "Renamed native session"
+        prompt = app.query_one("#agent-session-list", OptionList).get_option(retained.id).prompt
+        assert "Renamed native session" in str(prompt)
+        assert [notification.message for notification in app._notifications][-2:] == [
+            "Discovering sessions…",
+            f"Session discovery was successful. Sessions found:\n{sleeping_harness.display_name} - 1",
         ]
 
 

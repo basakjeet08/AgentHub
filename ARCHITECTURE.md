@@ -1153,6 +1153,29 @@ harness and produce exact-ID launch specifications. The immutable
 `AgentHarness` remains terminal presentation and default-command configuration;
 it does not absorb provider storage or conversation lifecycle behavior.
 
+Discovery is a synchronous adapter operation because providers use blocking
+filesystem and SQLite APIs. `AgentHubApp` submits those operations to a small,
+bounded executor owned only by startup discovery, then cooperatively polls the
+result futures from its async worker. Session normalization and all Textual DOM
+updates remain on the application event loop. This avoids both UI stalls and
+the Python 3.13 default-executor shutdown behavior described above. Provider
+timeouts stop AgentHub from waiting; they cannot forcibly terminate a Python
+thread, so the read-only SQLite helpers retain short database timeouts and the
+executor cancels work that has not started.
+
+Provider state locations follow their native Linux configuration. Codex checks
+`CODEX_SQLITE_HOME`, then `CODEX_HOME`, before `~/.codex`. Devin checks
+`$XDG_DATA_HOME/devin/cli/sessions.db` before the conventional
+`~/.local/share/devin/cli/sessions.db`, retaining the latter as a compatibility
+fallback. Explicit adapter paths used by tests and embedding callers always
+take precedence.
+
+Ctrl+Shift+R schedules the same provider discovery pipeline after startup. A
+successful provider result updates known native metadata, adds newly discovered
+conversations, and removes unloaded entries that the provider no longer
+reports. Sessions with attached runtimes are retained so re-sync never
+interrupts a running terminal. Failed providers retain their existing entries.
+
 ## Architectural Rules
 
 Future work should preserve these rules:

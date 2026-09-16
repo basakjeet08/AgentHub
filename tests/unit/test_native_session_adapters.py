@@ -23,6 +23,72 @@ def _database(path: Path, schema: str, values: tuple[object, ...], insert: str) 
         connection.close()
 
 
+def test_codex_resolves_configured_state_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    sqlite_home = tmp_path / "sqlite-home"
+    explicit_home = tmp_path / "explicit-home"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CODEX_SQLITE_HOME", str(sqlite_home))
+
+    assert CodexSessionAdapter()._data_directory == sqlite_home
+    assert CodexSessionAdapter(explicit_home)._data_directory == explicit_home
+
+    monkeypatch.delenv("CODEX_SQLITE_HOME")
+    assert CodexSessionAdapter()._data_directory == codex_home
+
+
+def test_codex_ignores_empty_state_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("CODEX_HOME", "  ")
+    monkeypatch.setenv("CODEX_SQLITE_HOME", "")
+
+    assert CodexSessionAdapter()._data_directory == tmp_path / ".codex"
+
+
+def test_devin_prefers_xdg_database_and_retains_legacy_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    xdg_home = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_DATA_HOME", str(xdg_home))
+
+    adapter = DevinSessionAdapter()
+
+    assert adapter._database_candidates == (
+        xdg_home / "devin/cli/sessions.db",
+        tmp_path / ".local/share/devin/cli/sessions.db",
+    )
+
+    legacy_database = adapter._database_candidates[1]
+    legacy_database.parent.mkdir(parents=True)
+    legacy_database.touch()
+    assert adapter._database() == legacy_database
+
+    xdg_database = adapter._database_candidates[0]
+    xdg_database.parent.mkdir(parents=True)
+    xdg_database.touch()
+    assert adapter._database() == xdg_database
+
+
+def test_devin_explicit_database_overrides_xdg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    explicit_database = tmp_path / "sessions.db"
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+
+    assert DevinSessionAdapter(explicit_database)._database_candidates == (
+        explicit_database,
+    )
+
+
 async def test_codex_discovers_and_resumes_exact_thread(tmp_path: Path) -> None:
     database = tmp_path / "state_5.sqlite"
     rollout = tmp_path / "rollout.jsonl"
@@ -49,7 +115,7 @@ async def test_codex_discovers_and_resumes_exact_thread(tmp_path: Path) -> None:
     )
     adapter = CodexSessionAdapter(tmp_path)
 
-    sessions = await adapter.discover()
+    sessions = adapter.discover()
     launch = await adapter.resume(sessions[0])
 
     assert sessions == (NativeSession("codex", "codex-id", "Named thread", tmp_path),)
@@ -80,7 +146,7 @@ async def test_codex_skips_stale_threads_without_rollout_files(tmp_path: Path) -
         "INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
 
-    assert await CodexSessionAdapter(tmp_path).discover() == ()
+    assert CodexSessionAdapter(tmp_path).discover() == ()
 
 
 async def test_devin_discovers_all_visible_sessions(tmp_path: Path) -> None:
@@ -98,7 +164,7 @@ async def test_devin_discovers_all_visible_sessions(tmp_path: Path) -> None:
     )
     adapter = DevinSessionAdapter(database)
 
-    sessions = await adapter.discover()
+    sessions = adapter.discover()
     launch = await adapter.resume(sessions[0])
 
     assert sessions[0].native_session_id == "devin-id"
@@ -131,14 +197,16 @@ async def test_antigravity_parses_file_workspace_uri(tmp_path: Path) -> None:
     )
     adapter = AntigravitySessionAdapter(database)
 
-    sessions = await adapter.discover()
+    sessions = adapter.discover()
     launch = await adapter.resume(sessions[0])
 
     assert sessions[0].cwd == tmp_path
     assert launch.command == ("agy", "--conversation", "agy-id")
 
 
-async def test_antigravity_skips_zero_content_conversation_shells(tmp_path: Path) -> None:
+async def test_antigravity_skips_zero_step_shells_with_summary_metadata(
+    tmp_path: Path,
+) -> None:
     database = tmp_path / "conversation_summaries.db"
     _database(
         database,
@@ -149,11 +217,21 @@ async def test_antigravity_skips_zero_content_conversation_shells(tmp_path: Path
             last_user_input_step_index INTEGER, preview TEXT, raw_summary TEXT
         )
         """,
-        ("empty-id", "Untitled", "[]", 0, 1, 0, -1, "", None),
+        (
+            "empty-id",
+            "T48914",
+            "[]",
+            0,
+            1,
+            0,
+            -1,
+            "T48914",
+            b"\x0a\x06T48914\x22$placeholder-metadata",
+        ),
         "INSERT INTO conversation_summaries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
 
-    assert await AntigravitySessionAdapter(database).discover() == ()
+    assert AntigravitySessionAdapter(database).discover() == ()
 
 
 async def test_opencode_discovers_global_root_sessions_and_resumes_exact_id(
@@ -186,7 +264,7 @@ async def test_opencode_discovers_global_root_sessions_and_resumes_exact_id(
         connection.close()
 
     adapter = OpenCodeSessionAdapter(database)
-    sessions = await adapter.discover()
+    sessions = adapter.discover()
     launch = await adapter.resume(sessions[0])
 
     assert sessions == (
@@ -207,4 +285,4 @@ async def test_opencode_rejects_an_unsupported_database_schema(tmp_path: Path) -
         connection.close()
 
     with pytest.raises(NativeSessionDiscoveryError, match="unsupported schema"):
-        await OpenCodeSessionAdapter(database).discover()
+        OpenCodeSessionAdapter(database).discover()

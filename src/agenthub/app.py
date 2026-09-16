@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -90,6 +91,8 @@ class AgentHubApp(App):
             Path.home() if working_directory_root is None else working_directory_root
         )
         self._shell_session_slots: dict[int, str] = {}
+        self._discovery_executor: ThreadPoolExecutor | None = None
+        self._discovery_in_progress = False
 
     @property
     def shell_session_slots(self) -> dict[int, str]:
@@ -145,11 +148,12 @@ class AgentHubApp(App):
         else:
             self.query_one(HomeScreen).focus()
         self.call_after_refresh(self._refresh_status)
-        if self._native_session_adapters:
-            self.run_worker(
-                self._discover_native_sessions(),
-                group="native-session-discovery",
-            )
+        self._start_native_session_discovery()
+
+    def on_unmount(self) -> None:
+        """Stop accepting discovery work when the application is unmounted."""
+
+        self._shutdown_discovery_executor()
 
     @staticmethod
     def _terminal_dom_id(session_id: str) -> str:
@@ -228,6 +232,14 @@ class AgentHubApp(App):
         return self.show_session(session.id)
 
     async def _discover_native_sessions(self) -> None:
+        """Run one discovery cycle and always release its scheduling guard."""
+
+        try:
+            await self._run_native_session_discovery()
+        finally:
+            self._discovery_in_progress = False
+
+    async def _run_native_session_discovery(self) -> None:
         """Discover each provider independently without blocking app startup."""
 
         providers = tuple(
@@ -243,9 +255,20 @@ class AgentHubApp(App):
             title="Session discovery",
             markup=False,
         )
-        discoveries = await asyncio.gather(
-            *(self._discover_from_adapter(adapter) for _harness, adapter in providers)
+        executor = ThreadPoolExecutor(
+            max_workers=min(4, len(providers)),
+            thread_name_prefix="agenthub-discovery",
         )
+        self._discovery_executor = executor
+        try:
+            discoveries = await asyncio.gather(
+                *(
+                    self._discover_from_adapter(adapter, executor)
+                    for _harness, adapter in providers
+                )
+            )
+        finally:
+            self._shutdown_discovery_executor(executor)
         summary_lines: list[str] = []
         discovery_failed = False
         for (harness, _adapter), result in zip(
@@ -258,16 +281,19 @@ class AgentHubApp(App):
                 summary_lines.append(f"{harness.display_name} - failed: {result.error}")
                 continue
 
-            summary_lines.append(f"{harness.display_name} - {len(result.sessions)}")
-            for native_session in result.sessions:
-                if native_session.harness_id != harness.id:
-                    continue
-                self.session_manager.add_discovered(
-                    native_session=native_session,
-                    harness=harness,
-                )
+            native_sessions = tuple(
+                native_session
+                for native_session in result.sessions
+                if native_session.harness_id == harness.id
+            )
+            summary_lines.append(f"{harness.display_name} - {len(native_sessions)}")
+            self.session_manager.reconcile_discovered(
+                native_sessions=native_sessions,
+                harness=harness,
+            )
         self._refresh_sidebar()
         self._refresh_status()
+        self._refresh_home()
 
         if discovery_failed:
             completion_message = "Session discovery completed with errors:"
@@ -282,19 +308,51 @@ class AgentHubApp(App):
             markup=False,
         )
 
+    def _start_native_session_discovery(self) -> None:
+        """Schedule one discovery cycle unless another is already running."""
+
+        if not self._native_session_adapters or self._discovery_in_progress:
+            return
+        self._discovery_in_progress = True
+        self.run_worker(
+            self._discover_native_sessions(),
+            group="native-session-discovery",
+        )
+
     async def _discover_from_adapter(
         self,
         adapter: NativeSessionAdapter,
+        executor: ThreadPoolExecutor,
     ) -> _DiscoveryResult:
         """Normalize one provider's discoveries while containing its failures."""
 
+        future = None
         try:
+            future = executor.submit(adapter.discover)
             async with asyncio.timeout(10):
-                native_sessions = await adapter.discover()
+                while not future.done():
+                    await asyncio.sleep(0.01)
+                native_sessions = future.result()
         except Exception as error:  # noqa: BLE001 - providers fail independently
             detail = str(error) or type(error).__name__
             return _DiscoveryResult(error=detail)
+        finally:
+            if future is not None and not future.done():
+                future.cancel()
         return _DiscoveryResult(sessions=native_sessions)
+
+    def _shutdown_discovery_executor(
+        self,
+        executor: ThreadPoolExecutor | None = None,
+    ) -> None:
+        """Release queued discovery work without waiting on the Textual thread."""
+
+        target = self._discovery_executor if executor is None else executor
+        if target is None:
+            return
+        target.shutdown(wait=False, cancel_futures=True)
+        if self._discovery_executor is target:
+            self._discovery_executor = None
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Gate hub-owned keys while an active terminal owns the keyboard."""
@@ -377,6 +435,11 @@ class AgentHubApp(App):
             HarnessSelectionModal(self._agent_harnesses.values()),
             self._on_harness_selected,
         )
+
+    def action_resync_sessions(self) -> None:
+        """Refresh provider-native sessions without restarting live runtimes."""
+
+        self._start_native_session_discovery()
 
     def _on_harness_selected(self, harness_id: str | None) -> None:
         """Continue the workflow by prompting for the selected harness's name."""
@@ -537,6 +600,13 @@ class AgentHubApp(App):
             shortcut_slots=self._shortcut_slots(),
         )
 
+    def _refresh_home(self) -> None:
+        """Synchronize Home guidance with the current logical sessions."""
+
+        homes = self.query(HomeScreen).nodes
+        if homes:
+            homes[0].update_for_sessions(bool(self.session_manager.sessions))
+
     def _highlight_active_sidebar(self) -> None:
         """Restore active highlighting after a sidebar recompose."""
 
@@ -628,7 +698,7 @@ class AgentHubApp(App):
         """Display and focus Home without changing keyboard-ownership mode."""
 
         home = self.query_one(HomeScreen)
-        home.update_for_sessions(bool(self.session_manager.sessions))
+        self._refresh_home()
         self.query_one("#session-content", ContentSwitcher).current = "home-screen"
         self.query_one(SessionSidebar).clear_active()
         self.set_focus(home)

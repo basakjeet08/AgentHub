@@ -22,7 +22,7 @@ class AntigravitySessionAdapter:
             or Path.home() / ".gemini/antigravity-cli/conversation_summaries.db"
         )
 
-    async def discover(self) -> tuple[NativeSession, ...]:
+    def discover(self) -> tuple[NativeSession, ...]:
         if not self._database.is_file():
             return ()
         try:
@@ -37,8 +37,6 @@ class AntigravitySessionAdapter:
                   AND (
                       COALESCE(step_count, 0) > 0
                       OR COALESCE(last_user_input_step_index, -1) >= 0
-                      OR NULLIF(TRIM(preview), '') IS NOT NULL
-                      OR NULLIF(TRIM(raw_summary), '') IS NOT NULL
                   )
                 ORDER BY last_modified_time DESC
                 """,

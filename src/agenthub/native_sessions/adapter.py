@@ -22,8 +22,12 @@ class NativeSessionAdapter(Protocol):
 
     harness_id: str
 
-    async def discover(self) -> tuple[NativeSession, ...]:
-        """Return the provider's existing native conversations."""
+    def discover(self) -> tuple[NativeSession, ...]:
+        """Return the provider's existing native conversations.
+
+        Discovery may perform blocking filesystem and SQLite work. Callers are
+        responsible for running it outside the application event loop.
+        """
 
     async def resume(self, session: NativeSession) -> LaunchSpec:
         """Return the exact launch needed to resume ``session``."""
