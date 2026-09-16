@@ -23,13 +23,13 @@ class AgentHubStatusBar(Horizontal):
         self,
         *,
         session_count: int = 0,
-        agent_count: int = 0,
+        running_count: int = 0,
         locked: bool = False,
         id: str | None = None,
     ) -> None:
         super().__init__(id=id)
         self._session_count = session_count
-        self._agent_count = agent_count
+        self._running_count = running_count
         self.update_mode(locked)
 
     def compose(self) -> ComposeResult:
@@ -38,7 +38,7 @@ class AgentHubStatusBar(Horizontal):
         icon, label, action = _mode_content(self._locked)
         with Horizontal(id="session-metrics"):
             yield Static(f"Sessions {self._session_count}", id="session-count")
-            yield Static(f"Agents {self._agent_count}", id="agent-count")
+            yield Static(f"Running {self._running_count}", id="running-count")
         with Horizontal(id="lock-status"):
             yield Static(icon, id="mode-indicator")
             yield Static(label, id="mode-label")
@@ -48,19 +48,19 @@ class AgentHubStatusBar(Horizontal):
         self,
         *,
         session_count: int,
-        agent_count: int,
+        running_count: int,
         locked: bool,
     ) -> None:
         """Refresh status from current AgentHub runtime facts."""
 
         self._session_count = session_count
-        self._agent_count = agent_count
+        self._running_count = running_count
         self.update_mode(locked)
         if not self.is_mounted:
             return
 
         self.query_one("#session-count", Static).update(f"Sessions {session_count}")
-        self.query_one("#agent-count", Static).update(f"Agents {agent_count}")
+        self.query_one("#running-count", Static).update(f"Running {running_count}")
 
     def update_mode(self, locked: bool) -> None:
         """Update authoritative keyboard-ownership text and its visual cue."""

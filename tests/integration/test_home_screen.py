@@ -49,9 +49,9 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
         assert status.query_one("#mode-label", Static).content == "Unlocked"
         assert status.query_one("#mode-action", Static).content == "Ctrl+G Lock"
         assert status.query_one("#session-count", Static).content == "Sessions 0"
-        assert status.query_one("#agent-count", Static).content == "Agents 0"
+        assert status.query_one("#running-count", Static).content == "Running 0"
         assert (
-            status.query_one("#agent-count", Static).region.x
+            status.query_one("#running-count", Static).region.x
             < status.query_one("#mode-indicator", Static).region.x
         )
 

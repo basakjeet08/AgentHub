@@ -11,6 +11,8 @@ from bittty.video import Cell
 from rich.segment import Segment
 from rich.style import Style as RichStyle
 from textual import events
+from textual.geometry import Offset
+from textual.selection import Selection
 from textual.strip import Strip
 from textual_tty import Terminal as TtyTerminal
 
@@ -71,6 +73,7 @@ class AgentTerminal(TtyTerminal):
         self.working_directory = launch_directory
         self._scrollback_offset = 0
         self._scrollback_video: ScrollbackVideo | None = None
+        self._suppress_upstream_selection_style = False
         launch_command = harness.command if command is None else tuple(command)
         super().__init__(
             command=list(build_launch_command(launch_directory, launch_command)),
@@ -105,6 +108,14 @@ class AgentTerminal(TtyTerminal):
         """Report child liveness without exposing terminal-library internals."""
 
         return self._process is not None and self._process.poll() is None
+
+    @property
+    def text_selection(self) -> Selection | None:
+        """Hide selection only while the upstream renderer paints terminal cells."""
+
+        if self._suppress_upstream_selection_style:
+            return None
+        return super().text_selection
 
     @property
     def scrollback_line_count(self) -> int:
@@ -176,6 +187,15 @@ class AgentTerminal(TtyTerminal):
 
     def on_key(self, event: events.Key) -> None:
         """Use page keys for retained primary-screen history when available."""
+
+        if (
+            event.key in {"ctrl+c", "ctrl+shift+c", "super+c"}
+            and self.screen.get_selected_text() is not None
+        ):
+            self.screen.action_copy_text()
+            event.stop()
+            event.prevent_default()
+            return
 
         if event.key == "ctrl+backspace":
             self.board.display.input(_WORD_ERASE)
@@ -260,7 +280,13 @@ class AgentTerminal(TtyTerminal):
 
         video = self._scrollback_video
         if video is None or self._scrollback_offset == 0 or self.board.blitter.in_alt_screen:
-            return self._with_explicit_styles(super().render_line(y))
+            self._suppress_upstream_selection_style = True
+            try:
+                strip = self._with_explicit_styles(super().render_line(y))
+            finally:
+                self._suppress_upstream_selection_style = False
+            strip = self._apply_selection_style(strip, y)
+            return strip.apply_offsets(0, y)
 
         history_lines = video.history_line_count
         viewport_start = history_lines - self._scrollback_offset
@@ -270,10 +296,115 @@ class AgentTerminal(TtyTerminal):
         else:
             live_row = row_index - history_lines
             if live_row >= video.height:
-                return Strip.blank(self.size.width, RichStyle())
+                strip = Strip.blank(self.size.width, RichStyle())
+                return strip.apply_offsets(0, y)
             row = video.grid[live_row]
 
-        return self._with_explicit_styles(self._render_scrollback_row(row))
+        strip = self._with_explicit_styles(self._render_scrollback_row(row))
+        strip = self._apply_selection_style(strip, y)
+        return strip.apply_offsets(0, y)
+
+    def get_selection(self, selection: Selection) -> tuple[str, str] | None:
+        """Extract selected text from the rows currently visible to the user."""
+
+        if not self._is_showing_scrollback:
+            return super().get_selection(selection)
+
+        text = "\n".join(
+            self._visible_line_text(y).rstrip() for y in range(self.board.height)
+        )
+        return selection.extract(text), "\n"
+
+    async def _on_click(self, event: events.Click) -> None:
+        """Replace Textual's completed double-click select-all with a word."""
+
+        # Textual also dispatches private handlers through the MRO. Own that
+        # sequence so Widget._on_click cannot run a second time after this
+        # override has narrowed its select-all result to a terminal word.
+        event.prevent_default()
+        await super()._on_click(event)
+        super().on_click(event)
+
+        if event.button != 1 or event.chain != 2 or not self.allow_select:
+            return
+
+        widget, offset = self.screen.get_widget_and_offset_at(
+            event.screen_x,
+            event.screen_y,
+        )
+        if widget is not self or offset is None:
+            self.screen.clear_selection()
+            return
+
+        line = self._visible_line_text(offset.y).rstrip()
+        if offset.x >= len(line) or line[offset.x].isspace():
+            self.screen.clear_selection()
+            return
+
+        group = self._word_group(line[offset.x])
+        start = offset.x
+        while start > 0 and self._word_group(line[start - 1]) == group:
+            start -= 1
+
+        end = offset.x + 1
+        while end < len(line) and self._word_group(line[end]) == group:
+            end += 1
+
+        self.screen.selections = {
+            self: Selection(Offset(start, offset.y), Offset(end, offset.y))
+        }
+
+    @property
+    def _is_showing_scrollback(self) -> bool:
+        """Return whether retained primary-screen history is visible."""
+
+        return (
+            self._scrollback_video is not None
+            and self._scrollback_offset > 0
+            and not self.board.blitter.in_alt_screen
+        )
+
+    def _visible_line_text(self, y: int) -> str:
+        """Return text from the row currently displayed at viewport coordinate ``y``."""
+
+        video = self._scrollback_video
+        if not self._is_showing_scrollback or video is None:
+            page = self.board.blitter.current_buffer
+            return "" if y >= page.height else page.get_line_text(y)
+
+        history_lines = video.history_line_count
+        row_index = history_lines - self._scrollback_offset + y
+        if row_index < history_lines:
+            row = video.history_row(row_index)
+        else:
+            live_row = row_index - history_lines
+            if live_row >= video.height:
+                return ""
+            row = video.grid[live_row]
+        return "".join(character for _style, character in row)
+
+    def _apply_selection_style(self, strip: Strip, y: int) -> Strip:
+        """Apply Textual's selection highlight to a custom scrollback row."""
+
+        if not self.is_mounted:
+            return strip
+        selection = self.text_selection
+        if selection is None or (span := selection.get_span(y)) is None:
+            return strip
+
+        start, end = span
+        if end == -1:
+            end = self.size.width
+        component_style = self.screen.get_component_rich_style("screen--selection")
+        style = RichStyle(bgcolor=component_style.bgcolor)
+        before, selected, after = strip.divide([start, end, self.size.width])
+        return Strip.join([before, selected.apply_style(style), after])
+
+    @staticmethod
+    def _word_group(character: str) -> str:
+        """Group word characters separately from terminal punctuation."""
+
+        return "word" if character.isalnum() or character == "_" else "punctuation"
 
     @staticmethod
     def _with_explicit_styles(strip: Strip) -> Strip:

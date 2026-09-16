@@ -184,7 +184,7 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
 
         status = app.query_one(AgentHubStatusBar)
         assert status.query_one("#session-count", Static).content == "Sessions 4"
-        assert status.query_one("#agent-count", Static).content == "Agents 2"
+        assert status.query_one("#running-count", Static).content == "Running 2"
 
 
 async def test_exited_shell_slot_is_released_and_can_be_created_again(

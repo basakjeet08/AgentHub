@@ -759,7 +759,7 @@ Normal empty startup uses a persistent application shell:
 │                      │ Contextual session guidance        │
 │                      │ Shortcut quick reference           │
 ├──────────────────────┴────────────────────────────────────┤
-│ Sessions 0   Agents 0             ○ Unlocked  Ctrl+G Lock │
+│ Sessions 0   Running 0            ○ Unlocked  Ctrl+G Lock │
 └───────────────────────────────────────────────────────────┘
 ```
 

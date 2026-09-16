@@ -134,7 +134,7 @@ class AgentHubApp(App):
                 )
             yield AgentHubStatusBar(
                 session_count=len(sessions),
-                agent_count=0,
+                running_count=0,
                 locked=self.hub_locked,
                 id="status-bar",
             )
@@ -659,7 +659,7 @@ class AgentHubApp(App):
         )
         self.query_one(AgentHubStatusBar).update_state(
             session_count=len(sessions),
-            agent_count=running_agents,
+            running_count=running_agents,
             locked=self.hub_locked,
         )
 

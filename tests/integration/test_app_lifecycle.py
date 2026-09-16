@@ -39,7 +39,7 @@ async def test_unlocked_ctrl_q_exits_while_terminal_has_focus(
         status = app.query_one(AgentHubStatusBar)
         assert status.query_one("#mode-label", Static).content == "Unlocked"
         assert status.query_one("#session-count", Static).content == "Sessions 1"
-        assert status.query_one("#agent-count", Static).content == "Agents 1"
+        assert status.query_one("#running-count", Static).content == "Running 1"
 
         await pilot.press("ctrl+q")
 
@@ -80,4 +80,4 @@ async def test_only_child_exiting_returns_to_empty_home() -> None:
         assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
         status = app.query_one(AgentHubStatusBar)
         assert status.query_one("#session-count", Static).content == "Sessions 0"
-        assert status.query_one("#agent-count", Static).content == "Agents 0"
+        assert status.query_one("#running-count", Static).content == "Running 0"
