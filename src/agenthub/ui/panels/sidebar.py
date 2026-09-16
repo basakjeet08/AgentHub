@@ -102,7 +102,7 @@ class SessionSidebar(Vertical):
     @staticmethod
     def _session_snapshot(
         sessions: tuple[AgentSession, ...],
-    ) -> tuple[tuple[str, str, str, SessionKind, bool], ...]:
+    ) -> tuple[tuple[str, str, str, str, SessionKind, bool], ...]:
         """Capture the session fields that affect sidebar presentation."""
 
         return tuple(
@@ -110,6 +110,7 @@ class SessionSidebar(Vertical):
                 session.id,
                 session.name,
                 session.harness.display_name,
+                session.harness.icon,
                 session.kind,
                 session.terminal is None,
             )
@@ -140,9 +141,12 @@ class SessionSidebar(Vertical):
         indicator_style = (
             "$success" if is_active else "$text-muted" if is_unloaded else "$foreground"
         )
-        prompt = Content(
-            f"{indicator} {prefix}{session.harness.display_name} · {session.name}"
+        badge = (
+            f"{session.harness.icon} "
+            if session.harness.icon
+            else f"{session.harness.display_name} · "
         )
+        prompt = Content(f"{indicator} {prefix}{badge}{session.name}")
         prompt = prompt.stylize(indicator_style, 0, 1).stylize("$foreground", 2)
         return prompt.stylize("bold", 2) if is_active else prompt
 

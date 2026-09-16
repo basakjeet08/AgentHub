@@ -7,4 +7,5 @@ CODEX = AgentHarness(
     display_name="Codex",
     command=("codex",),
     scroll=None,
+    icon="🌀",
 )

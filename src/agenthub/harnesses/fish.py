@@ -7,4 +7,5 @@ FISH = AgentHarness(
     display_name="Fish",
     command=("fish",),
     scroll=None,
+    icon="🐟",
 )

@@ -114,12 +114,12 @@ not create widgets or import Bitty.
 
 Four coding-agent harnesses are registered:
 
-| Registry key  | Command    | Default | Scroll policy |
-| ------------- | ---------- | ------- | ------------- |
-| `antigravity` | `agy`      | no      | native terminal behavior |
-| `codex`       | `codex`    | no      | native terminal behavior |
-| `devin`       | `devin`    | no      | native terminal behavior |
-| `opencode`    | `opencode` | yes     | semantic transcript shortcuts |
+| Registry key  | Command    | Icon | Default | Scroll policy |
+| ------------- | ---------- | ---- | ------- | ------------- |
+| `antigravity` | `agy`      | `✦`  | no      | native terminal behavior |
+| `codex`       | `codex`    | `🌀` | no      | native terminal behavior |
+| `devin`       | `devin`    | `🟩` | no      | native terminal behavior |
+| `opencode`    | `opencode` | `💻` | yes     | semantic transcript shortcuts |
 
 Fish is a built-in shell definition used directly by the fixed shell slots. It
 is intentionally not part of the coding-agent harness registry.
@@ -273,6 +273,7 @@ class AgentHarness:
     display_name: str
     command: tuple[str, ...]
     scroll: ScrollKeys | None
+    icon: str = ""
 ```
 
 OpenCode is described without importing Bitty:
@@ -286,6 +287,7 @@ OPENCODE = AgentHarness(
         down=KeyStroke("e", ctrl=True, alt=True),
         up=KeyStroke("y", ctrl=True, alt=True),
     ),
+    icon="💻",
 )
 ```
 
@@ -295,7 +297,8 @@ registry entry, and tests. Authentication, models, prompts, tools, permissions,
 and provider behavior remain owned by each native CLI.
 
 The stable `id` is used by code, configuration, CLI arguments, and eventual
-persistence. `display_name` is used by the UI. A tuple keeps `command` actually
+persistence. `display_name` and `icon` are used by the UI (with `icon` displayed
+alongside session names in the sidebar). A tuple keeps `command` actually
 immutable inside a frozen dataclass.
 
 `AgentHarness` must not:
@@ -703,9 +706,9 @@ Bitty → PTY
 `AgentTerminal` owns Ctrl+V while focused: it reads the system clipboard in a
 worker and delivers the text through the terminal's native paste port, falling
 back to AgentHub's internal clipboard when no desktop backend exists. Textual
-`Input` widgets keep their own Ctrl+V semantics, and bracketed paste from the
-outer terminal emulator continues to flow through the existing
-`events.Paste` path.
+`Input` widgets keep their own Ctrl+V semantics. Ctrl+V and outer-terminal
+`events.Paste` input converge on one serialized writer that preserves a single
+bracketed-paste envelope while draining partial non-blocking PTY writes.
 
 ## Working Directories
 

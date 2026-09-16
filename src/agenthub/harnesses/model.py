@@ -30,3 +30,4 @@ class AgentHarness:
     display_name: str
     command: tuple[str, ...]
     scroll: ScrollKeys | None
+    icon: str = ""

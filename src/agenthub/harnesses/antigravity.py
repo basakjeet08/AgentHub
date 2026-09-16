@@ -7,4 +7,5 @@ ANTIGRAVITY = AgentHarness(
     display_name="Antigravity",
     command=("agy",),
     scroll=None,
+    icon="✦",
 )

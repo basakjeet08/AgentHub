@@ -9,6 +9,7 @@ from typing import cast
 
 from bittty import constants as _bittty_constants
 from bittty.video import Cell
+from rich.cells import cell_len
 from rich.segment import Segment
 from rich.style import Style as RichStyle
 from textual import events
@@ -135,6 +136,8 @@ class AgentTerminal(TtyTerminal):
         self._suppress_upstream_selection_style = False
         self._paste_in_progress = False
         self._last_paste_key_at = 0.0
+        self._paste_lock = asyncio.Lock()
+        self._selection_anchor_cell: Offset | None = None
         launch_command = harness.command if command is None else tuple(command)
         super().__init__(
             command=list(build_launch_command(launch_directory, launch_command)),
@@ -300,6 +303,18 @@ class AgentTerminal(TtyTerminal):
         event.prevent_default()
         super().on_key(event)
 
+    def on_paste(self, event: events.Paste) -> None:
+        """Deliver outer-terminal paste through the reliable PTY writer."""
+
+        event.stop()
+        event.prevent_default()
+        self.run_worker(
+            self.paste_text(event.text),
+            group="terminal-paste",
+            exclusive=False,
+            exit_on_error=False,
+        )
+
     async def _paste_system_clipboard(self) -> None:
         """Read the desktop clipboard and paste it through the terminal's port."""
 
@@ -326,19 +341,80 @@ class AgentTerminal(TtyTerminal):
     async def paste_text(self, text: str) -> None:
         """Deliver every byte through one native terminal paste operation."""
 
-        host = self.board.host
-        connection = host.connection
-        if connection is None:
+        async with self._paste_lock:
+            host = self.board.host
+            connection = host.connection
+            if connection is None:
+                return
+
+            buffered_connection = _BufferedPasteConnection(connection)
+            host.connection = buffered_connection
+            try:
+                self.board.display.input_paste(text)
+                await buffered_connection.drain()
+            finally:
+                if host.connection is buffered_connection:
+                    host.connection = connection
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        """Record a terminal-cell selection anchor before Textual loses cell width."""
+
+        event.prevent_default()
+        super().on_mouse_down(event)
+        if event.button == 1 and self.allow_select:
+            self._selection_anchor_cell = event.get_content_offset(self)
+            if self._selection_anchor_cell is not None:
+                self.capture_mouse()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        """Keep drag selection aligned with wide terminal cells."""
+
+        event.prevent_default()
+        super().on_mouse_move(event)
+        self._update_cell_selection(event)
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        """Complete terminal-cell selection at the released cell."""
+
+        event.prevent_default()
+        super().on_mouse_up(event)
+        self._update_cell_selection(event)
+        if self._selection_anchor_cell is not None:
+            self.release_mouse()
+        self._selection_anchor_cell = None
+
+    def _update_cell_selection(self, event: events.MouseEvent) -> None:
+        anchor = self._selection_anchor_cell
+        offset = event.get_content_offset(self)
+        if anchor is None or offset is None:
             return
 
-        buffered_connection = _BufferedPasteConnection(connection)
-        host.connection = buffered_connection
-        try:
-            self.board.display.input_paste(text)
-            await buffered_connection.drain()
-        finally:
-            if host.connection is buffered_connection:
-                host.connection = connection
+        anchor_span = self._cell_text_span(anchor)
+        offset_span = self._cell_text_span(offset)
+        if anchor_span is None or offset_span is None:
+            return
+
+        if (anchor.y, anchor.x) <= (offset.y, offset.x):
+            start = Offset(anchor_span[0], anchor.y)
+            end = Offset(offset_span[1], offset.y)
+        else:
+            start = Offset(offset_span[0], offset.y)
+            end = Offset(anchor_span[1], anchor.y)
+        self.screen.selections = {self: Selection(start, end)}
+
+    def _cell_text_span(self, offset: Offset) -> tuple[int, int] | None:
+        row = self._visible_row(offset.y)
+        if row is None or offset.x < 0 or offset.x >= len(row):
+            return None
+
+        start_cell = offset.x
+        while start_cell > 0 and row[start_cell][1] == "":
+            start_cell -= 1
+        character = row[start_cell][1]
+        if not character:
+            return None
+        start = sum(len(cell_character) for _style, cell_character in row[:start_cell])
+        return start, start + len(character)
 
     def _wheel(self, event: events.MouseEvent, button: int, arrow: str) -> None:
         """Scroll the transcript when the child ignores the wheel; defer otherwise."""
@@ -487,24 +563,27 @@ class AgentTerminal(TtyTerminal):
             and not self.board.blitter.in_alt_screen
         )
 
-    def _visible_line_text(self, y: int) -> str:
-        """Return text from the row currently displayed at viewport coordinate ``y``."""
+    def _visible_row(self, y: int) -> Sequence[Cell] | None:
+        """Return terminal cells displayed at viewport row ``y``."""
 
         video = self._scrollback_video
         if not self._is_showing_scrollback or video is None:
             page = self.board.blitter.current_buffer
-            return "" if y >= page.height else page.get_line_text(y)
+            return None if y >= page.height else page.grid[y]
 
         history_lines = video.history_line_count
         row_index = history_lines - self._scrollback_offset + y
         if row_index < history_lines:
-            row = video.history_row(row_index)
-        else:
-            live_row = row_index - history_lines
-            if live_row >= video.height:
-                return ""
-            row = video.grid[live_row]
-        return "".join(character for _style, character in row)
+            return video.history_row(row_index)
+
+        live_row = row_index - history_lines
+        return None if live_row >= video.height else video.grid[live_row]
+
+    def _visible_line_text(self, y: int) -> str:
+        """Return text from the row currently displayed at viewport coordinate ``y``."""
+
+        row = self._visible_row(y)
+        return "" if row is None else "".join(character for _style, character in row)
 
     def _apply_selection_style(self, strip: Strip, y: int) -> Strip:
         """Apply Textual's selection highlight to a custom scrollback row."""
@@ -516,8 +595,9 @@ class AgentTerminal(TtyTerminal):
             return strip
 
         start, end = span
-        if end == -1:
-            end = self.size.width
+        line = self._visible_line_text(y)
+        start = min(cell_len(line[:start]), self.size.width)
+        end = self.size.width if end == -1 else min(cell_len(line[:end]), self.size.width)
         component_style = self.screen.get_component_rich_style("screen--selection")
         style = RichStyle(bgcolor=component_style.bgcolor)
         before, selected, after = strip.divide([start, end, self.size.width])

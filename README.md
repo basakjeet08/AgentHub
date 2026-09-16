@@ -57,10 +57,10 @@ multi-session runtime architecture:
 
 ## Supported Coding-Agent Harnesses
 
-- Antigravity (`agy`)
-- Codex (`codex`)
-- Devin (`devin`)
-- OpenCode (`opencode`)
+- ✦ Antigravity (`agy`)
+- 🌀 Codex (`codex`)
+- 🟩 Devin (`devin`)
+- 💻 OpenCode (`opencode`)
 
 The picker lists harnesses supported by AgentHub even when their executables are
 not installed. Each native CLI owns its authentication and first-run setup.

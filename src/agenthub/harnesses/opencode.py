@@ -10,4 +10,5 @@ OPENCODE = AgentHarness(
         down=KeyStroke("e", ctrl=True, alt=True),
         up=KeyStroke("y", ctrl=True, alt=True),
     ),
+    icon="💻",
 )

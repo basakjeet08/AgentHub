@@ -7,7 +7,7 @@ from textual.app import App, ComposeResult
 from textual.content import Content
 from textual.widgets import OptionList
 
-from agenthub.harnesses import AgentHarness
+from agenthub.harnesses import CODEX, FISH, OPENCODE, AgentHarness
 from agenthub.native_sessions import NativeSession
 from agenthub.sessions import AgentSession, SessionKind, SessionManager
 from agenthub.ui import SessionSidebar
@@ -202,3 +202,43 @@ async def test_sidebar_styles_active_running_and_unloaded_sessions_independently
         unloaded_prompt = str(agent_list.get_option(unloaded.id).prompt)
         assert unloaded_prompt.startswith("○ ")
         assert "UNLOADED" not in unloaded_prompt
+
+
+async def test_sidebar_displays_harness_icon() -> None:
+    manager = SessionManager()
+    codex_session = manager.create(
+        name="Auth Refactor",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=CODEX,
+    )
+    opencode_session = manager.create(
+        name="API Cleanup",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=OPENCODE,
+    )
+    fish_session = manager.create(
+        name="Fish Slot",
+        kind=SessionKind.SHELL,
+        cwd=Path.cwd(),
+        harness=FISH,
+    )
+    app = SidebarTestApp(
+        (codex_session, opencode_session),
+        (fish_session,),
+        shortcut_slots={fish_session.id: 1},
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        option_prompts = [
+            str(option.prompt)
+            for option_list in app.query(OptionList)
+            for option in option_list.options
+        ]
+        assert option_prompts == [
+            "● [ 1 ] 🌀 Auth Refactor",
+            "● [ 2 ] 💻 API Cleanup",
+            "● [ 1 ] 🐟 Fish Slot",
+        ]

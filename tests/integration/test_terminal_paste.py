@@ -217,6 +217,7 @@ async def test_textual_paste_event_still_reaches_the_paste_port(
         assert _written_calls(write_spy) == [(b"bracketed paste text",)]
 
 
+@pytest.mark.parametrize("paste_source", ["ctrl+v", "event"])
 @pytest.mark.parametrize(
     "text",
     [
@@ -229,9 +230,10 @@ async def test_textual_paste_event_still_reaches_the_paste_port(
         ),
     ],
 )
-async def test_ctrl_v_reaches_a_real_child_exactly(
+async def test_paste_reaches_a_real_child_exactly(
     tmp_path: Path,
     text: str,
+    paste_source: str,
 ) -> None:
     output_path = tmp_path / "received"
     ready_path = tmp_path / "ready"
@@ -273,11 +275,14 @@ time.sleep(30)
                 break
         assert ready_path.exists()
 
-        with _patch_clipboard(text):
-            await pilot.press("ctrl+v")
-            for _ in range(100):
-                await pilot.pause()
-                if output_path.exists():
-                    break
+        if paste_source == "ctrl+v":
+            with _patch_clipboard(text):
+                await pilot.press("ctrl+v")
+        else:
+            app.terminal.post_message(events.Paste(text))
+        for _ in range(100):
+            await pilot.pause()
+            if output_path.exists():
+                break
 
         assert output_path.read_bytes() == text.encode("utf-8")

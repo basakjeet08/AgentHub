@@ -98,6 +98,57 @@ async def test_drag_selects_across_terminal_lines(
         assert app.screen.get_selected_text() == "beta gamma\nsecond"
 
 
+async def test_wide_terminal_characters_are_extracted_by_cell_offset(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = TerminalSelectionApp(sleeping_harness)
+
+    async with app.run_test(size=(40, 10)) as pilot:
+        terminal = app.terminal
+        terminal.feed("A你B")
+        await pilot.pause()
+        await pilot.mouse_down(terminal, offset=(1, 0))
+        await pilot.hover(terminal, offset=(2, 0))
+        await pilot.mouse_up(terminal, offset=(2, 0))
+
+        assert app.screen.get_selected_text() == "你"
+        component_style = app.screen.get_component_rich_style("screen--selection")
+        selected = terminal.render_line(0).crop(1, 3)
+        after = terminal.render_line(0).crop(3, 4)
+        assert all(segment.style.bgcolor == component_style.bgcolor for segment in selected)
+        assert all(segment.style.bgcolor != component_style.bgcolor for segment in after)
+
+
+async def test_multiline_wide_character_selection_uses_terminal_cells(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = TerminalSelectionApp(sleeping_harness)
+
+    async with app.run_test(size=(40, 10)) as pilot:
+        terminal = app.terminal
+        terminal.feed("A你B\r\nC🙂D")
+        await pilot.pause()
+        await pilot.mouse_down(terminal, offset=(1, 0))
+        await pilot.hover(terminal, offset=(2, 1))
+        await pilot.mouse_up(terminal, offset=(2, 1))
+
+        assert app.screen.get_selected_text() == "你B\nC🙂"
+
+
+async def test_double_click_after_wide_character_selects_clicked_word(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = TerminalSelectionApp(sleeping_harness)
+
+    async with app.run_test(size=(40, 10)) as pilot:
+        terminal = app.terminal
+        terminal.feed("你 B")
+        await pilot.pause()
+        await pilot.double_click(terminal, offset=(3, 0))
+
+        assert app.screen.get_selected_text() == "B"
+
+
 async def test_double_click_selects_word_instead_of_entire_terminal(
     sleeping_harness: AgentHarness,
 ) -> None:
@@ -178,3 +229,26 @@ async def test_selection_copies_rows_visible_in_terminal_scrollback(
         await pilot.press("ctrl+shift+c")
 
         assert app.clipboard == "one"
+
+
+async def test_wide_character_selection_uses_cells_in_scrollback(
+    sleeping_harness: AgentHarness,
+) -> None:
+    scrollback_harness = AgentHarness(
+        id="test-wide-scrollback",
+        display_name="Test Wide Scrollback",
+        command=sleeping_harness.command,
+        scroll=None,
+    )
+    app = TerminalSelectionApp(scrollback_harness)
+
+    async with app.run_test(size=(40, 10)) as pilot:
+        terminal = app.terminal
+        terminal.feed("A你B\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix")
+        await pilot.pause()
+        terminal._scroll_normal_history("up", 2)
+        await pilot.mouse_down(terminal, offset=(1, 0))
+        await pilot.hover(terminal, offset=(2, 0))
+        await pilot.mouse_up(terminal, offset=(2, 0))
+
+        assert app.screen.get_selected_text() == "你"
