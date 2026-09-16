@@ -242,3 +242,26 @@ async def test_sidebar_displays_harness_icon() -> None:
             "● [ 2 ] 💻 API Cleanup",
             "● [ 1 ] 🐟 Fish Slot",
         ]
+
+
+async def test_sidebar_renders_agent_harness_legend() -> None:
+    app = SidebarTestApp((), ())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        legend = sidebar.query_one("#agent-legend")
+        items = list(legend.query(".legend-item"))
+        assert [str(item.content) for item in items] == [
+            "✨ Antigravity",
+            "🌀 Codex",
+            "🟩 Devin",
+            "💻 OpenCode",
+        ]
+        assert items[0].region.x < items[1].region.x
+        assert items[1].region.x == items[0].region.x + items[0].region.width
+        assert items[0].region.width == items[1].region.width
+        assert items[2].region.x == items[0].region.x
+        assert items[3].region.x == items[1].region.x
+        assert items[2].region.width == items[3].region.width
+

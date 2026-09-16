@@ -57,7 +57,7 @@ multi-session runtime architecture:
 
 ## Supported Coding-Agent Harnesses
 
-- ✦ Antigravity (`agy`)
+- ✨ Antigravity (`agy`)
 - 🌀 Codex (`codex`)
 - 🟩 Devin (`devin`)
 - 💻 OpenCode (`opencode`)

@@ -4,12 +4,13 @@ from collections.abc import Iterable, Mapping
 from typing import ClassVar
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Grid, Horizontal, Vertical
 from textual.content import Content
 from textual.message import Message
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
+from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, OPENCODE, AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.ui.bindings import NUMBERED_SESSION_BINDINGS
 
@@ -43,6 +44,7 @@ class SessionSidebar(Vertical):
         *,
         shell_sessions: Iterable[AgentSession] = (),
         shortcut_slots: Mapping[str, int] | None = None,
+        harnesses: Iterable[AgentHarness] | None = None,
         id: str | None = None,
     ) -> None:
         """Retain AgentHub identity and display data for composition."""
@@ -56,6 +58,11 @@ class SessionSidebar(Vertical):
         self._shortcut_slots = dict(shortcut_slots or {})
         self._active_session_id: str | None = None
         self._focused_kind: SessionKind | None = None
+        self._harnesses: tuple[AgentHarness, ...] = (
+            (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
+            if harnesses is None
+            else tuple(sorted(harnesses, key=lambda h: h.display_name.casefold()))
+        )
 
     @property
     def visible_session_ids(self) -> tuple[str, ...]:
@@ -203,6 +210,15 @@ class SessionSidebar(Vertical):
                 id="agent-session-list",
                 classes="session-list",
             )
+            if self._harnesses:
+                with Grid(id="agent-legend", classes="sidebar-legend"):
+                    for harness in self._harnesses:
+                        label = (
+                            f"{harness.icon} {harness.display_name}"
+                            if harness.icon
+                            else harness.display_name
+                        )
+                        yield Static(label, classes="legend-item")
         with Vertical(id="shell-section", classes="sidebar-section"):
             with Horizontal(classes="sidebar-section-header"):
                 yield Label(

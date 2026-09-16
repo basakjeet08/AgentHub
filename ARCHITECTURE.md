@@ -116,7 +116,7 @@ Four coding-agent harnesses are registered:
 
 | Registry key  | Command    | Icon | Default | Scroll policy |
 | ------------- | ---------- | ---- | ------- | ------------- |
-| `antigravity` | `agy`      | `✦`  | no      | native terminal behavior |
+| `antigravity` | `agy`      | `✨` | no      | native terminal behavior |
 | `codex`       | `codex`    | `🌀` | no      | native terminal behavior |
 | `devin`       | `devin`    | `🟩` | no      | native terminal behavior |
 | `opencode`    | `opencode` | `💻` | yes     | semantic transcript shortcuts |
