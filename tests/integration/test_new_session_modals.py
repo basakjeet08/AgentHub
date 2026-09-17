@@ -100,10 +100,10 @@ async def test_ctrl_n_opens_registry_derived_harness_modal_without_creating() ->
         assert tuple(
             (option.id, str(option.prompt)) for option in harness_list.options
         ) == (
-            ("antigravity", "Antigravity"),
-            ("codex", "Codex"),
-            ("devin", "Devin"),
-            ("opencode", "OpenCode"),
+            ("antigravity", "✨ Antigravity"),
+            ("codex", "🌀 Codex"),
+            ("devin", "🟩 Devin"),
+            ("opencode", "💻 OpenCode"),
         )
 
 

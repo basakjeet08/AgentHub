@@ -13,6 +13,13 @@ from textual.widgets.option_list import Option
 from agenthub.harnesses import AgentHarness
 
 
+def _harness_option_prompt(harness: AgentHarness) -> str:
+    """Format the option prompt with an icon if present."""
+    if harness.icon:
+        return f"{harness.icon} {harness.display_name}"
+    return harness.display_name
+
+
 class HarnessSelectionModal(ModalScreen[str]):
     """Return the stable ID of a user-selected coding-agent harness."""
 
@@ -47,7 +54,7 @@ class HarnessSelectionModal(ModalScreen[str]):
                     )
             yield OptionList(
                 *(
-                    Option(harness.display_name, id=harness.id)
+                    Option(_harness_option_prompt(harness), id=harness.id)
                     for harness in self._harnesses
                 ),
                 id="harness-selection-list",

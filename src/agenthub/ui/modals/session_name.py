@@ -48,11 +48,19 @@ class SessionNameModal(ModalScreen[str]):
     CSS_PATH = "session_name.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
-    def __init__(self, harness_display_name: str) -> None:
-        """Retain presentation-only harness context for the prompt."""
+    def __init__(
+        self,
+        harness_display_name: str,
+        *,
+        default_name: str | None = None,
+        placeholder: str | None = None,
+    ) -> None:
+        """Retain presentation-only harness context and optional default name."""
 
         super().__init__()
         self._harness_display_name = harness_display_name
+        self._default_name = default_name
+        self._placeholder = placeholder
 
     def compose(self) -> ComposeResult:
         """Compose the focused name input and keyboard guidance."""
@@ -77,7 +85,10 @@ class SessionNameModal(ModalScreen[str]):
                 id="session-name-harness",
             )
             yield Label("Name", id="session-name-label")
-            yield SessionNameInput(id="session-name-input")
+            yield SessionNameInput(
+                placeholder=self._placeholder or "",
+                id="session-name-input",
+            )
             yield Static("", id="session-name-error")
             with Grid(id="session-name-help", classes="modal-shortcut-grid"):
                 yield Static("Enter", classes="modal-shortcut-key")
@@ -89,10 +100,13 @@ class SessionNameModal(ModalScreen[str]):
         self.query_one("#session-name-input", Input).focus()
 
     def on_input_submitted(self, message: Input.Submitted) -> None:
-        """Return a trimmed non-empty name or retain focus with validation."""
+        """Return a trimmed non-empty name, or default if optional, or retain focus with validation."""
 
         name = message.value.strip()
         if not name:
+            if self._default_name is not None:
+                self.dismiss(self._default_name)
+                return
             message.input.add_class("invalid-name")
             self.query_one("#session-name-error", Static).update("Enter a session name.")
             message.input.focus()
@@ -103,11 +117,11 @@ class SessionNameModal(ModalScreen[str]):
     def on_input_changed(self, message: Input.Changed) -> None:
         """Clear validation feedback once the input becomes usable."""
 
-        if message.value.strip():
+        if message.value.strip() or self._default_name is not None:
             message.input.remove_class("invalid-name")
             self.query_one("#session-name-error", Static).update("")
 
     def action_cancel(self) -> None:
-        """Cancel the entire New Agent Session workflow."""
+        """Cancel the session naming workflow."""
 
         self.dismiss(None)

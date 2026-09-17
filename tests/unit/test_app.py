@@ -11,6 +11,7 @@ from agenthub.ui.bindings import (
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
     NEW_SESSION_BINDING,
+    NEW_SHELL_BINDING,
     NUMBERED_SESSION_BINDINGS,
     QUIT_BINDING,
     RESYNC_SESSIONS_BINDING,
@@ -33,18 +34,17 @@ def test_app_uses_the_agenthub_theme() -> None:
     assert app.theme == "tokyo-night"
 
 
-def test_session_kind_is_independent_from_shell_shortcut_slots(
+def test_session_kind_partitions_agent_and_shell_sessions(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp()
     shell = app.session_manager.create(
-        name="Unslotted shell",
+        name="Shell session",
         kind=SessionKind.SHELL,
         cwd=Path.cwd(),
         harness=sleeping_harness,
     )
 
-    assert app.shell_session_slots == {}
     assert app._agent_sessions() == ()
     assert app._shell_sessions() == (shell,)
 
@@ -62,6 +62,9 @@ def test_application_bindings_are_priority_candidates_for_keyboard_ownership() -
 
 def test_application_navigation_bindings_are_reserved() -> None:
     assert NEW_SESSION_BINDING.action == "new_session"
+    assert NEW_SHELL_BINDING.key == "ctrl+shift+s"
+    assert NEW_SHELL_BINDING.action == "new_shell"
+    assert "new_shell" in TERMINAL_GATED_ACTIONS
     assert FOCUS_AGENTS_BINDING.key == "ctrl+a"
     assert FOCUS_AGENTS_BINDING.action == "focus_agents"
     assert FOCUS_SHELLS_BINDING.key == "ctrl+s"
@@ -70,6 +73,7 @@ def test_application_navigation_bindings_are_reserved() -> None:
         binding.priority
         for binding in (
             NEW_SESSION_BINDING,
+            NEW_SHELL_BINDING,
             FOCUS_AGENTS_BINDING,
             FOCUS_SHELLS_BINDING,
         )

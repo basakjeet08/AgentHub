@@ -1,6 +1,5 @@
 """Integration coverage for grouped sidebar presentation and ordering."""
 
-from collections.abc import Mapping
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -22,20 +21,16 @@ class SidebarTestApp(App):
         self,
         agent_sessions: tuple[AgentSession, ...],
         shell_sessions: tuple[AgentSession, ...],
-        shortcut_slots: Mapping[str, int] | None = None,
     ) -> None:
         super().__init__()
         self.agent_sessions = agent_sessions
         self.shell_sessions = shell_sessions
-        self.shortcut_slots = shortcut_slots or {}
         self.selected_session_id: str | None = None
-        self.selected_shell_slot: int | None = None
 
     def compose(self) -> ComposeResult:
         yield SessionSidebar(
             self.agent_sessions,
             shell_sessions=self.shell_sessions,
-            shortcut_slots=self.shortcut_slots,
         )
 
     def on_session_sidebar_session_selected(
@@ -43,12 +38,6 @@ class SidebarTestApp(App):
         message: SessionSidebar.SessionSelected,
     ) -> None:
         self.selected_session_id = message.session_id
-
-    def on_session_sidebar_shell_slot_selected(
-        self,
-        message: SessionSidebar.ShellSlotSelected,
-    ) -> None:
-        self.selected_shell_slot = message.slot
 
 
 def _sessions(
@@ -97,7 +86,7 @@ async def test_sidebar_keeps_empty_shell_group_when_agents_exist(
         )
 
 
-async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
+async def test_sidebar_groups_navigation_and_selection(
     sleeping_harness: AgentHarness,
 ) -> None:
     agents = _sessions(sleeping_harness, SessionKind.AGENT, "AgentHub", "Backend")
@@ -107,11 +96,7 @@ async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
         "AgentHub Shell",
         "Backend Server",
     )
-    shortcut_slots = {
-        shells[0].id: 1,
-        shells[1].id: 3,
-    }
-    app = SidebarTestApp(agents, shells, shortcut_slots)
+    app = SidebarTestApp(agents, shells)
 
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -126,29 +111,41 @@ async def test_sidebar_numbers_shell_slots_and_emits_same_intent(
             for option in option_list.options
         ]
         assert option_prompts == [
-            "● [ 1 ] Test Sleeper · AgentHub",
-            "● [ 2 ] Test Sleeper · Backend",
-            "● [ 1 ] Test Sleeper · AgentHub Shell",
-            "● [ 3 ] Test Sleeper · Backend Server",
+            "● Test Sleeper · AgentHub",
+            "● Test Sleeper · Backend",
+            "● Test Sleeper · AgentHub Shell",
+            "● Test Sleeper · Backend Server",
         ]
 
         shell_list = app.query_one("#shell-session-list", OptionList)
-        shell_list.highlighted = 0
-        shell_list.focus()
+        agent_list = app.query_one("#agent-session-list", OptionList)
+
+        sidebar.focus_shells()
+        await pilot.pause()
+        assert shell_list.has_focus
+        assert shell_list.highlighted == 0
+        await pilot.press("down")
+        assert shell_list.highlighted == 1
         await pilot.press("enter")
-        assert app.selected_session_id == shells[0].id
+        assert app.selected_session_id == shells[1].id
 
         sidebar.focus_agents()
+        await pilot.pause()
+        assert agent_list.has_focus
         await pilot.press("2")
+        assert agent_list.highlighted == 1
+        assert agent_list.has_focus
+        assert app.selected_session_id == shells[1].id
+        await pilot.press("enter")
         assert app.selected_session_id == agents[1].id
 
         sidebar.focus_shells()
-        await pilot.press("3")
-        assert app.selected_session_id == shells[1].id
-
-        sidebar.focus_shells()
+        await pilot.pause()
+        shell_list.highlighted = 0
         await pilot.press("2")
-        assert app.selected_shell_slot == 2
+        assert shell_list.highlighted == 0
+        await pilot.press("3")
+        assert shell_list.highlighted == 0
 
 
 async def test_sidebar_styles_active_running_and_unloaded_sessions_independently(
@@ -195,7 +192,8 @@ async def test_sidebar_styles_active_running_and_unloaded_sessions_independently
             assert all(isinstance(style, str) for style in styles)
             return styles  # type: ignore[return-value]
 
-        assert agent_list.highlighted == 0
+        assert agent_list.highlighted == 1
+        agent_list.highlighted = 0
         assert prompt_styles(running) == ["$foreground", "$foreground"]
         assert prompt_styles(active) == ["$success", "$foreground", "bold"]
         assert prompt_styles(unloaded) == ["$text-muted", "$foreground"]
@@ -227,7 +225,6 @@ async def test_sidebar_displays_harness_icon() -> None:
     app = SidebarTestApp(
         (codex_session, opencode_session),
         (fish_session,),
-        shortcut_slots={fish_session.id: 1},
     )
 
     async with app.run_test() as pilot:
@@ -238,9 +235,9 @@ async def test_sidebar_displays_harness_icon() -> None:
             for option in option_list.options
         ]
         assert option_prompts == [
-            "● [ 1 ] 🌀 Auth Refactor",
-            "● [ 2 ] 💻 API Cleanup",
-            "● [ 1 ] 🐟 Fish Slot",
+            "● 🌀 Auth Refactor",
+            "● 💻 API Cleanup",
+            "● 🐟 Fish Slot",
         ]
 
 

@@ -90,15 +90,8 @@ class AgentHubApp(App):
         self._working_directory_root = (
             Path.home() if working_directory_root is None else working_directory_root
         )
-        self._shell_session_slots: dict[int, str] = {}
         self._discovery_executor: ThreadPoolExecutor | None = None
         self._discovery_in_progress = False
-
-    @property
-    def shell_session_slots(self) -> dict[int, str]:
-        """Return a copy of the lazy Fish slot mapping."""
-
-        return self._shell_session_slots.copy()
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -119,7 +112,6 @@ class AgentHubApp(App):
                 yield SessionSidebar(
                     self._agent_sessions(),
                     shell_sessions=self._shell_sessions(),
-                    shortcut_slots=self._shortcut_slots(),
                     id="session-sidebar",
                 )
                 yield ContentSwitcher(
@@ -357,11 +349,6 @@ class AgentHubApp(App):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Gate hub-owned keys while an active terminal owns the keyboard."""
 
-        if action == "open_shell" and (
-            not parameters or not isinstance(parameters[0], int) or not 1 <= parameters[0] <= 9
-        ):
-            return False
-
         terminal_is_active = self.session_manager.active_session is not None
         if self.hub_locked and terminal_is_active and action in TERMINAL_GATED_ACTIONS:
             return False
@@ -392,20 +379,30 @@ class AgentHubApp(App):
             current_screen.dismiss()
         self.call_after_refresh(self._focus_active_terminal)
 
-    async def action_open_shell(self, slot: int) -> None:
-        """Open an existing Fish slot or create it lazily."""
+    def action_new_shell(self) -> None:
+        """Begin the user-driven New Shell Session modal workflow."""
 
-        session_id = self._shell_session_slots.get(slot)
-        if session_id is not None:
-            self.show_session(session_id)
+        self.push_screen(
+            SessionNameModal(
+                self._shell_harness.display_name,
+                default_name="Shell",
+                placeholder="Shell (optional)",
+            ),
+            self._on_shell_name_selected,
+        )
+
+    async def _on_shell_name_selected(self, name: str | None) -> None:
+        """Create and focus a new Fish shell session with the specified or default name."""
+
+        if name is None:
             return
 
+        normalized_name = name.strip() or "Shell"
         session = await self._create_and_mount_session(
-            name=f"Shell {slot}",
+            name=normalized_name,
             harness=self._shell_harness,
             kind=SessionKind.SHELL,
             cwd=Path.cwd(),
-            shell_slot=slot,
         )
         self._refresh_sidebar()
         if session in self.session_manager.sessions:
@@ -526,7 +523,6 @@ class AgentHubApp(App):
         harness: AgentHarness,
         kind: SessionKind,
         cwd: Path,
-        shell_slot: int | None = None,
     ) -> AgentSession:
         """Create one manager-owned session and mount its terminal in the shell."""
 
@@ -540,13 +536,9 @@ class AgentHubApp(App):
         if session.terminal is None:
             raise RuntimeError("new runtime session did not create a terminal")
         session.terminal.id = self._terminal_dom_id(session.id)
-        if shell_slot is not None:
-            self._shell_session_slots[shell_slot] = session.id
         try:
             await self.query_one("#session-content", ContentSwitcher).mount(session.terminal)
         except Exception:
-            if shell_slot is not None and self._shell_session_slots.get(shell_slot) == session.id:
-                self._shell_session_slots.pop(shell_slot, None)
             if session in self.session_manager.sessions:
                 self.session_manager.remove(session.id)
                 if previous_session in self.session_manager.sessions:
@@ -565,28 +557,13 @@ class AgentHubApp(App):
         )
 
     def _shell_sessions(self) -> tuple[AgentSession, ...]:
-        """Return shell sessions with numbered slots first in numeric order."""
+        """Return managed shell sessions in creation order."""
 
-        shell_sessions = tuple(
+        return tuple(
             session
             for session in self.session_manager.sessions
             if session.kind is SessionKind.SHELL
         )
-        sessions_by_id = {session.id: session for session in shell_sessions}
-        slotted = tuple(
-            sessions_by_id[session_id]
-            for _slot, session_id in sorted(self._shell_session_slots.items())
-            if session_id in sessions_by_id
-        )
-        slotted_ids = {session.id for session in slotted}
-        return slotted + tuple(
-            session for session in shell_sessions if session.id not in slotted_ids
-        )
-
-    def _shortcut_slots(self) -> dict[str, int]:
-        """Map currently addressable sessions to their reserved shortcuts."""
-
-        return {session_id: slot for slot, session_id in self._shell_session_slots.items()}
 
     def _refresh_sidebar(self) -> None:
         """Synchronize grouped session presentation with application state."""
@@ -597,7 +574,6 @@ class AgentHubApp(App):
         sidebars[0].update_sessions(
             self._agent_sessions(),
             shell_sessions=self._shell_sessions(),
-            shortcut_slots=self._shortcut_slots(),
         )
 
     def _refresh_home(self) -> None:
@@ -630,14 +606,6 @@ class AgentHubApp(App):
         """Route sidebar navigation through the shared switching operation."""
 
         await self.activate_session(message.session_id)
-
-    async def on_session_sidebar_shell_slot_selected(
-        self,
-        message: SessionSidebar.ShellSlotSelected,
-    ) -> None:
-        """Open or create a shell slot selected through the shell sidebar."""
-
-        await self.action_open_shell(message.slot)
 
     async def on_agent_terminal_process_exited(
         self,
@@ -680,10 +648,6 @@ class AgentHubApp(App):
 
         was_active = self.session_manager.active_session is session
         terminal = session.terminal
-        for slot, session_id in tuple(self._shell_session_slots.items()):
-            if session_id == session.id:
-                del self._shell_session_slots[slot]
-
         self.session_manager.remove(session.id)
         if was_active:
             self._show_home()

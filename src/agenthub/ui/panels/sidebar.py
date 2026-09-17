@@ -1,6 +1,6 @@
 """Persistent session navigation and primary application action panel."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import ClassVar
 
 from textual.app import ComposeResult
@@ -31,19 +31,11 @@ class SessionSidebar(Vertical):
             super().__init__()
             self.session_id = session_id
 
-    class ShellSlotSelected(Message):
-        """A user selected a numbered shell slot."""
-
-        def __init__(self, slot: int) -> None:
-            super().__init__()
-            self.slot = slot
-
     def __init__(
         self,
         agent_sessions: Iterable[AgentSession],
         *,
         shell_sessions: Iterable[AgentSession] = (),
-        shortcut_slots: Mapping[str, int] | None = None,
         harnesses: Iterable[AgentHarness] | None = None,
         id: str | None = None,
     ) -> None:
@@ -55,9 +47,10 @@ class SessionSidebar(Vertical):
         self._visible_sessions = self._agent_sessions + self._shell_sessions
         self._agent_session_snapshot = self._session_snapshot(self._agent_sessions)
         self._shell_session_snapshot = self._session_snapshot(self._shell_sessions)
-        self._shortcut_slots = dict(shortcut_slots or {})
         self._active_session_id: str | None = None
         self._focused_kind: SessionKind | None = None
+        self._last_agent_highlight: int | None = None
+        self._last_shell_highlight: int | None = None
         self._harnesses: tuple[AgentHarness, ...] = (
             (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
             if harnesses is None
@@ -70,18 +63,11 @@ class SessionSidebar(Vertical):
 
         return tuple(session.id for session in self._visible_sessions)
 
-    @property
-    def shortcut_slots(self) -> dict[str, int]:
-        """Return the visible session-to-shortcut mapping."""
-
-        return self._shortcut_slots.copy()
-
     def update_sessions(
         self,
         agent_sessions: Iterable[AgentSession],
         *,
         shell_sessions: Iterable[AgentSession] = (),
-        shortcut_slots: Mapping[str, int] | None = None,
     ) -> None:
         """Refresh grouped presentation from application-owned session state."""
 
@@ -89,11 +75,9 @@ class SessionSidebar(Vertical):
         next_shells = tuple(shell_sessions)
         next_agent_snapshot = self._session_snapshot(next_agents)
         next_shell_snapshot = self._session_snapshot(next_shells)
-        next_shortcuts = dict(shortcut_slots or {})
         if (
             next_agent_snapshot == self._agent_session_snapshot
             and next_shell_snapshot == self._shell_session_snapshot
-            and next_shortcuts == self._shortcut_slots
         ):
             return
 
@@ -102,7 +86,6 @@ class SessionSidebar(Vertical):
         self._visible_sessions = self._agent_sessions + self._shell_sessions
         self._agent_session_snapshot = next_agent_snapshot
         self._shell_session_snapshot = next_shell_snapshot
-        self._shortcut_slots = next_shortcuts
         if self.is_mounted:
             self.call_next(self._recompose_sessions)
 
@@ -136,12 +119,9 @@ class SessionSidebar(Vertical):
     def _option_prompt(
         self,
         session: AgentSession,
-        *,
-        shortcut: int | None = None,
     ) -> Content:
         """Format and style a session independently from the navigation cursor."""
 
-        prefix = f"[ {shortcut} ] " if shortcut is not None else ""
         is_active = session.id == self._active_session_id
         is_unloaded = session.kind is SessionKind.AGENT and session.terminal is None
         indicator = _UNLOADED_INDICATOR if is_unloaded else _RUNNING_INDICATOR
@@ -153,7 +133,7 @@ class SessionSidebar(Vertical):
             if session.harness.icon
             else f"{session.harness.display_name} · "
         )
-        prompt = Content(f"{indicator} {prefix}{badge}{session.name}")
+        prompt = Content(f"{indicator} {badge}{session.name}")
         prompt = prompt.stylize(indicator_style, 0, 1).stylize("$foreground", 2)
         return prompt.stylize("bold", 2) if is_active else prompt
 
@@ -165,16 +145,11 @@ class SessionSidebar(Vertical):
         for session_list in self.query(OptionList):
             is_agent_list = session_list.id == "agent-session-list"
             sessions = self._agent_sessions if is_agent_list else self._shell_sessions
-            for index, session in enumerate(sessions, start=1):
-                shortcut = (
-                    index
-                    if is_agent_list and index <= 9
-                    else self._shortcut_slots.get(session.id)
-                )
+            for session in sessions:
                 try:
                     session_list.replace_option_prompt(
                         session.id,
-                        self._option_prompt(session, shortcut=shortcut),
+                        self._option_prompt(session),
                     )
                 except OptionDoesNotExist:
                     # Session data may lead the mounted options during recomposition.
@@ -199,13 +174,10 @@ class SessionSidebar(Vertical):
             yield OptionList(
                 *(
                     Option(
-                        self._option_prompt(
-                            session,
-                            shortcut=index if index <= 9 else None,
-                        ),
+                        self._option_prompt(session),
                         id=session.id,
                     )
-                    for index, session in enumerate(self._agent_sessions, start=1)
+                    for session in self._agent_sessions
                 ),
                 id="agent-session-list",
                 classes="session-list",
@@ -234,10 +206,7 @@ class SessionSidebar(Vertical):
             yield OptionList(
                 *(
                     Option(
-                        self._option_prompt(
-                            session,
-                            shortcut=self._shortcut_slots.get(session.id),
-                        ),
+                        self._option_prompt(session),
                         id=session.id,
                     )
                     for session in self._shell_sessions
@@ -282,28 +251,87 @@ class SessionSidebar(Vertical):
     def focus_agents(self) -> None:
         """Focus the agent-session list when it contains selectable rows."""
 
-        self._focus_session_list("#agent-session-list", SessionKind.AGENT)
+        self._focus_session_list(
+            "#agent-session-list",
+            SessionKind.AGENT,
+            self._last_agent_highlight,
+        )
 
     def focus_shells(self) -> None:
         """Focus the shell-session list when it contains selectable rows."""
 
-        self._focus_session_list("#shell-session-list", SessionKind.SHELL)
+        self._focus_session_list(
+            "#shell-session-list",
+            SessionKind.SHELL,
+            self._last_shell_highlight,
+        )
 
-    def _focus_session_list(self, selector: str, kind: SessionKind) -> None:
-        """Focus one list and ensure its navigation cursor is immediately visible."""
+    def _focus_session_list(
+        self,
+        selector: str,
+        kind: SessionKind,
+        previous_highlight: int | None,
+    ) -> None:
+        """Focus one list and ensure its navigation cursor is restored or active."""
 
         self._focused_kind = kind
         session_list = self.query_one(selector, OptionList)
-        if session_list.options:
-            for other_list in self.query(OptionList):
-                other_list.highlighted = None
-            session_list.highlighted = 0
-            session_list.focus()
-        else:
+        if not session_list.options:
             self.focus()
+            return
+
+        for other_list in self.query(OptionList):
+            if other_list is not session_list:
+                other_list.highlighted = None
+
+        target_highlight: int | None = None
+        if self._active_session_id is not None:
+            try:
+                target_highlight = session_list.get_option_index(self._active_session_id)
+            except OptionDoesNotExist:
+                target_highlight = None
+
+        if (
+            target_highlight is None
+            and previous_highlight is not None
+            and 0 <= previous_highlight < len(session_list.options)
+        ):
+            target_highlight = previous_highlight
+
+        if target_highlight is None:
+            target_highlight = 0
+
+        session_list.highlighted = target_highlight
+        session_list.focus()
+
+    def select_numbered_agent(self, number: int) -> None:
+        """Move agent cursor only; never activate."""
+
+        index = number - 1
+        agent_list = self.query_one("#agent-session-list", OptionList)
+        if 0 <= index < len(self._agent_sessions):
+            for other_list in self.query(OptionList):
+                if other_list is not agent_list:
+                    other_list.highlighted = None
+            agent_list.highlighted = index
+            self._last_agent_highlight = index
+            agent_list.focus()
+
+    @property
+    def selected_session_id(self) -> str | None:
+        """Return the session ID under the current sidebar cursor, if any."""
+
+        for session_list in self.query(OptionList):
+            if session_list.has_focus and session_list.highlighted is not None:
+                try:
+                    option = session_list.get_option_at_index(session_list.highlighted)
+                    return option.id
+                except OptionDoesNotExist:
+                    continue
+        return None
 
     def action_select_numbered_session(self, number: int) -> None:
-        """Activate an agent ordinal or request a persistent shell slot."""
+        """Focus an agent ordinal when the agent list is active."""
 
         agent_list = self.query_one("#agent-session-list", OptionList)
         shell_list = self.query_one("#shell-session-list", OptionList)
@@ -315,24 +343,18 @@ class SessionSidebar(Vertical):
             focused_kind = self._focused_kind
 
         if focused_kind is SessionKind.AGENT:
-            index = number - 1
-            if 0 <= index < len(self._agent_sessions):
-                self.post_message(self.SessionSelected(self._agent_sessions[index].id))
-            return
+            self.select_numbered_agent(number)
 
-        if focused_kind is SessionKind.SHELL:
-            session_id = next(
-                (
-                    session_id
-                    for session_id, slot in self._shortcut_slots.items()
-                    if slot == number
-                ),
-                None,
-            )
-            if session_id is None:
-                self.post_message(self.ShellSlotSelected(number))
-            else:
-                self.post_message(self.SessionSelected(session_id))
+    def on_option_list_option_highlighted(
+        self,
+        message: OptionList.OptionHighlighted,
+    ) -> None:
+        """Remember previous cursor position for the focused list."""
+
+        if message.option_list.id == "agent-session-list":
+            self._last_agent_highlight = message.option_index
+        elif message.option_list.id == "shell-session-list":
+            self._last_shell_highlight = message.option_index
 
     def on_option_list_option_selected(
         self,

@@ -191,6 +191,8 @@ async def test_locking_restores_active_agent_highlight(
         await pilot.pause()
         agent_list = app.query_one("#agent-session-list", OptionList)
         await pilot.press("ctrl+a")
+        assert agent_list.highlighted == 1
+        await pilot.press("up")
         assert agent_list.highlighted == 0
 
         await pilot.press("ctrl+g")
@@ -206,12 +208,16 @@ async def test_locking_restores_active_shell_highlight(
     app = AgentHubApp(shell_harness=sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+s")
-        await pilot.press("1")
-        await pilot.press("ctrl+s")
-        await pilot.press("2")
+        await pilot.press("ctrl+shift+s")
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("ctrl+shift+s")
+        await pilot.press("enter")
+        await pilot.pause()
         shell_list = app.query_one("#shell-session-list", OptionList)
         await pilot.press("ctrl+s")
+        assert shell_list.highlighted == 1
+        await pilot.press("up")
         assert shell_list.highlighted == 0
 
         active_shell = app.session_manager.active_session
@@ -238,10 +244,11 @@ async def test_unlocked_navigation_and_new_session_actions_fire(
     async with app.run_test() as pilot:
         assert not app.hub_locked
 
-        await pilot.press("ctrl+s")
-        await pilot.press("1")
-        await pilot.press("ctrl+s")
-        await pilot.press("2")
+        await pilot.press("ctrl+shift+s")
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("ctrl+shift+s")
+        await pilot.press("enter")
         await pilot.pause()
 
         agent_list = app.query_one("#agent-session-list", OptionList)
@@ -250,7 +257,7 @@ async def test_unlocked_navigation_and_new_session_actions_fire(
 
         await pilot.press("ctrl+s")
         assert shell_list.has_focus
-        assert shell_list.highlighted == 0
+        assert shell_list.highlighted == 1
         assert agent_list.highlighted is None
 
         await pilot.press("ctrl+a")
@@ -385,14 +392,15 @@ async def test_locking_on_home_keeps_new_session_modal_open(
         assert app.session_manager.sessions == ()
 
 
-async def test_unbound_ctrl_0_reaches_pty_while_unlocked(
+async def test_ctrl_0_passes_through_to_active_terminal_without_opening_shell(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp(shell_harness=sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+s")
-        await pilot.press("1")
+        await pilot.press("ctrl+shift+s")
+        await pilot.press("enter")
+        await pilot.pause()
         session = app.session_manager.active_session
         assert session is not None
         assert not app.hub_locked
@@ -412,8 +420,9 @@ async def test_ctrl_digit_no_longer_opens_shell_while_unlocked(
     app = AgentHubApp(shell_harness=sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+s")
-        await pilot.press("1")
+        await pilot.press("ctrl+shift+s")
+        await pilot.press("enter")
+        await pilot.pause()
         session = app.session_manager.active_session
         assert session is not None
         pty = session.terminal.board.pty
@@ -424,7 +433,7 @@ async def test_ctrl_digit_no_longer_opens_shell_while_unlocked(
             await pilot.pause()
 
         write_spy.assert_called_once_with("2")
-        assert app.shell_session_slots == {1: session.id}
+        assert len(app.session_manager.sessions) == 1
 
 
 async def test_home_uses_unlocked_shortcuts_by_default() -> None:

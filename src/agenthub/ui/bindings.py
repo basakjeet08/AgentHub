@@ -18,6 +18,14 @@ NEW_SESSION_BINDING = Binding(
     priority=True,
 )
 
+NEW_SHELL_BINDING = Binding(
+    "ctrl+shift+s",
+    "new_shell",
+    "New shell",
+    key_display="Ctrl+Shift+S",
+    priority=True,
+)
+
 COMMAND_PALETTE_BINDING = Binding(
     "ctrl+p",
     "command_palette",
@@ -76,6 +84,7 @@ TERMINAL_GATED_ACTIONS = frozenset(
         "focus_agents",
         "focus_shells",
         "new_session",
+        "new_shell",
         "quit",
         "resync_sessions",
     }
@@ -84,6 +93,7 @@ TERMINAL_GATED_ACTIONS = frozenset(
 APPLICATION_BINDINGS = (
     TOGGLE_HUB_LOCK_BINDING,
     NEW_SESSION_BINDING,
+    NEW_SHELL_BINDING,
     COMMAND_PALETTE_BINDING,
     RESYNC_SESSIONS_BINDING,
     FOCUS_AGENTS_BINDING,
@@ -97,12 +107,13 @@ HOME_SHORTCUTS = (
         for binding in (
             TOGGLE_HUB_LOCK_BINDING,
             NEW_SESSION_BINDING,
+            NEW_SHELL_BINDING,
             COMMAND_PALETTE_BINDING,
             RESYNC_SESSIONS_BINDING,
         )
     ),
     ("Ctrl+A, then 1…9", "Switch agent session"),
-    ("Ctrl+S, then 1…9", "Open / switch shell"),
+    ("Ctrl+S", "Navigate shells"),
 )
 
 __all__ = [
@@ -112,6 +123,7 @@ __all__ = [
     "FOCUS_SHELLS_BINDING",
     "HOME_SHORTCUTS",
     "NEW_SESSION_BINDING",
+    "NEW_SHELL_BINDING",
     "NUMBERED_SESSION_BINDINGS",
     "QUIT_BINDING",
     "RESYNC_SESSIONS_BINDING",
