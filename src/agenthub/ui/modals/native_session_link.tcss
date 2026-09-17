@@ -1,0 +1,57 @@
+NativeSessionLinkModal {
+    align: center middle;
+    background: $background 70%;
+}
+
+#native-session-link-dialog {
+    width: 68;
+    max-width: 94%;
+    height: auto;
+    max-height: 88%;
+    padding: 1 2;
+    background: $surface;
+    border: tall $panel;
+}
+
+#native-session-link-header {
+    width: 100%;
+    height: 2;
+}
+
+#native-session-link-title {
+    width: 1fr;
+    height: 1;
+    color: $foreground;
+    text-style: bold;
+}
+
+#native-session-link-copy {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#native-session-link-list {
+    width: 100%;
+    height: auto;
+    min-height: 3;
+    max-height: 14;
+    background: transparent;
+    border: none;
+}
+
+#native-session-link-list > .option-list--option {
+    padding: 0 1;
+}
+
+#native-session-link-list > .option-list--option-highlighted {
+    background: $panel;
+    color: $foreground;
+    text-style: bold;
+}
+
+#native-session-link-help {
+    width: 100%;
+    height: 2;
+    margin-top: 1;
+}

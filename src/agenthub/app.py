@@ -31,15 +31,19 @@ from agenthub.ui import (
 from agenthub.ui.bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
 from agenthub.ui.modals import (
     HarnessSelectionModal,
+    NativeSessionLinkModal,
     SessionNameModal,
     WorkingDirectoryModal,
 )
 
-_NEW_SESSION_MODALS = (
+_SESSION_WORKFLOW_MODALS = (
     HarnessSelectionModal,
+    NativeSessionLinkModal,
     SessionNameModal,
     WorkingDirectoryModal,
 )
+
+_FRESH_AGENT_NAME = "New session"
 
 
 @dataclass(frozen=True)
@@ -382,7 +386,7 @@ class AgentHubApp(App):
     def action_new_shell(self) -> None:
         """Begin the user-driven New Shell Session modal workflow."""
 
-        if isinstance(self.screen, _NEW_SESSION_MODALS):
+        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
             return
 
         self.push_screen(
@@ -428,7 +432,7 @@ class AgentHubApp(App):
     def action_new_session(self) -> None:
         """Begin the user-driven New Agent Session modal workflow."""
 
-        if isinstance(self.screen, _NEW_SESSION_MODALS):
+        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
             return
 
         self.push_screen(
@@ -441,51 +445,110 @@ class AgentHubApp(App):
 
         self._start_native_session_discovery()
 
+    def action_link_native_session(self) -> None:
+        """Open manual reconciliation for the selected fresh Agent runtime."""
+
+        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
+            return
+
+        pending = self.session_manager.active_session
+        if pending is None:
+            self.notify(
+                "Select a running fresh agent session before linking.",
+                severity="warning",
+            )
+            return
+        if pending.kind is not SessionKind.AGENT:
+            self.notify("Shell sessions cannot be linked.", severity="warning")
+            return
+        if pending.native_session_id is not None:
+            self.notify(
+                f"{pending.name} is already linked to a native session.",
+                severity="warning",
+            )
+            return
+        if (
+            pending.terminal is None
+            or pending.state is not SessionState.RUNNING
+            or not pending.terminal.is_process_running
+        ):
+            self.notify(
+                "The selected fresh agent does not have a running terminal.",
+                severity="warning",
+            )
+            return
+
+        candidates = self.session_manager.linkable_native_sessions(pending.id)
+        if not candidates:
+            self.notify(
+                "No unloaded native sessions from this harness and working "
+                "directory are available. "
+                "Run Ctrl+Shift+R after the native conversation exists.",
+                severity="warning",
+            )
+            return
+
+        self.push_screen(
+            NativeSessionLinkModal(pending, candidates),
+            partial(self._on_native_session_link_selected, pending.id),
+        )
+
+    def _on_native_session_link_selected(
+        self,
+        pending_session_id: str,
+        native_session_row_id: str | None,
+    ) -> None:
+        """Apply a user-selected native identity after revalidating both rows."""
+
+        if native_session_row_id is None:
+            return
+
+        try:
+            pending = self.session_manager.get(pending_session_id)
+            if pending.terminal is None or not pending.terminal.is_process_running:
+                raise ValueError("the fresh agent terminal is no longer running")
+            linked = self.session_manager.link_native_session(
+                pending_session_id,
+                native_session_row_id,
+            )
+        except (KeyError, ValueError) as error:
+            self.notify(f"Could not link native session: {error}", severity="error")
+            return
+
+        self._refresh_sidebar()
+        self._refresh_status()
+        self._refresh_home()
+        self.show_session(linked.id)
+        self.notify(
+            f"Linked running terminal to {linked.name}.",
+            title="Native session linked",
+            markup=False,
+        )
+
     def _on_harness_selected(self, harness_id: str | None) -> None:
-        """Continue the workflow by prompting for the selected harness's name."""
+        """Continue the workflow by prompting for the working directory."""
 
         if harness_id is None:
             return
 
         harness = self._agent_harnesses[harness_id]
         self.push_screen(
-            SessionNameModal(harness.display_name),
-            partial(self._on_session_name_selected, harness),
-        )
-
-    def _on_session_name_selected(
-        self,
-        harness: AgentHarness,
-        name: str | None,
-    ) -> None:
-        """Continue the workflow by prompting for the working directory."""
-
-        if name is None:
-            return
-
-        normalized_name = name.strip()
-        if not normalized_name:
-            return
-
-        self.push_screen(
             WorkingDirectoryModal(root=self._working_directory_root),
-            partial(self._on_working_directory_selected, harness, normalized_name),
+            partial(self._on_working_directory_selected, harness),
         )
 
     async def _on_working_directory_selected(
         self,
         harness: AgentHarness,
-        name: str,
         cwd: Path | None,
     ) -> None:
-        """Create the runtime only after all three modal stages are confirmed."""
+        """Create the runtime only after both modal stages are confirmed."""
 
         if cwd is None:
             return
 
         await self._create_agent_session(
             harness=harness,
-            name=name,
             cwd=cwd,
         )
 
@@ -493,13 +556,12 @@ class AgentHubApp(App):
         self,
         *,
         harness: AgentHarness,
-        name: str,
         cwd: Path,
     ) -> AgentSession:
         """Apply Agent-session policy around generic runtime creation."""
 
         session = await self._create_and_mount_session(
-            name=name,
+            name=_FRESH_AGENT_NAME,
             harness=harness,
             kind=SessionKind.AGENT,
             cwd=cwd,
@@ -639,9 +701,30 @@ class AgentHubApp(App):
         session: AgentSession,
         _exit_code: int,
     ) -> None:
-        """Remove an exited runtime and show Home when it was active."""
+        """Retain resumable native Agents and remove disposable runtimes."""
 
-        await self._remove_exited_session(session)
+        if session.kind is SessionKind.AGENT and session.native_session_id is not None:
+            await self._unload_exited_native_session(session)
+        else:
+            await self._remove_exited_session(session)
+
+    async def _unload_exited_native_session(self, session: AgentSession) -> None:
+        """Detach an exited runtime while preserving its native-backed row."""
+
+        if session not in self.session_manager.sessions:
+            return
+
+        was_active = self.session_manager.active_session is session
+        terminal = self.session_manager.detach_terminal(session.id)
+        if was_active:
+            self.session_manager.clear_selection()
+            self._show_home()
+
+        if terminal is not None and terminal.is_mounted:
+            await terminal.remove()
+
+        self._refresh_sidebar()
+        self._refresh_status()
 
     async def _remove_exited_session(self, session: AgentSession) -> None:
         """Synchronize process-exit cleanup across manager, DOM, and UI."""

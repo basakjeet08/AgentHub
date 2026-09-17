@@ -14,6 +14,7 @@ from agenthub.sessions import AgentSession, SessionKind
 from agenthub.ui import AgentHubStatusBar, SessionSidebar
 from agenthub.ui.modals import (
     HarnessSelectionModal,
+    NativeSessionLinkModal,
     SessionNameModal,
     WorkingDirectoryModal,
 )
@@ -54,6 +55,7 @@ def _app_with_sessions(
         ("ctrl+backspace", "\x17"),
         ("ctrl+0", "0"),
         ("ctrl+1", "1"),
+        ("alt+m", "m"),
     ],
 )
 async def test_locked_hub_binding_reaches_pty(
@@ -80,7 +82,12 @@ async def test_locked_hub_binding_reaches_pty(
         assert not isinstance(app.screen, CommandPalette)
         assert not isinstance(
             app.screen,
-            (HarnessSelectionModal, SessionNameModal, WorkingDirectoryModal),
+            (
+                HarnessSelectionModal,
+                NativeSessionLinkModal,
+                SessionNameModal,
+                WorkingDirectoryModal,
+            ),
         )
         assert app.session_manager.sessions == (session,)
 
@@ -114,14 +121,13 @@ async def test_super_a_is_consumed_without_crashing_or_reaching_pty(
         assert session.terminal.has_focus
 
 
-async def test_session_name_input_owns_ctrl_v_over_a_mounted_terminal(
+async def test_shell_name_input_owns_ctrl_v_over_a_mounted_terminal(
     sleeping_harness: AgentHarness,
 ) -> None:
     app, (session,) = _app_with_sessions(sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+n")
-        await pilot.press("enter")
+        await pilot.press("ctrl+shift+s")
         await pilot.pause()
         assert isinstance(app.screen, SessionNameModal)
         name_input = app.screen.query_one("#session-name-input", Input)
@@ -309,7 +315,6 @@ async def test_locking_from_command_palette_closes_it_and_refocuses_terminal(
     ("stage", "expected_modal"),
     [
         ("harness", HarnessSelectionModal),
-        ("name", SessionNameModal),
         ("cwd", WorkingDirectoryModal),
     ],
 )
@@ -327,11 +332,7 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("ctrl+n")
-        if stage in {"name", "cwd"}:
-            await pilot.press("enter")
-            await pilot.pause()
         if stage == "cwd":
-            app.screen.query_one("#session-name-input", Input).value = "Test Agent"
             await pilot.press("enter")
             await pilot.pause()
         assert isinstance(app.screen, expected_modal)
@@ -355,7 +356,6 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
     ("stage", "expected_modal", "focus_selector", "focus_type"),
     [
         ("harness", HarnessSelectionModal, "#harness-selection-list", OptionList),
-        ("name", SessionNameModal, "#session-name-input", Input),
         ("cwd", WorkingDirectoryModal, "#working-directory-tree", FolderTree),
     ],
 )
@@ -374,11 +374,7 @@ async def test_locking_on_home_keeps_new_session_modal_open(
 
     async with app.run_test() as pilot:
         await pilot.press("ctrl+n")
-        if stage in {"name", "cwd"}:
-            await pilot.press("enter")
-            await pilot.pause()
         if stage == "cwd":
-            app.screen.query_one("#session-name-input", Input).value = "Test Agent"
             await pilot.press("enter")
             await pilot.pause()
         assert isinstance(app.screen, expected_modal)
@@ -434,6 +430,24 @@ async def test_ctrl_digit_no_longer_opens_shell_while_unlocked(
 
         write_spy.assert_called_once_with("2")
         assert len(app.session_manager.sessions) == 1
+
+
+async def test_ctrl_m_remains_terminal_enter_while_unlocked(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press("ctrl+m")
+            await pilot.pause()
+
+        write_spy.assert_called_once_with("\r")
+        assert not isinstance(app.screen, NativeSessionLinkModal)
 
 
 async def test_home_uses_unlocked_shortcuts_by_default() -> None:

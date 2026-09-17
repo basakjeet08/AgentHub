@@ -42,6 +42,14 @@ RESYNC_SESSIONS_BINDING = Binding(
     priority=True,
 )
 
+LINK_NATIVE_SESSION_BINDING = Binding(
+    "alt+m",
+    "link_native_session",
+    "Link native session",
+    key_display="Alt+M",
+    priority=True,
+)
+
 FOCUS_AGENTS_BINDING = Binding(
     "ctrl+a",
     "focus_agents",
@@ -83,6 +91,7 @@ TERMINAL_GATED_ACTIONS = frozenset(
         "command_palette",
         "focus_agents",
         "focus_shells",
+        "link_native_session",
         "new_session",
         "new_shell",
         "quit",
@@ -96,6 +105,7 @@ APPLICATION_BINDINGS = (
     NEW_SHELL_BINDING,
     COMMAND_PALETTE_BINDING,
     RESYNC_SESSIONS_BINDING,
+    LINK_NATIVE_SESSION_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
     QUIT_BINDING,
@@ -122,6 +132,7 @@ __all__ = [
     "FOCUS_AGENTS_BINDING",
     "FOCUS_SHELLS_BINDING",
     "HOME_SHORTCUTS",
+    "LINK_NATIVE_SESSION_BINDING",
     "NEW_SESSION_BINDING",
     "NEW_SHELL_BINDING",
     "NUMBERED_SESSION_BINDINGS",

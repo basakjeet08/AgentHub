@@ -17,7 +17,7 @@ from agenthub.harnesses import (
     KeyStroke,
     ScrollKeys,
 )
-from agenthub.sessions import AgentSession, SessionKind
+from agenthub.sessions import AgentSession, SessionKind, SessionState
 from agenthub.ui import HomeScreen, SessionSidebar
 
 
@@ -156,7 +156,6 @@ async def test_all_registered_agent_types_coexist_and_survive_switching(
             [
                 await app._create_agent_session(
                     harness=harness,
-                    name=f"{harness.display_name} Work",
                     cwd=directory,
                 )
                 for harness, directory in zip(harnesses, directories, strict=True)
@@ -285,6 +284,67 @@ async def test_hidden_exit_is_removed_without_interrupting_active_session(
             app._terminal_dom_id(second.id)
         )
         assert app.query_one(SessionSidebar).visible_session_ids == (second.id,)
+
+
+async def test_active_native_backed_exit_retains_unloaded_resumable_row(
+    tmp_path: Path,
+) -> None:
+    app, session = _app_with_session(_exiting_harness(7), cwd=tmp_path)
+    session.native_session_id = "native-exit"
+
+    async with app.run_test() as pilot:
+        for _ in range(20):
+            if session.terminal is None:
+                break
+            await pilot.pause(0.05)
+        await pilot.pause()
+
+        assert app.session_manager.sessions == (session,)
+        assert app.session_manager.active_session is None
+        assert session.native_session_id == "native-exit"
+        assert session.terminal is None
+        assert session.state is SessionState.UNLOADED
+        assert app.query_one(HomeScreen).display
+        assert app.query_one(HomeScreen).has_focus
+        assert app.query_one(SessionSidebar).visible_session_ids == (session.id,)
+
+
+async def test_hidden_native_backed_exit_does_not_interrupt_active_sibling(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    delayed_exit = _script_harness(
+        "linked-delayed-exit",
+        "import time; time.sleep(0.2)",
+    )
+    app, linked = _app_with_session(delayed_exit, cwd=tmp_path)
+    linked.native_session_id = "native-linked"
+    active = app.session_manager.create(
+        name="Active",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+
+    async with app.run_test() as pilot:
+        for _ in range(20):
+            if linked.terminal is None:
+                break
+            await pilot.pause(0.05)
+        await pilot.pause()
+
+        assert app.session_manager.sessions == (linked, active)
+        assert linked.state is SessionState.UNLOADED
+        assert linked.terminal is None
+        assert app.session_manager.active_session is active
+        assert active.terminal is not None
+        assert active.terminal.is_process_running
+        assert active.terminal.display
+        assert active.terminal.has_focus
+        assert app.query_one(SessionSidebar).visible_session_ids == (
+            linked.id,
+            active.id,
+        )
 
 
 async def test_hidden_output_and_screen_state_survive_switching(

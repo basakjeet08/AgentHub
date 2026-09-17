@@ -1,5 +1,6 @@
 """Tests for logical session creation and selection."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -221,3 +222,152 @@ def test_remove_rejects_unknown_session_without_changing_selection(
 
     assert manager.sessions == (session,)
     assert manager.active_session is session
+
+
+def test_linkable_native_sessions_filters_to_unique_unloaded_same_harness_agents(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    manager = SessionManager()
+    pending = manager.create(
+        name="New session",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+    eligible = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-eligible",
+            "Eligible",
+            tmp_path,
+        ),
+        harness=sleeping_harness,
+    )
+    other_directory = tmp_path / "other"
+    manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-other-directory",
+            "Other directory",
+            other_directory,
+        ),
+        harness=sleeping_harness,
+    )
+    running = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-running",
+            "Already running",
+            tmp_path,
+        ),
+        harness=sleeping_harness,
+    )
+    manager.attach_terminal(
+        running.id,
+        AgentTerminal(sleeping_harness, working_directory=tmp_path),
+    )
+    other_harness = replace(sleeping_harness, id="other-harness")
+    manager.add_discovered(
+        native_session=NativeSession(
+            other_harness.id,
+            "native-other",
+            "Other harness",
+            tmp_path,
+        ),
+        harness=other_harness,
+    )
+    shell = manager.create(
+        name="Shell",
+        kind=SessionKind.SHELL,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+    shell.native_session_id = "native-shell"
+    manager.select(pending.id)
+
+    assert manager.linkable_native_sessions(pending.id) == (eligible,)
+
+
+def test_link_native_session_preserves_runtime_and_adopts_provider_metadata(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    manager = SessionManager()
+    launch_cwd = tmp_path / "launch"
+    launch_cwd.mkdir()
+    pending = manager.create(
+        name="New session",
+        kind=SessionKind.AGENT,
+        cwd=launch_cwd,
+        harness=sleeping_harness,
+    )
+    terminal = pending.terminal
+    pending_id = pending.id
+    candidate = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-123456789",
+            "Provider title",
+            launch_cwd / ".." / "launch",
+        ),
+        harness=sleeping_harness,
+    )
+
+    linked = manager.link_native_session(pending.id, candidate.id)
+
+    assert linked is pending
+    assert linked.id == pending_id
+    assert linked.native_session_id == "native-123456789"
+    assert linked.name == "Provider title"
+    assert linked.cwd == launch_cwd
+    assert linked.terminal is terminal
+    assert terminal is not None
+    assert terminal.working_directory == launch_cwd
+    assert linked.state is SessionState.RUNNING
+    assert manager.sessions == (linked,)
+    assert manager.active_session is linked
+
+
+def test_link_native_session_revalidates_without_partial_mutation(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    manager = SessionManager()
+    pending = manager.create(
+        name="New session",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+    candidate = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-1",
+            "Provider title",
+            tmp_path,
+        ),
+        harness=sleeping_harness,
+    )
+    other = manager.create(
+        name="Other",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+
+    with pytest.raises(ValueError, match="not active"):
+        manager.link_native_session(pending.id, candidate.id)
+
+    assert manager.sessions == (pending, candidate, other)
+    assert pending.native_session_id is None
+    assert pending.name == "New session"
+    assert candidate.native_session_id == "native-1"
+
+    manager.select(pending.id)
+    candidate.state = SessionState.STARTING
+    with pytest.raises(ValueError, match="safe link target"):
+        manager.link_native_session(pending.id, candidate.id)
+
+    assert manager.sessions == (pending, candidate, other)
+    assert pending.native_session_id is None

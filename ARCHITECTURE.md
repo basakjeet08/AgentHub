@@ -66,19 +66,23 @@ bittty / PTY → coding agent`.
   for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, and sidebar-group focus;
 - gates hub navigation through `check_action()` while a terminal is active so
   rejected key events continue unchanged to `AgentTerminal`;
-- coordinates a registry-driven harness picker, required session-name modal,
-  and directory picker from Ctrl+N, creating no runtime until all three are
-  confirmed;
+- coordinates a registry-driven harness picker and directory picker from
+  Ctrl+N, creating no runtime until both are confirmed;
+- opens an Alt+M picker for explicit reconciliation of a selected fresh runtime
+  with an unloaded discovered conversation from the same harness and cwd;
 - creates Fish shell sessions via Ctrl+Shift+S with an optional name;
-- maps terminal-exit events back to their owning sessions, removes exited
-  runtimes, and shows Home after an active exit.
+- maps terminal-exit events back to their owning sessions, retains native-backed
+  agents as unloaded, removes disposable unidentified agents and shells, and
+  shows Home after an active exit.
 
 `SessionManager` currently:
 
 - creates and retains sessions in creation order;
 - makes a new session active;
 - selects existing sessions by ID;
-- removes exited sessions and clears selection when the active session is removed;
+- merges a user-selected unloaded native row into an active unidentified Agent
+  while preserving the running terminal and AgentHub row identity;
+- removes disposable exited sessions and clears selection when appropriate;
 - constructs terminal runtimes without mounting them.
 - retains discovered logical sessions without terminal runtimes;
 - deduplicates native conversations by harness ID and native session ID;
@@ -167,7 +171,8 @@ The authoritative source and test layout is documented in
 The core ownership boundaries, Home-first shell, persistent sidebar and status
 bar, native-session discovery and exact-ID resume, and switching runtime are
 now implemented. Normal startup creates no terminal or child process. Ctrl+N
-retains the legacy runtime-only creation path until native creation is added.
+creates a fresh native CLI runtime with a temporary AgentHub label and no known
+native session ID.
 
 ## Architecture
 
@@ -553,8 +558,9 @@ Ctrl+G toggles keyboard ownership
    │                              and their original keys reach the PTY
    │
    └── Unlocked → Ctrl+N opens the New Agent Session modal flow,
-                  Ctrl+A/Ctrl+S focus a sidebar group, and a following plain
-                  digit selects its numbered entry
+                  Alt+M opens explicit native-session linking for an eligible
+                  runtime, Ctrl+A/Ctrl+S focus a sidebar group, and a following
+                  plain digit selects its numbered entry
 ```
 
 Home is the intentional exception: with no active terminal, application
@@ -568,9 +574,11 @@ forward terminal input without knowing AgentHub navigation rules.
 
 When Ctrl+G enters Locked mode with a live active terminal behind a modal, the
 app dismisses that modal as cancellation before restoring terminal focus. This
-includes any stage of the New Agent Session flow and ensures no partial
-runtime is created. On Home, where there is no terminal to receive ownership,
-the active modal remains open under the existing Home shortcut exception.
+includes any stage of the New Agent Session flow and the native-session link
+picker. New-session cancellation creates no partial runtime, and link
+cancellation changes neither row. On Home, where there is no terminal to
+receive ownership, the active modal remains open under the existing Home
+shortcut exception.
 
 Conceptually:
 
@@ -637,7 +645,8 @@ AgentHubApp resolves the affected AgentSession
         ▼
 SessionManager updates session/runtime coordination
         │
-        ├── remove the exited session
+        ├── native-backed Agent → detach terminal and retain unloaded row
+        ├── unidentified Agent or Shell → remove the session
         ├── keep an active sibling visible when a hidden child exited
         └── show Home when the active child exited
 ```
@@ -805,7 +814,7 @@ keyboard-ownership state and Ctrl+G action remain grouped on the right.
 The Home screen is a content view inside the application shell rather than a
 separate Textual screen stack entry. This keeps shared navigation and status
 chrome mounted while future content changes inside the `ContentSwitcher`.
-Agent creation begins as a keyboard action and is configured through three small
+Agent creation begins as a keyboard action and is configured through two small
 modal screens:
 
 ```text
@@ -818,9 +827,6 @@ HarnessSelectionModal
 AgentHubApp resolves registry
    │ selected harness
    ▼
-SessionNameModal
-   │ trimmed non-empty name or cancellation
-   ▼
 WorkingDirectoryModal
    │ confirmed normalized Path or cancellation
    ▼
@@ -830,12 +836,34 @@ AgentHubApp._create_agent_session(...)
 _create_and_mount_session(...)
 ```
 
-The harness picker derives its entries from the coding-agent registry, the name
-modal displays the selected harness while collecting the AgentHub session name,
-and the directory modal presents a folder-only tree. All three modals only
-return user choices. `AgentHubApp` owns their sequencing, registry resolution,
-and eventual runtime creation. Cancelling any stage creates nothing and leaves
-the previous Home or live-session state usable.
+The harness picker derives its entries from the coding-agent registry, and the
+directory modal presents a folder-only tree. Both modals only return user
+choices. `AgentHubApp` owns their sequencing, registry resolution, and eventual
+runtime creation. Fresh Agents use the display-only label `New session` and do
+not receive an AgentHub-authored native title. Cancelling either stage creates
+nothing and leaves the previous Home or live-session state usable.
+
+Fresh runtime reconciliation is deliberately explicit rather than heuristic:
+
+```text
+Select running fresh Agent (native_session_id=None)
+   │
+   ▼ Alt+M
+NativeSessionLinkModal
+   │ same-harness, same-cwd, unloaded, unique-ID native rows only
+   ▼ user selects one row
+SessionManager.link_native_session(...)
+   │
+   ├── preserve pending AgentHub ID and terminal/process
+   ├── adopt provider native ID and title
+   └── remove the selected unloaded duplicate row
+```
+
+The picker shows only provider-owned titles. Native IDs remain internal, and
+conversations from other working directories are excluded. Both rows are
+revalidated on confirmation. If either changed, linking fails without a partial
+merge. Later discovery matches the linked row by exact native identity, updates
+provider metadata in place, and cannot recreate the duplicate.
 
 The directory tree excludes dot-prefixed folders by default. Ctrl+H toggles
 those folders and reloads the native tree while preserving expansion and cursor
@@ -883,8 +911,8 @@ Agent rows can be highlighted with Ctrl+A, then 1…9, and activated with Enter.
 Shell rows are navigated with Ctrl+S and arrow keys, and activated with Enter.
 Agent sessions remain selectable directly from the
 sidebar. The sidebar does not operate directly on `SessionManager` or terminal
-internals. Ctrl+N uses the agent-only harness, name, and working-directory modal
-flow; Ctrl+Shift+S opens the lightweight shell naming workflow.
+internals. Ctrl+N uses the agent-only harness and working-directory modal flow;
+Ctrl+Shift+S opens the lightweight shell naming workflow.
 
 ## Repository Structure
 
@@ -935,7 +963,9 @@ src/agenthub/
     │   ├── __init__.py
     │   ├── harness_selection.py   # registry-driven agent harness picker
     │   ├── harness_selection.tcss # compact picker presentation
-    │   ├── session_name.py        # required AgentHub session name input
+    │   ├── native_session_link.py # explicit native-session reconciliation
+    │   ├── native_session_link.tcss # native-link picker presentation
+    │   ├── session_name.py        # optional Fish shell session name input
     │   ├── session_name.tcss      # compact name-prompt presentation
     │   ├── working_directory.py   # directory-only tree picker
     │   └── working_directory.tcss # directory-picker presentation
@@ -1013,25 +1043,28 @@ The architectural foundation is implemented:
    establish the shared UI foundation.
 9. Sidebar presentation accepts `AGENTS` and `SHELLS` collections backed by the
    same manager and selection flow.
-10. Ctrl+N opens a registry-driven harness picker followed by a required
-    session-name prompt and working-directory browser; confirming all three
-    creates and focuses the selected agent. Ctrl+A moves cursor highlight across
-    numbered agents (Enter activates), and Ctrl+Shift+S creates named shells.
+10. Ctrl+N opens a registry-driven harness picker followed by a
+    working-directory browser; confirming both creates and focuses a fresh
+    `New session` agent. Ctrl+A moves cursor highlight across numbered agents
+    (Enter activates), and Ctrl+Shift+S creates named shells.
 11. Sessions carry explicit agent-or-shell identity.
-12. Exited runtimes are removed, active exits return to contextual Home, and hidden
-    exits do not interrupt the current terminal.
-13. Antigravity and Devin are registry-driven harnesses using the same name,
+12. Native-backed Agents are retained as unloaded after exit; unidentified
+    Agents and shells are removed. Active exits return to contextual Home, and
+    hidden exits do not interrupt the current terminal.
+13. Antigravity and Devin are registry-driven harnesses using the same
     working-directory, session, terminal, switching, and cleanup paths as the
     existing coding agents.
 14. Provider-specific adapters discover Codex, OpenCode, Devin, and Antigravity
     conversations, normalize them into unloaded sessions, and construct
     exact-ID resume launches on selection.
+15. Alt+M explicitly links a selected fresh runtime to an eligible unloaded
+    native row from the same harness and cwd without restarting its terminal.
 
 The remaining sequence is:
 
-1. Create and title native conversations through the provider adapters.
-2. Retain coding-agent sessions as unloaded when their child process exits.
-3. Add explicit native-session deletion.
+1. Create and title native conversations through the provider adapters if a
+   reliable provider-native mechanism becomes available.
+2. Add explicit native-session deletion.
 
 ## Validation Tasks
 
@@ -1105,13 +1138,17 @@ The architectural foundation now has automated coverage for:
 - Home shortcut behavior without an active terminal;
 - registry-derived harness selection and stable-ID modal results;
 - complete Antigravity- and Devin-shaped generic modal/session creation flows;
-- required, trimmed user-provided session names and cancellation at all stages;
+- temporary `New session` labels and cancellation at both Agent creation stages;
+- explicit same-harness, same-cwd native-session linking using provider titles;
+- preservation of the fresh runtime's terminal object and process across a
+  link, plus exact-ID de-duplication on later discovery;
 - directory-only browsing and normalized `Path` selection;
-- deferred runtime creation until all three New Agent Session modals are confirmed;
+- deferred runtime creation until both New Agent Session modals are confirmed;
 - child-process cwd inheritance from the directory picker;
 - shell navigation with persistent sidebar groups;
 - process-exit routing to the owning session;
-- active-exit navigation to Home and silent hidden-exit cleanup;
+- active-exit navigation to Home, silent hidden-exit cleanup, and unloaded
+  retention for native-backed Agents;
 - shell session cleanup after process exit;
 - missing-binary cleanup without a ghost session, sidebar row, or active-session
   reference;
@@ -1212,7 +1249,17 @@ Ctrl+Shift+R schedules the same provider discovery pipeline after startup. A
 successful provider result updates known native metadata, adds newly discovered
 conversations, and removes unloaded entries that the provider no longer
 reports. Sessions with attached runtimes are retained so re-sync never
-interrupts a running terminal. Failed providers retain their existing entries.
+interrupts a running terminal. Because a fresh Ctrl+N runtime has no native ID,
+discovery does not guess its identity from title, cwd, timestamps, or ordering.
+The native conversation is therefore added as a separate unloaded row when no
+exact-ID match exists. Repeated discovery deduplicates that native-backed row by
+`(harness_id, native_session_id)`. Failed providers retain their existing
+entries. The user can then select the unidentified running row and press Alt+M.
+Only unloaded native-backed rows from the same harness and cwd are offered;
+provider ID and title are transferred to the existing running row, the selected
+duplicate is removed, and the mounted terminal is preserved. This user choice
+is the reconciliation evidence—AgentHub still never guesses from mutable
+metadata.
 
 ## Architectural Rules
 

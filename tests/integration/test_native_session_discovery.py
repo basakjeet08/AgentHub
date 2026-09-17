@@ -194,6 +194,68 @@ async def test_resync_shortcut_reconciles_unloaded_native_sessions(
         ]
 
 
+async def test_resync_keeps_unidentified_runtime_and_native_session_separate(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    adapter = FakeNativeSessionAdapter(
+        sleeping_harness,
+        tmp_path,
+        native_sessions=(),
+    )
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        native_session_adapters={sleeping_harness.id: adapter},
+    )
+
+    async with app.run_test() as pilot:
+        await app.workers.wait_for_complete()
+        fresh = await app._create_agent_session(
+            harness=sleeping_harness,
+            cwd=tmp_path,
+        )
+        await pilot.pause()
+        terminal = fresh.terminal
+        assert terminal is not None
+        process = terminal.board.process
+
+        adapter._native_sessions = (
+            NativeSession(
+                sleeping_harness.id,
+                "native-1",
+                "Provider title",
+                tmp_path,
+            ),
+        )
+        await pilot.press("ctrl+shift+r")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        fresh_after_refresh, discovered = app.session_manager.sessions
+        assert fresh_after_refresh is fresh
+        assert fresh.name == "New session"
+        assert fresh.native_session_id is None
+        assert fresh.terminal is terminal
+        assert terminal.board.process is process
+        assert terminal.is_process_running
+        assert discovered.native_session_id == "native-1"
+        assert discovered.name == "Provider title"
+        assert discovered.terminal is None
+        assert app.session_manager.active_session is fresh
+        assert app.query_one(SessionSidebar).visible_session_ids == (
+            fresh.id,
+            discovered.id,
+        )
+
+        await pilot.press("ctrl+shift+r")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert app.session_manager.sessions == (fresh, discovered)
+        assert fresh.terminal is terminal
+        assert terminal.board.process is process
+
+
 async def test_provider_discovery_reports_when_no_sessions_are_found(
     sleeping_harness: AgentHarness,
     tmp_path: Path,

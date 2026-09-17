@@ -1,4 +1,4 @@
-"""Session-name input for the New Agent Session workflow."""
+"""Session-name input for the New Shell Session workflow."""
 
 from typing import ClassVar
 
@@ -43,7 +43,7 @@ class SessionNameInput(Input):
 
 
 class SessionNameModal(ModalScreen[str]):
-    """Capture and validate the user-provided AgentHub session name."""
+    """Capture and validate an optional AgentHub shell-session name."""
 
     CSS_PATH = "session_name.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]

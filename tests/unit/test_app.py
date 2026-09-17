@@ -10,6 +10,7 @@ from agenthub.ui.bindings import (
     COMMAND_PALETTE_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
+    LINK_NATIVE_SESSION_BINDING,
     NEW_SESSION_BINDING,
     NEW_SHELL_BINDING,
     NUMBERED_SESSION_BINDINGS,
@@ -86,6 +87,11 @@ def test_application_navigation_bindings_are_reserved() -> None:
     assert RESYNC_SESSIONS_BINDING.priority is True
     assert RESYNC_SESSIONS_BINDING in APPLICATION_BINDINGS
     assert "resync_sessions" in TERMINAL_GATED_ACTIONS
+    assert LINK_NATIVE_SESSION_BINDING.key == "alt+m"
+    assert LINK_NATIVE_SESSION_BINDING.action == "link_native_session"
+    assert LINK_NATIVE_SESSION_BINDING.priority is True
+    assert LINK_NATIVE_SESSION_BINDING in APPLICATION_BINDINGS
+    assert "link_native_session" in TERMINAL_GATED_ACTIONS
     assert [binding.key for binding in NUMBERED_SESSION_BINDINGS] == [
         str(number) for number in range(1, 10)
     ]

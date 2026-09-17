@@ -15,17 +15,10 @@ from agenthub.ui import AgentHubStatusBar, SessionSidebar
 from agenthub.ui.modals import SessionNameModal, WorkingDirectoryModal
 
 
-async def _create_named_agent(
-    app: AgentHubApp,
-    pilot,
-    name: str,
-) -> None:
-    """Complete the three-stage New Agent Session workflow."""
+async def _create_agent(app: AgentHubApp, pilot) -> None:
+    """Complete the two-stage New Agent Session workflow."""
 
     await pilot.press("ctrl+n")
-    await pilot.press("enter")
-    await pilot.pause()
-    app.screen.query_one("#session-name-input", Input).value = name
     await pilot.press("enter")
     await pilot.pause()
     assert isinstance(app.screen, WorkingDirectoryModal)
@@ -49,20 +42,21 @@ async def _create_named_shell(
     await pilot.pause()
 
 
-async def test_ctrl_n_modals_create_and_mount_named_agent(
+async def test_ctrl_n_modals_create_and_mount_fresh_agent(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
 
     async with app.run_test() as pilot:
-        await _create_named_agent(app, pilot, "Named Agent")
+        await _create_agent(app, pilot)
 
         sessions = app.session_manager.sessions
         assert len(sessions) == 1
         session = sessions[0]
         assert session.kind is SessionKind.AGENT
         assert session.harness is sleeping_harness
-        assert session.name == "Named Agent"
+        assert session.name == "New session"
+        assert session.native_session_id is None
         assert session.terminal.is_mounted
         assert session.terminal.has_focus
         assert app.session_manager.active_session is session
@@ -83,7 +77,7 @@ async def test_ctrl_shift_s_creates_fish_shells_and_ctrl_s_navigates(
     )
 
     async with app.run_test() as pilot:
-        await _create_named_agent(app, pilot, "First Agent")
+        await _create_agent(app, pilot)
         first_agent = app.session_manager.active_session
         assert first_agent is not None
 
@@ -129,7 +123,7 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
     )
 
     async with app.run_test() as pilot:
-        await _create_named_agent(app, pilot, "First Agent")
+        await _create_agent(app, pilot)
         first_agent = app.session_manager.active_session
         assert first_agent is not None
 
@@ -141,7 +135,7 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
         shell_two = app.session_manager.active_session
         assert shell_two is not None
 
-        await _create_named_agent(app, pilot, "Second Agent")
+        await _create_agent(app, pilot)
         second_agent = app.session_manager.active_session
         assert second_agent is not None
         assert second_agent not in (first_agent, shell_one, shell_two)
@@ -186,8 +180,8 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
             for option in option_list.options
         ]
         assert option_prompts == [
-            "● Test Sleeper · First Agent",
-            "● Test Sleeper · Second Agent",
+            "● Test Sleeper · New session",
+            "● Test Sleeper · New session",
             "● Test Sleeper · Shell 1",
             "● Test Sleeper · Shell 2",
         ]
@@ -341,4 +335,3 @@ async def test_shell_creation_modal_reentry_guard(
         await pilot.press("ctrl+shift+s")
         await pilot.pause()
         assert app.screen is harness_modal
-

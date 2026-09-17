@@ -1,4 +1,4 @@
-"""Integration coverage for the three-stage New Agent Session workflow."""
+"""Integration coverage for the two-stage New Agent Session workflow."""
 
 import sys
 from dataclasses import replace
@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from textual.command import CommandPalette
 from textual.pilot import Pilot
-from textual.widgets import ContentSwitcher, Input, Label, OptionList, Static
+from textual.widgets import ContentSwitcher, Label, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import ANTIGRAVITY, DEVIN, AgentHarness
@@ -16,31 +16,18 @@ from agenthub.sessions import SessionKind
 from agenthub.ui import HomeScreen, SessionSidebar
 from agenthub.ui.modals import (
     HarnessSelectionModal,
-    SessionNameModal,
     WorkingDirectoryModal,
 )
 from agenthub.ui.modals.working_directory import FolderTree
 
 
-async def _open_name_modal(app: AgentHubApp, pilot: Pilot) -> SessionNameModal:
-    """Select the currently highlighted harness without creating a runtime."""
-
-    await pilot.press("ctrl+n")
-    await pilot.press("enter")
-    await pilot.pause()
-    assert isinstance(app.screen, SessionNameModal)
-    return app.screen
-
-
 async def _open_working_directory_modal(
     app: AgentHubApp,
     pilot: Pilot,
-    name: str = "Test Agent",
 ) -> WorkingDirectoryModal:
-    """Advance through harness selection and naming without creating a runtime."""
+    """Select the highlighted harness without creating a runtime."""
 
-    await _open_name_modal(app, pilot)
-    app.screen.query_one("#session-name-input", Input).value = name
+    await pilot.press("ctrl+n")
     await pilot.press("enter")
     await pilot.pause()
     assert isinstance(app.screen, WorkingDirectoryModal)
@@ -127,141 +114,7 @@ async def test_escape_from_harness_modal_preserves_empty_home() -> None:
         assert isinstance(app.screen, CommandPalette)
 
 
-async def test_harness_confirmation_opens_focused_name_modal_without_creating(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
-
-    async with app.run_test() as pilot:
-        name_modal = await _open_name_modal(app, pilot)
-
-        assert app.session_manager.sessions == ()
-        assert name_modal.query_one("#session-name-input", Input).has_focus
-        assert name_modal.query_one("#session-name-input", Input).value == ""
-        harness_context = name_modal.query_one("#session-name-harness", Static)
-        assert str(harness_context.content) == f"Harness: {sleeping_harness.display_name}"
-        cancel = name_modal.query_one("#session-name-cancel")
-        assert str(cancel.query_one(".modal-shortcut-key", Static).content) == "Esc"
-        assert (
-            str(cancel.query_one(".modal-shortcut-description", Static).content)
-            == "Cancel"
-        )
-
-
-async def test_escape_from_name_modal_cancels_the_entire_workflow(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
-
-    async with app.run_test() as pilot:
-        await _open_name_modal(app, pilot)
-        await pilot.press("escape")
-        await pilot.pause()
-
-        assert not isinstance(
-            app.screen,
-            (HarnessSelectionModal, SessionNameModal, WorkingDirectoryModal),
-        )
-        assert app.session_manager.sessions == ()
-        assert not app.query("AgentTerminal")
-        assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
-        assert app.query_one(HomeScreen).has_focus
-        assert not app.hub_locked
-        assert app.is_running
-
-
-async def test_empty_names_remain_in_modal_with_validation(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
-
-    async with app.run_test() as pilot:
-        name_modal = await _open_name_modal(app, pilot)
-        name_input = name_modal.query_one("#session-name-input", Input)
-
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
-        assert name_input.has_focus
-        assert str(name_modal.query_one("#session-name-error", Static).content)
-        assert app.session_manager.sessions == ()
-
-        name_input.value = "   "
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
-        assert name_input.has_focus
-        assert app.session_manager.sessions == ()
-
-
-async def test_ctrl_v_pastes_external_clipboard_text_into_name(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
-
-    async with app.run_test() as pilot:
-        name_modal = await _open_name_modal(app, pilot)
-        name_input = name_modal.query_one("#session-name-input", Input)
-
-        with patch(
-            "agenthub.ui.modals.session_name.read_clipboard_text",
-            AsyncMock(return_value="Clipboard Session"),
-        ):
-            await pilot.press("ctrl+v")
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-
-        assert name_input.value == "Clipboard Session"
-        assert name_input.has_focus
-        assert app.session_manager.sessions == ()
-
-
-async def test_non_text_clipboard_does_not_change_name_input(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
-
-    async with app.run_test() as pilot:
-        name_modal = await _open_name_modal(app, pilot)
-        name_input = name_modal.query_one("#session-name-input", Input)
-        name_input.value = "Keep this name"
-        name_input.select_all()
-
-        with patch(
-            "agenthub.ui.modals.session_name.read_clipboard_text",
-            AsyncMock(return_value=""),
-        ):
-            await pilot.press("ctrl+v")
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-
-        assert name_input.value == "Keep this name"
-        assert name_input.has_focus
-
-
-async def test_name_input_falls_back_to_textual_clipboard(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
-
-    async with app.run_test() as pilot:
-        name_modal = await _open_name_modal(app, pilot)
-        name_input = name_modal.query_one("#session-name-input", Input)
-        app.copy_to_clipboard("Textual Clipboard")
-
-        with patch(
-            "agenthub.ui.modals.session_name.read_clipboard_text",
-            AsyncMock(return_value=None),
-        ):
-            await pilot.press("ctrl+v")
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-
-        assert name_input.value == "Textual Clipboard"
-        assert name_input.has_focus
-
-
-async def test_name_confirmation_opens_focused_directory_modal_without_creating(
+async def test_harness_confirmation_opens_focused_directory_modal_without_creating(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -271,11 +124,7 @@ async def test_name_confirmation_opens_focused_directory_modal_without_creating(
     )
 
     async with app.run_test() as pilot:
-        modal = await _open_working_directory_modal(
-            app,
-            pilot,
-            "  AgentHub Refactor  ",
-        )
+        modal = await _open_working_directory_modal(app, pilot)
 
         assert app.session_manager.sessions == ()
         assert not app.query("AgentTerminal")
@@ -599,7 +448,7 @@ async def test_filter_is_local_and_filtered_directory_can_be_selected(
     )
 
     async with app.run_test() as pilot:
-        modal = await _open_working_directory_modal(app, pilot, "Payments Work")
+        modal = await _open_working_directory_modal(app, pilot)
         tree = modal.query_one(FolderTree)
         await _load_tree(tree)
         projects_node = next(
@@ -663,7 +512,7 @@ async def test_filter_is_local_and_filtered_directory_can_be_selected(
 
         session = app.session_manager.active_session
         assert session is not None
-        assert session.name == "Payments Work"
+        assert session.name == "New session"
         assert session.cwd == payments.resolve()
 
 
@@ -916,7 +765,7 @@ async def test_directory_modal_expands_and_selects_a_nested_folder(
     )
 
     async with app.run_test() as pilot:
-        modal = await _open_working_directory_modal(app, pilot, "Nested Project")
+        modal = await _open_working_directory_modal(app, pilot)
         tree = modal.query_one(FolderTree)
         await _load_tree(tree)
         projects_node = next(
@@ -962,7 +811,7 @@ async def test_directory_modal_expands_and_selects_a_nested_folder(
         assert session.cwd == project.resolve()
 
 
-async def test_selected_directory_creates_and_focuses_named_agent(
+async def test_selected_directory_creates_and_focuses_fresh_agent(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -975,14 +824,15 @@ async def test_selected_directory_creates_and_focuses_named_agent(
     original_cwd = Path.cwd()
 
     async with app.run_test() as pilot:
-        await _open_working_directory_modal(app, pilot, "  AgentHub Refactor  ")
+        await _open_working_directory_modal(app, pilot)
         await _confirm_directory(app, pilot, project)
 
         sessions = app.session_manager.sessions
         assert len(sessions) == 1
         session = sessions[0]
         assert session.kind is SessionKind.AGENT
-        assert session.name == "AgentHub Refactor"
+        assert session.name == "New session"
+        assert session.native_session_id is None
         assert session.harness is sleeping_harness
         assert session.cwd == project.resolve()
         assert session.terminal.working_directory == project.resolve()
@@ -1016,11 +866,7 @@ async def test_new_native_harnesses_reuse_complete_generic_session_flow(
     original_cwd = Path.cwd()
 
     async with app.run_test() as pilot:
-        await _open_working_directory_modal(
-            app,
-            pilot,
-            f"{harness.display_name} Work",
-        )
+        await _open_working_directory_modal(app, pilot)
         await _confirm_directory(app, pilot, project)
 
         session = app.session_manager.active_session
@@ -1028,7 +874,7 @@ async def test_new_native_harnesses_reuse_complete_generic_session_flow(
         assert session.kind is SessionKind.AGENT
         assert session.harness is harness
         assert session.harness.id == harness_template.id
-        assert session.name == f"{harness.display_name} Work"
+        assert session.name == "New session"
         assert session.cwd == project.resolve()
         assert session.terminal.working_directory == project.resolve()
         assert session.terminal.is_mounted
@@ -1067,7 +913,7 @@ async def test_selected_directory_reaches_the_actual_child_process(tmp_path: Pat
     original_cwd = Path.cwd()
 
     async with app.run_test() as pilot:
-        await _open_working_directory_modal(app, pilot, "Backend Work")
+        await _open_working_directory_modal(app, pilot)
         await _confirm_directory(app, pilot, project)
         for _ in range(20):
             if marker.exists():
@@ -1078,7 +924,7 @@ async def test_selected_directory_reaches_the_actual_child_process(tmp_path: Pat
         assert Path.cwd() == original_cwd
 
 
-async def test_multiple_harness_navigation_connects_selection_to_named_session(
+async def test_multiple_harness_navigation_connects_selection_to_fresh_session(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -1100,51 +946,15 @@ async def test_multiple_harness_navigation_connects_selection_to_named_session(
 
         await pilot.press("enter")
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
-        assert str(app.screen.query_one("#session-name-harness", Static).content) == (
-            "Harness: Harness B"
-        )
-        assert app.session_manager.sessions == ()
-
-        app.screen.query_one("#session-name-input", Input).value = "Backend Work"
-        await pilot.press("enter")
-        await pilot.pause()
         assert isinstance(app.screen, WorkingDirectoryModal)
+        assert app.session_manager.sessions == ()
         await _confirm_directory(app, pilot, tmp_path)
         session = app.session_manager.active_session
         assert session is not None
         assert session.harness is harness_b
         assert session.harness.id == "harness-b"
-        assert session.name == "Backend Work"
+        assert session.name == "New session"
         assert session.cwd == tmp_path.resolve()
-
-
-async def test_cancelling_name_with_existing_terminal_preserves_runtime(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
-    existing = app.session_manager.create(
-        name="Existing Agent",
-        kind=SessionKind.AGENT,
-        cwd=Path.cwd(),
-        harness=sleeping_harness,
-    )
-
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await _open_name_modal(app, pilot)
-        assert existing.terminal.is_mounted
-        assert existing.terminal.is_process_running
-
-        await pilot.press("escape")
-        await pilot.pause()
-
-        assert app.session_manager.sessions == (existing,)
-        assert app.session_manager.active_session is existing
-        assert existing.terminal.is_mounted
-        assert existing.terminal.is_process_running
-        assert existing.terminal.has_focus
-        assert not app.hub_locked
 
 
 async def test_cancelling_directory_with_existing_terminal_preserves_runtime(
@@ -1164,7 +974,7 @@ async def test_cancelling_directory_with_existing_terminal_preserves_runtime(
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        await _open_working_directory_modal(app, pilot, "Cancelled Agent")
+        await _open_working_directory_modal(app, pilot)
 
         assert existing.terminal.is_mounted
         assert existing.terminal.is_process_running
@@ -1208,7 +1018,7 @@ async def test_successful_second_session_keeps_existing_terminal_alive(
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        await _open_working_directory_modal(app, pilot, "Agent B")
+        await _open_working_directory_modal(app, pilot)
         assert existing.terminal.is_mounted
         assert existing.terminal.is_process_running
         await _confirm_directory(app, pilot, second_directory)
@@ -1243,12 +1053,11 @@ async def test_agent_creation_mount_failure_rolls_back_to_previous_session(
 
     async def capture_creation_error(
         harness: AgentHarness,
-        name: str,
         cwd: Path | None,
     ) -> None:
         nonlocal creation_error
         try:
-            await create_session(harness, name, cwd)
+            await create_session(harness, cwd)
         except RuntimeError as error:
             creation_error = error
 
@@ -1263,7 +1072,7 @@ async def test_agent_creation_mount_failure_rolls_back_to_previous_session(
     original_cwd = Path.cwd()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await _open_working_directory_modal(app, pilot, "Failed Agent")
+        await _open_working_directory_modal(app, pilot)
         switcher = app.query_one("#session-content", ContentSwitcher)
         with patch.object(
             switcher,
@@ -1298,7 +1107,7 @@ async def test_missing_harness_binary_is_removed_without_ghost_session(
     )
 
     async with app.run_test() as pilot:
-        await _open_working_directory_modal(app, pilot, "Missing Runtime")
+        await _open_working_directory_modal(app, pilot)
         await _confirm_directory(app, pilot, tmp_path)
         for _ in range(40):
             if not app.session_manager.sessions:

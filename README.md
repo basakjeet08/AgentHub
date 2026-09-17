@@ -34,17 +34,23 @@ multi-session runtime architecture:
   mounts the resulting terminal, and reuses that runtime on later selections.
 - It re-syncs native conversations in place with Ctrl+Shift+R while preserving
   running terminals and reconciling unloaded sidebar entries.
+- It lets the user reconcile a selected fresh runtime with a discovered,
+  unloaded conversation from the same harness and working directory via Alt+M.
+  Linking adopts the native ID and title without restarting the existing
+  terminal.
 - It provides a session sidebar for switching between managed sessions.
 - It keeps `AGENTS` and `SHELLS` sidebar groups visible at all times, allocating
   more space to agent conversations with a 70/30 split.
-- It opens a registry-driven harness picker, session-name prompt, and
-  working-directory browser with Ctrl+N, then launches the selected coding
-  agent in the chosen directory after all three steps are confirmed. The
+- It opens a registry-driven harness picker and working-directory browser with
+  Ctrl+N, then launches the selected coding agent in the chosen directory after
+  both steps are confirmed. Fresh runtimes use the temporary label `New session`
+  until explicitly linked; AgentHub does not assign provider-native titles. The
   directory browser hides dot-prefixed folders by default and toggles them with
   Ctrl+H; typing filters the current directory's immediate child folders by
   name.
 - It creates Fish shell sessions with Ctrl+Shift+S with an optional session name.
-- It removes sessions whose child processes exit and returns active exits to Home
+- It retains native-backed agents as unloaded rows when their child exits,
+  removes unidentified agents and shells, and returns active exits to Home
   without interrupting a live active sibling.
 - It keeps hidden terminals mounted, running, and buffering output while focus
   follows the visible terminal.
@@ -74,10 +80,15 @@ AgentHub does not yet provide:
 - creation, renaming, or deletion of native harness conversations.
 
 Normal startup begins native-session discovery and may populate the agent
-sidebar without starting any child process. Ctrl+N retains the current legacy
-creation flow until native creation is implemented. Shell sessions continue
-to use AgentHub's current working directory and do not participate in native
-discovery.
+sidebar without starting any child process. Ctrl+N launches a fresh native CLI
+runtime with no known native session ID. If later discovery finds the native
+conversation, it is kept as a separate native-backed row rather than guessed to
+belong to the unidentified runtime. Select the fresh running row and press Alt+M
+to choose an unloaded native conversation from the same harness and working
+directory. AgentHub keeps the terminal running, transfers the chosen native
+identity and title onto the fresh row, and removes the duplicate discovered row.
+Shell sessions continue to use AgentHub's current working directory and do not
+participate in native discovery or linking.
 
 ## Keyboard Ownership
 
@@ -94,6 +105,8 @@ Unlocked bindings are:
 Ctrl+G                Lock AgentHub
 Ctrl+N                Create a new agent session
 Ctrl+Shift+S          New shell session
+Ctrl+Shift+R          Re-sync native sessions
+Alt+M                 Link selected fresh agent to a discovered native session
 Ctrl+P                Command Palette
 Ctrl+Q                Quit
 Ctrl+A, 1...9, Enter  Navigate / open agent
