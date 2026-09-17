@@ -308,3 +308,37 @@ async def test_shell_naming_modal_workflow_rules(
         await pilot.pause()
         assert not isinstance(app.screen, SessionNameModal)
         assert len(app.session_manager.sessions) == 3
+
+
+async def test_shell_creation_modal_reentry_guard(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app = AgentHubApp(shell_harness=sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+shift+s")
+        await pilot.pause()
+        assert isinstance(app.screen, SessionNameModal)
+        first_modal = app.screen
+
+        # Repeated Ctrl+Shift+S does not push another modal
+        await pilot.press("ctrl+shift+s")
+        await pilot.pause()
+        assert app.screen is first_modal
+
+        # Dismiss modal
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, SessionNameModal)
+
+        # During Ctrl+N flow, Ctrl+Shift+S is also ignored
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        from agenthub.ui.modals import HarnessSelectionModal
+        assert isinstance(app.screen, HarnessSelectionModal)
+        harness_modal = app.screen
+
+        await pilot.press("ctrl+shift+s")
+        await pilot.pause()
+        assert app.screen is harness_modal
+

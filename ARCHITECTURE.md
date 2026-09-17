@@ -69,9 +69,9 @@ bittty / PTY → coding agent`.
 - coordinates a registry-driven harness picker, required session-name modal,
   and directory picker from Ctrl+N, creating no runtime until all three are
   confirmed;
-- lazily creates one Fish session for each Ctrl+S, then 1…9 shell slot;
+- creates Fish shell sessions via Ctrl+Shift+S with an optional name;
 - maps terminal-exit events back to their owning sessions, removes exited
-  runtimes, releases their shell slots, and shows Home after an active exit.
+  runtimes, and shows Home after an active exit.
 
 `SessionManager` currently:
 
@@ -121,7 +121,7 @@ Four coding-agent harnesses are registered:
 | `devin`       | `devin`    | `🟩` | no      | native terminal behavior |
 | `opencode`    | `opencode` | `💻` | yes     | semantic transcript shortcuts |
 
-Fish is a built-in shell definition used directly by the fixed shell slots. It
+Fish is a built-in shell definition used for shell sessions. It
 is intentionally not part of the coding-agent harness registry.
 
 OpenCode's current transcript-scroll policy is:
@@ -430,9 +430,8 @@ The session conceptually owns an attached terminal runtime when loaded, but
 controlling its visibility in the Textual DOM. Discovered sessions begin with
 `terminal=None` and `state=UNLOADED`.
 
-`SessionKind` describes semantic identity independently from keyboard shortcut
-addressability. The Fish slot map answers which Ctrl+digit opens a session; it
-does not decide whether a session is an agent or shell. Native IDs and
+`SessionKind` describes semantic identity independently from presentation.
+It decides whether a session is an agent or shell. Native IDs and
 lifecycle state are now required because logical sessions can exist without a
 running terminal. Persistence records and a separate runtime object remain
 unnecessary.
@@ -559,10 +558,10 @@ Ctrl+G toggles keyboard ownership
 ```
 
 Home is the intentional exception: with no active terminal, application
-shortcuts work even while the authoritative mode remains Locked. Ctrl+A followed
-by 1…9 selects a numbered agent; Ctrl+S followed by 1…9 opens or selects a Fish
-slot. Ctrl+digit combinations remain unbound by AgentHub and reach the active
-terminal.
+shortcuts work even while the authoritative mode remains Locked. In the sidebar,
+Ctrl+A focuses agents where digits 1…9 move highlight and Enter activates; Ctrl+S
+focuses shells for arrow-key navigation. Ctrl+Shift+S opens shell creation.
+Ctrl+digit combinations remain unbound by AgentHub and reach the active terminal.
 
 This policy does not belong inside `AgentTerminal`; that boundary continues to
 forward terminal input without knowing AgentHub navigation rules.
@@ -639,7 +638,6 @@ AgentHubApp resolves the affected AgentSession
 SessionManager updates session/runtime coordination
         │
         ├── remove the exited session
-        ├── release its Ctrl+S shell slot, if any
         ├── keep an active sibling visible when a hidden child exited
         └── show Home when the active child exited
 ```
@@ -647,8 +645,8 @@ SessionManager updates session/runtime coordination
 The app resolves the Textual message sender to its owning session, coordinates
 manager mutation with DOM removal, and keeps AgentHub running even when no
 sessions remain. Home uses contextual guidance when other live sessions remain.
-The terminal reports process exit but does not know about the manager, slot
-mapping, selection, Home, or application quit policy.
+The terminal reports process exit but does not know about the manager,
+selection, Home, or application quit policy.
 
 ## Terminal Boundary and Bitty
 
@@ -881,13 +879,12 @@ The implemented sidebar-to-terminal relationship is conceptually:
 The sidebar always renders `AGENTS` and `SHELLS`, even when either collection is
 empty, and allocates them 70% and 30% of the available section space
 respectively. Both collections use `AgentSession`, one `SessionManager`, and the
-same selected-session message.
-The first nine agent rows use creation-order numbers selected through Ctrl+A,
-then 1…9. Fish rows display their stable slot numbers and are opened or selected
-through Ctrl+S, then 1…9. Agent sessions remain selectable directly from the
+Agent rows can be highlighted with Ctrl+A, then 1…9, and activated with Enter.
+Shell rows are navigated with Ctrl+S and arrow keys, and activated with Enter.
+Agent sessions remain selectable directly from the
 sidebar. The sidebar does not operate directly on `SessionManager` or terminal
 internals. Ctrl+N uses the agent-only harness, name, and working-directory modal
-flow; Fish creation continues to use the independent fixed-slot workflow.
+flow; Ctrl+Shift+S opens the lightweight shell naming workflow.
 
 ## Repository Structure
 
@@ -906,7 +903,7 @@ src/agenthub/
 │   ├── antigravity.py   # Antigravity definition
 │   ├── codex.py         # Codex definition
 │   ├── devin.py         # Devin definition
-│   ├── fish.py          # Fish shell-slot definition
+│   ├── fish.py          # Fish shell definition
 │   ├── model.py         # immutable semantic models
 │   ├── opencode.py      # OpenCode definition
 │   └── registry.py      # built-in harness lookup
@@ -1018,12 +1015,11 @@ The architectural foundation is implemented:
    same manager and selection flow.
 10. Ctrl+N opens a registry-driven harness picker followed by a required
     session-name prompt and working-directory browser; confirming all three
-    creates and focuses the selected agent. Ctrl+A or Ctrl+S followed by 1…9
-    selects numbered agents or lazily creates and selects stable Fish slots.
-11. Sessions carry explicit agent-or-shell identity, while the separate slot map
-    only assigns shell keyboard shortcuts.
-12. Exited runtimes are removed, active exits return to contextual Home, hidden
-    exits do not interrupt the current terminal, and Fish slots become reusable.
+    creates and focuses the selected agent. Ctrl+A moves cursor highlight across
+    numbered agents (Enter activates), and Ctrl+Shift+S creates named shells.
+11. Sessions carry explicit agent-or-shell identity.
+12. Exited runtimes are removed, active exits return to contextual Home, and hidden
+    exits do not interrupt the current terminal.
 13. Antigravity and Devin are registry-driven harnesses using the same name,
     working-directory, session, terminal, switching, and cleanup paths as the
     existing coding agents.
@@ -1059,7 +1055,7 @@ Validated with the installed dependency versions:
 - A terminal-exit event can be mapped to the exact owning session.
 - Active exits return to Home, while hidden exits are removed without changing
   the current view or focus.
-- Exited Fish slots are released and can create fresh shell runtimes.
+- Exited shell sessions are removed cleanly from the manager and sidebar.
 - Two concurrent children inherit distinct session working directories while
   AgentHub's own working directory remains unchanged.
 - OpenCode, Codex, Antigravity, and Devin-shaped sessions coexist, preserve
@@ -1113,10 +1109,10 @@ The architectural foundation now has automated coverage for:
 - directory-only browsing and normalized `Path` selection;
 - deferred runtime creation until all three New Agent Session modals are confirmed;
 - child-process cwd inheritance from the directory picker;
-- stable Fish-slot navigation with persistent sidebar groups;
+- shell navigation with persistent sidebar groups;
 - process-exit routing to the owning session;
 - active-exit navigation to Home and silent hidden-exit cleanup;
-- shell-slot release and recreation after process exit;
+- shell session cleanup after process exit;
 - missing-binary cleanup without a ghost session, sidebar row, or active-session
   reference;
 - simultaneous four-harness switching without process restart or cwd leakage;
@@ -1227,7 +1223,7 @@ Future work should preserve these rules:
 3. Harness IDs are stable machine identifiers; display names are UI text.
 4. Bitty and PTY details remain inside the terminal boundary.
 5. `AgentSession` represents one in-memory logical conversation with an optional
-   runtime; keyboard slot assignment remains separate.
+   runtime.
 6. `SessionManager` coordinates sessions but never manipulates the Textual DOM.
 7. `AgentHubApp` owns mounting, visibility, focus, navigation, and application
    policy.
@@ -1274,13 +1270,13 @@ harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
 ownership, grouped sidebar presentation, registry-driven Antigravity, Codex,
 Devin, and OpenCode selection, required session naming, working-directory
-browsing, fixed Fish slots, explicit session kinds, exited-runtime cleanup, and multi-session
+browsing, shell creation and navigation, explicit session kinds, exited-runtime cleanup, and multi-session
 switching runtime are implemented and tested. Normal startup and incomplete or
 cancelled modal flows create no session or child process. Multiple terminals
 have been proven to survive repeated switching, retain hidden output and screen
 state, isolate input, run concurrently in distinct working directories, and
-shut down with the app. Active exits return to Home, hidden exits are removed
-without interrupting the current terminal, and Fish slots become reusable.
+shut down with the app. Active exits return to Home, and hidden exits are removed
+without interrupting the current terminal.
 Locked hub shortcuts have been proven to fall through at the PTY-write
 boundary. Next: create native conversations through the adapters, retain agent
 sessions as unloaded when their CLI exits, and add native deletion. AgentHub

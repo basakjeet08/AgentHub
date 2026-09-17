@@ -112,8 +112,8 @@ HOME_SHORTCUTS = (
             RESYNC_SESSIONS_BINDING,
         )
     ),
-    ("Ctrl+A, then 1…9", "Switch agent session"),
-    ("Ctrl+S", "Navigate shells"),
+    ("Ctrl+A, 1…9, Enter", "Navigate / open agent"),
+    ("Ctrl+S, ↑↓, Enter", "Navigate / open shell"),
 )
 
 __all__ = [

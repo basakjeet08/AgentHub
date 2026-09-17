@@ -262,3 +262,57 @@ async def test_sidebar_renders_agent_harness_legend() -> None:
         assert items[3].region.x == items[1].region.x
         assert items[2].region.width == items[3].region.width
 
+
+async def test_sidebar_restores_cursor_by_session_identity_on_mutation(
+    sleeping_harness: AgentHarness,
+) -> None:
+    agents = _sessions(sleeping_harness, SessionKind.AGENT, "Agent 1", "Agent 2")
+    shells = _sessions(
+        sleeping_harness,
+        SessionKind.SHELL,
+        "Shell A",
+        "Shell B",
+        "Shell C",
+    )
+    app = SidebarTestApp(agents, shells)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        shell_list = app.query_one("#shell-session-list", OptionList)
+
+        # Focus shells and move cursor to Shell B (index 1)
+        sidebar.focus_shells()
+        await pilot.pause()
+        await pilot.press("down")
+        assert shell_list.highlighted == 1
+
+        # Switch focus to agents
+        sidebar.focus_agents()
+        await pilot.pause()
+
+        # Shell A exits in background: remaining shells are Shell B (now index 0) and Shell C (now index 1)
+        sidebar.update_sessions(agents, shell_sessions=(shells[1], shells[2]))
+        await pilot.pause()
+
+        # Focus shells again: cursor must resolve to Shell B (index 0) rather than obsolete index 1
+        sidebar.focus_shells()
+        await pilot.pause()
+        current_shell_list = app.query_one("#shell-session-list", OptionList)
+        assert current_shell_list.highlighted == 0
+        assert current_shell_list.get_option_at_index(current_shell_list.highlighted).id == shells[1].id
+
+        # Switch away, then Shell B exits: remaining shell is only Shell C
+        sidebar.focus_agents()
+        await pilot.pause()
+        sidebar.update_sessions(agents, shell_sessions=(shells[2],))
+        await pilot.pause()
+
+        # Focus shells again: Shell B is gone, defaults gracefully to index 0 (Shell C)
+        sidebar.focus_shells()
+        await pilot.pause()
+        current_shell_list = app.query_one("#shell-session-list", OptionList)
+        assert current_shell_list.highlighted == 0
+        assert current_shell_list.get_option_at_index(current_shell_list.highlighted).id == shells[2].id
+
+

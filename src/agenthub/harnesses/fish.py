@@ -1,4 +1,4 @@
-"""Fish shell definition for AgentHub's fixed shell slots."""
+"""Fish shell definition for AgentHub's shell sessions."""
 
 from .model import AgentHarness
 

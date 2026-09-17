@@ -49,8 +49,8 @@ class SessionSidebar(Vertical):
         self._shell_session_snapshot = self._session_snapshot(self._shell_sessions)
         self._active_session_id: str | None = None
         self._focused_kind: SessionKind | None = None
-        self._last_agent_highlight: int | None = None
-        self._last_shell_highlight: int | None = None
+        self._last_agent_selection_id: str | None = None
+        self._last_shell_selection_id: str | None = None
         self._harnesses: tuple[AgentHarness, ...] = (
             (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
             if harnesses is None
@@ -254,7 +254,7 @@ class SessionSidebar(Vertical):
         self._focus_session_list(
             "#agent-session-list",
             SessionKind.AGENT,
-            self._last_agent_highlight,
+            self._last_agent_selection_id,
         )
 
     def focus_shells(self) -> None:
@@ -263,14 +263,14 @@ class SessionSidebar(Vertical):
         self._focus_session_list(
             "#shell-session-list",
             SessionKind.SHELL,
-            self._last_shell_highlight,
+            self._last_shell_selection_id,
         )
 
     def _focus_session_list(
         self,
         selector: str,
         kind: SessionKind,
-        previous_highlight: int | None,
+        previous_selection_id: str | None,
     ) -> None:
         """Focus one list and ensure its navigation cursor is restored or active."""
 
@@ -291,12 +291,11 @@ class SessionSidebar(Vertical):
             except OptionDoesNotExist:
                 target_highlight = None
 
-        if (
-            target_highlight is None
-            and previous_highlight is not None
-            and 0 <= previous_highlight < len(session_list.options)
-        ):
-            target_highlight = previous_highlight
+        if target_highlight is None and previous_selection_id is not None:
+            try:
+                target_highlight = session_list.get_option_index(previous_selection_id)
+            except OptionDoesNotExist:
+                target_highlight = None
 
         if target_highlight is None:
             target_highlight = 0
@@ -314,7 +313,7 @@ class SessionSidebar(Vertical):
                 if other_list is not agent_list:
                     other_list.highlighted = None
             agent_list.highlighted = index
-            self._last_agent_highlight = index
+            self._last_agent_selection_id = self._agent_sessions[index].id
             agent_list.focus()
 
     @property
@@ -349,12 +348,14 @@ class SessionSidebar(Vertical):
         self,
         message: OptionList.OptionHighlighted,
     ) -> None:
-        """Remember previous cursor position for the focused list."""
+        """Remember previous cursor selection by session ID for the focused list."""
 
+        if message.option_id is None:
+            return
         if message.option_list.id == "agent-session-list":
-            self._last_agent_highlight = message.option_index
+            self._last_agent_selection_id = message.option_id
         elif message.option_list.id == "shell-session-list":
-            self._last_shell_highlight = message.option_index
+            self._last_shell_selection_id = message.option_id
 
     def on_option_list_option_selected(
         self,

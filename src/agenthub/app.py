@@ -382,6 +382,9 @@ class AgentHubApp(App):
     def action_new_shell(self) -> None:
         """Begin the user-driven New Shell Session modal workflow."""
 
+        if isinstance(self.screen, _NEW_SESSION_MODALS):
+            return
+
         self.push_screen(
             SessionNameModal(
                 self._shell_harness.display_name,
@@ -641,7 +644,7 @@ class AgentHubApp(App):
         await self._remove_exited_session(session)
 
     async def _remove_exited_session(self, session: AgentSession) -> None:
-        """Synchronize process-exit cleanup across manager, DOM, slots, and UI."""
+        """Synchronize process-exit cleanup across manager, DOM, and UI."""
 
         if session not in self.session_manager.sessions:
             return

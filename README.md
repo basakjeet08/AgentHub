@@ -43,10 +43,9 @@ multi-session runtime architecture:
   directory browser hides dot-prefixed folders by default and toggles them with
   Ctrl+H; typing filters the current directory's immediate child folders by
   name.
-- It lazily creates reusable Fish sessions by pressing Ctrl+S followed by a
-  slot number from 1…9.
-- It removes sessions whose child processes exit, releases their Fish slots,
-  and returns active exits to Home without interrupting a live active sibling.
+- It creates Fish shell sessions with Ctrl+Shift+S with an optional session name.
+- It removes sessions whose child processes exit and returns active exits to Home
+  without interrupting a live active sibling.
 - It keeps hidden terminals mounted, running, and buffering output while focus
   follows the visible terminal.
 - It starts Unlocked for immediate navigation and lets the user transfer all
@@ -76,7 +75,7 @@ AgentHub does not yet provide:
 
 Normal startup begins native-session discovery and may populate the agent
 sidebar without starting any child process. Ctrl+N retains the current legacy
-creation flow until native creation is implemented. Fish shell slots continue
+creation flow until native creation is implemented. Shell sessions continue
 to use AgentHub's current working directory and do not participate in native
 discovery.
 
@@ -92,18 +91,20 @@ AgentHub starts Unlocked. Ctrl+G explicitly transfers keyboard ownership:
 Unlocked bindings are:
 
 ```text
-Ctrl+G          Lock AgentHub
-Ctrl+N          Create a new agent session
-Ctrl+P          Command Palette
-Ctrl+Q          Quit
-Ctrl+A, 1...9   Select a numbered agent session
-Ctrl+S, 1...9   Open or select a persistent Fish shell slot
+Ctrl+G                Lock AgentHub
+Ctrl+N                Create a new agent session
+Ctrl+Shift+S          New shell session
+Ctrl+P                Command Palette
+Ctrl+Q                Quit
+Ctrl+A, 1...9, Enter  Navigate / open agent
+Ctrl+S, ↑↓, Enter     Navigate / open shell
 ```
 
 Home has no terminal to protect, so these application shortcuts work there
-without requiring an unlock. After Ctrl+A or Ctrl+S focuses a sidebar group,
-press a plain digit from 1 through 9 to select the numbered entry. Ctrl+digit
-combinations are intentionally left to the active terminal.
+without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and `1` through `9`
+moves the highlight cursor to the nth agent, while `Enter` switches to it. `Ctrl+S`
+focuses shells for arrow-key navigation, while numeric keys are ignored. `Ctrl+Shift+S`
+prompts for an optional shell name and creates a shell.
 
 Ctrl+G remains AgentHub's ownership toggle even when a hosted CLI also assigns
 that key. AgentHub does not rewrite the native CLI's other bindings.
@@ -126,7 +127,7 @@ lifecycle constraints, and implementation roadmap.
 - A pyenv environment named `agenthub` (selected by `.python-version`)
 - Any desired coding-agent CLIs available on `PATH`: `agy`, `codex`, `devin`,
   and/or `opencode`
-- Fish available on `PATH` for numbered shell slots
+- Fish available on `PATH` for shell sessions
 
 The environment used during initial development was created with Python
 3.13.15:
