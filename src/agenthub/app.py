@@ -587,10 +587,19 @@ class AgentHubApp(App):
                 markup=False,
             )
             return
-        if session.harness.id not in self._native_session_adapters:
+        adapter = self._native_session_adapters.get(session.harness.id)
+        if adapter is None:
             self.notify(
                 f"No native-session adapter is available for {session.harness.display_name}.",
                 severity="error",
+            )
+            return
+        if not adapter.supports_delete:
+            self._notify_native_deletion_error(
+                session,
+                NativeSessionDeletionUnavailableError.for_provider(
+                    session.harness.display_name
+                ),
             )
             return
 
@@ -609,6 +618,29 @@ class AgentHubApp(App):
         if not confirmed:
             return
         await self._delete_native_session(session_id)
+
+    def _notify_native_deletion_error(
+        self,
+        session: AgentSession,
+        error: Exception,
+    ) -> None:
+        """Show provider-neutral failure or unsupported-provider guidance."""
+
+        deletion_unavailable = isinstance(
+            error,
+            NativeSessionDeletionUnavailableError,
+        )
+        detail = str(error) or type(error).__name__
+        self.notify(
+            detail if deletion_unavailable else f"Could not delete {session.name}: {detail}",
+            title=(
+                "Native deletion unavailable"
+                if deletion_unavailable
+                else "Native session deletion failed"
+            ),
+            severity="warning" if deletion_unavailable else "error",
+            markup=False,
+        )
 
     async def _delete_native_session(self, session_id: str) -> None:
         """Stop a runtime, delete natively, verify absence, then remove its row."""
@@ -631,6 +663,14 @@ class AgentHubApp(App):
             self.notify(
                 "The selected Agent is not eligible for native deletion.",
                 severity="error",
+            )
+            return
+        if not adapter.supports_delete:
+            self._notify_native_deletion_error(
+                session,
+                NativeSessionDeletionUnavailableError.for_provider(
+                    session.harness.display_name
+                ),
             )
             return
 
@@ -701,21 +741,7 @@ class AgentHubApp(App):
             self._refresh_sidebar()
             self._refresh_status()
             self._refresh_home()
-            deletion_unavailable = isinstance(
-                error,
-                NativeSessionDeletionUnavailableError,
-            )
-            detail = str(error) or type(error).__name__
-            self.notify(
-                detail if deletion_unavailable else f"Could not delete {session.name}: {detail}",
-                title=(
-                    "Native deletion unavailable"
-                    if deletion_unavailable
-                    else "Native session deletion failed"
-                ),
-                severity="warning" if deletion_unavailable else "error",
-                markup=False,
-            )
+            self._notify_native_deletion_error(session, error)
             return
 
         self._refresh_sidebar()

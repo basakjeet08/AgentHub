@@ -18,6 +18,7 @@ class AntigravitySessionAdapter:
     """Read Antigravity's local summary index and resume conversations by ID."""
 
     harness_id = "antigravity"
+    supports_delete = False
 
     def __init__(self, database: Path | None = None) -> None:
         self._database = (
@@ -81,8 +82,4 @@ class AntigravitySessionAdapter:
     async def delete(self, session: NativeSession) -> None:
         """Reject unsafe storage edits when no headless native delete API exists."""
 
-        raise NativeSessionDeletionUnavailableError(
-            "Antigravity does not currently expose programmatic conversation deletion.\n"
-            "Delete it using Antigravity's /resume picker, then AgentHub will refresh "
-            "automatically."
-        )
+        raise NativeSessionDeletionUnavailableError.for_provider("Antigravity")

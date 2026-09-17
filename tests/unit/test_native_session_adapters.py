@@ -1,8 +1,9 @@
 """Unit coverage for provider-native session normalization."""
 
+import asyncio
 import sqlite3
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -10,6 +11,7 @@ from agenthub.native_sessions import (
     NativeSessionDeletionError,
     NativeSessionDiscoveryError,
 )
+from agenthub.native_sessions._command import run_delete_command
 from agenthub.native_sessions.antigravity import AntigravitySessionAdapter
 from agenthub.native_sessions.codex import CodexSessionAdapter
 from agenthub.native_sessions.devin import DevinSessionAdapter
@@ -318,6 +320,7 @@ async def test_native_adapters_delete_by_exact_provider_id(
     expected_command: tuple[str, ...],
 ) -> None:
     native_session = NativeSession(adapter.harness_id, "native-id", "Title")
+    assert adapter.supports_delete
 
     with patch(module, AsyncMock()) as delete_command:
         await adapter.delete(native_session)
@@ -328,9 +331,30 @@ async def test_native_adapters_delete_by_exact_provider_id(
 async def test_antigravity_delete_fails_safely_without_a_headless_native_api() -> None:
     adapter = AntigravitySessionAdapter()
     native_session = NativeSession("antigravity", "native-id", "Title")
+    assert not adapter.supports_delete
 
     with pytest.raises(
         NativeSessionDeletionError,
         match="does not currently expose programmatic conversation deletion",
     ):
         await adapter.delete(native_session)
+
+
+async def test_native_delete_command_cannot_read_agenthub_stdin() -> None:
+    process = Mock(returncode=0)
+    process.communicate = AsyncMock(return_value=(b"", b""))
+
+    with patch(
+        "agenthub.native_sessions._command.asyncio.create_subprocess_exec",
+        AsyncMock(return_value=process),
+    ) as create_process:
+        await run_delete_command(("provider", "delete", "native-id"))
+
+    create_process.assert_awaited_once_with(
+        "provider",
+        "delete",
+        "native-id",
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )

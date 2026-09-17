@@ -52,9 +52,10 @@ multi-session runtime architecture:
 - When a native-backed agent exits, it unloads the runtime and reconciles only
   that harness so conversations deleted in the native CLI do not leave stale
   rows. Unidentified agents and shells retain their existing exit behavior.
-- With the AGENTS list focused, Ctrl+D confirms and permanently deletes the
-  highlighted native-backed conversation through its provider adapter. The
-  logical row is removed only after native deletion is verified.
+- With the AGENTS list focused, Ctrl+D confirms and permanently deletes a
+  highlighted native-backed conversation when its provider supports deletion.
+  The logical row is removed only after native deletion is verified; unsupported
+  providers show guidance without stopping a running terminal.
 - It keeps hidden terminals mounted, running, and buffering output while focus
   follows the visible terminal.
 - It starts Unlocked for immediate navigation and lets the user transfer all
@@ -134,7 +135,8 @@ prompts for an optional shell name and creates a shell.
 Ctrl+D is owned by AgentHub only while the AGENTS list has focus. With terminal
 focus it continues to reach the hosted native CLI unchanged. Fresh Agents show
 a warning because they have no provider-native conversation to delete; shells
-do not participate in native deletion.
+do not participate in native deletion. Antigravity shows native-picker guidance
+without opening confirmation or changing its current runtime.
 
 Ctrl+G remains AgentHub's ownership toggle even when a hosted CLI also assigns
 that key. AgentHub does not rewrite the native CLI's other bindings.

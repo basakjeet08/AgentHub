@@ -15,6 +15,7 @@ class DevinSessionAdapter:
     """Read Devin's local session index and resume sessions by ID."""
 
     harness_id = "devin"
+    supports_delete = True
 
     def __init__(self, database: Path | None = None) -> None:
         self._database_candidates = (

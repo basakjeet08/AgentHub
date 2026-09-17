@@ -24,11 +24,22 @@ class NativeSessionDeletionError(NativeSessionError):
 class NativeSessionDeletionUnavailableError(NativeSessionDeletionError):
     """A provider has no programmatic native-conversation deletion API."""
 
+    @classmethod
+    def for_provider(cls, provider_name: str) -> "NativeSessionDeletionUnavailableError":
+        """Build consistent user guidance for an unsupported provider."""
+
+        return cls(
+            f"{provider_name} does not currently expose programmatic conversation deletion.\n"
+            f"Delete it using {provider_name}'s /resume picker, then AgentHub will refresh "
+            "automatically."
+        )
+
 
 class NativeSessionAdapter(Protocol):
     """Provider-specific native conversation operations used by AgentHub."""
 
     harness_id: str
+    supports_delete: bool
 
     def discover(self) -> tuple[NativeSession, ...]:
         """Return the provider's existing native conversations.

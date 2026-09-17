@@ -26,6 +26,7 @@ class OpenCodeSessionAdapter:
     """Read OpenCode's global session index and resume root sessions by ID."""
 
     harness_id = "opencode"
+    supports_delete = True
 
     def __init__(self, database: Path | None = None) -> None:
         configured_data_home = os.environ.get("XDG_DATA_HOME")

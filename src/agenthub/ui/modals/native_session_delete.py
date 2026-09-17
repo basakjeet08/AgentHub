@@ -30,6 +30,7 @@ class NativeSessionDeleteModal(ModalScreen[bool]):
             yield Static(
                 f'Delete "{self._session_name}" permanently?',
                 id="native-session-delete-copy",
+                markup=False,
             )
             with Horizontal(id="native-session-delete-actions"):
                 yield Button("Cancel", id="native-session-delete-cancel")

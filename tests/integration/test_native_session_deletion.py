@@ -2,6 +2,7 @@
 
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,11 +11,7 @@ from textual.widgets import Button, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import (
-    LaunchSpec,
-    NativeSession,
-    NativeSessionDeletionUnavailableError,
-)
+from agenthub.native_sessions import LaunchSpec, NativeSession
 from agenthub.sessions import SessionKind, SessionState
 from agenthub.ui import SessionSidebar
 from agenthub.ui.modals import NativeSessionDeleteModal
@@ -22,6 +19,8 @@ from agenthub.ui.modals import NativeSessionDeleteModal
 
 class DeletionAdapter:
     """Mutable native provider used to exercise app-owned deletion policy."""
+
+    supports_delete = True
 
     def __init__(
         self,
@@ -148,9 +147,9 @@ async def test_ctrl_d_deletes_highlighted_agent_not_active_agent(
         await pilot.pause()
 
         assert isinstance(app.screen, NativeSessionDeleteModal)
-        assert 'Delete "Auth Refactor" permanently?' == str(
-            app.screen.query_one("#native-session-delete-copy", Static).content
-        )
+        copy = app.screen.query_one("#native-session-delete-copy", Static)
+        assert 'Delete "Auth Refactor" permanently?' == str(copy.content)
+        assert copy._render_markup is False
 
         cancel = app.screen.query_one("#native-session-delete-cancel", Button)
         confirm = app.screen.query_one("#native-session-delete-confirm", Button)
@@ -290,38 +289,51 @@ async def test_unavailable_native_deletion_shows_provider_guidance_as_warning(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
+    antigravity = replace(
+        sleeping_harness,
+        id="antigravity",
+        display_name="Antigravity",
+    )
     guidance = (
         "Antigravity does not currently expose programmatic conversation deletion.\n"
         "Delete it using Antigravity's /resume picker, then AgentHub will refresh "
         "automatically."
     )
     adapter = DeletionAdapter(
-        sleeping_harness,
+        antigravity,
         tmp_path,
-        (_native(sleeping_harness, "native-1", "Keep Me", tmp_path),),
+        (_native(antigravity, "native-1", "Keep Me", tmp_path),),
     )
-    adapter.delete_error = NativeSessionDeletionUnavailableError(guidance)
+    adapter.supports_delete = False
     app = AgentHubApp(
-        agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        agent_harnesses={antigravity.id: antigravity},
+        native_session_adapters={antigravity.id: adapter},
     )
 
     async with app.run_test() as pilot:
         await app.workers.wait_for_complete()
         await pilot.pause()
         session = app.session_manager.sessions[0]
-        await pilot.press("ctrl+a", "ctrl+d", "right", "enter")
-        for _ in range(20):
-            if session.state is not SessionState.DELETING:
-                break
-            await pilot.pause(0.05)
+        await app.activate_session(session.id)
+        await pilot.pause()
+        terminal = session.terminal
+        assert terminal is not None and terminal.is_process_running
+
+        await pilot.press("ctrl+a", "ctrl+d")
+        await pilot.pause()
 
         notification = list(app._notifications)[-1]
         assert notification.message == guidance
         assert notification.title == "Native deletion unavailable"
         assert notification.severity == "warning"
+        assert not isinstance(app.screen, NativeSessionDeleteModal)
         assert app.session_manager.sessions == (session,)
         assert session.native_session_id == "native-1"
+        assert session.state is SessionState.RUNNING
+        assert session.terminal is terminal
+        assert terminal.is_process_running
+        assert app.session_manager.active_session is session
+        assert adapter.delete_calls == []
 
 
 async def test_running_native_agent_is_stopped_before_provider_deletion(

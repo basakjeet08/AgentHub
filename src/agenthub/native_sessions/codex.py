@@ -18,6 +18,7 @@ class CodexSessionAdapter:
     """Read Codex's local thread index and resume threads by UUID."""
 
     harness_id = "codex"
+    supports_delete = True
 
     def __init__(self, data_directory: Path | None = None) -> None:
         self._data_directory = (

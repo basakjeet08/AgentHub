@@ -582,7 +582,10 @@ Permanent deletion follows this ownership sequence:
 
 ```text
 highlighted native-backed Agent
-        ↓ confirmation
+        ↓ adapter capability check
+        ├── unsupported → guidance toast; no modal or runtime change
+        └── supported
+                ↓ confirmation
 SessionManager enters DELETING and detaches runtime
         ↓
 AgentHubApp unmounts/stops the terminal
@@ -594,8 +597,9 @@ same-provider discovery verifies absence
         └── present/error → preserve native ID and return row to UNLOADED
 ```
 
-Provider-specific commands and failures remain inside native-session adapters;
-the app contains no harness-ID branches.
+Provider-specific commands, capabilities, and failures remain inside
+native-session adapters; the app contains no harness-ID branches. Delete
+subprocesses receive closed stdin so they cannot become interactive.
 
 This policy does not belong inside `AgentTerminal`; that boundary continues to
 forward terminal input without knowing AgentHub navigation rules.
@@ -1107,9 +1111,11 @@ The architectural foundation is implemented:
     exact-ID resume launches on selection.
 15. Alt+M explicitly links a selected fresh runtime to an eligible unloaded
     native row from the same harness and cwd without restarting its terminal.
-16. Ctrl+D on the focused AGENTS list confirms provider-native deletion of the
-    highlighted row, stops an attached runtime first, verifies provider absence,
-    and preserves the logical row and native ID on failure.
+16. Ctrl+D on the focused AGENTS list checks provider deletion capability,
+    confirms supported provider-native deletion of the highlighted row, stops
+    an attached runtime first, verifies provider absence, and preserves the
+    logical row and native ID on failure. Unsupported providers show guidance
+    without touching the runtime.
 
 The remaining sequence is:
 
