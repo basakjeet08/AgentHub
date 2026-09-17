@@ -329,7 +329,7 @@ def test_link_native_session_preserves_runtime_and_adopts_provider_metadata(
     assert manager.active_session is linked
 
 
-def test_link_native_session_revalidates_without_partial_mutation(
+def test_link_native_session_preserves_a_different_active_session(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -356,18 +356,41 @@ def test_link_native_session_revalidates_without_partial_mutation(
         harness=sleeping_harness,
     )
 
-    with pytest.raises(ValueError, match="not active"):
-        manager.link_native_session(pending.id, candidate.id)
+    terminal = pending.terminal
+    linked = manager.link_native_session(pending.id, candidate.id)
 
-    assert manager.sessions == (pending, candidate, other)
-    assert pending.native_session_id is None
-    assert pending.name == "New session"
-    assert candidate.native_session_id == "native-1"
+    assert linked is pending
+    assert manager.sessions == (pending, other)
+    assert manager.active_session is other
+    assert pending.native_session_id == "native-1"
+    assert pending.name == "Provider title"
+    assert pending.terminal is terminal
 
-    manager.select(pending.id)
+
+def test_link_native_session_revalidates_without_partial_mutation(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    manager = SessionManager()
+    pending = manager.create(
+        name="New session",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+    candidate = manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-1",
+            "Provider title",
+            tmp_path,
+        ),
+        harness=sleeping_harness,
+    )
+
     candidate.state = SessionState.STARTING
     with pytest.raises(ValueError, match="safe link target"):
         manager.link_native_session(pending.id, candidate.id)
 
-    assert manager.sessions == (pending, candidate, other)
+    assert manager.sessions == (pending, candidate)
     assert pending.native_session_id is None

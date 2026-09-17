@@ -51,6 +51,7 @@ class SessionSidebar(Vertical):
         self._focused_kind: SessionKind | None = None
         self._last_agent_selection_id: str | None = None
         self._last_shell_selection_id: str | None = None
+        self._pending_cursor_session_id: str | None = None
         self._harnesses: tuple[AgentHarness, ...] = (
             (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
             if harnesses is None
@@ -108,13 +109,40 @@ class SessionSidebar(Vertical):
         )
 
     async def _recompose_sessions(self) -> None:
-        """Rebuild session rows before restoring the active-row highlight."""
+        """Rebuild rows while preserving active identity and cursor identity."""
 
+        focused_kind = self.focused_session_kind
+        highlighted_ids = {
+            SessionKind.AGENT: self._highlighted_session_id("#agent-session-list"),
+            SessionKind.SHELL: self._highlighted_session_id("#shell-session-list"),
+        }
+        pending_cursor_id = self._pending_cursor_session_id
         await self.recompose()
-        if self._active_session_id is not None:
-            self.set_active(self._active_session_id)
-        else:
-            self.clear_active()
+
+        for kind, selector in (
+            (SessionKind.AGENT, "#agent-session-list"),
+            (SessionKind.SHELL, "#shell-session-list"),
+        ):
+            session_list = self.query_one(selector, OptionList)
+            session_list.highlighted = None
+            highlighted_id = highlighted_ids[kind]
+            if pending_cursor_id is not None and any(
+                session.id == pending_cursor_id
+                for session in (
+                    self._agent_sessions if kind is SessionKind.AGENT else self._shell_sessions
+                )
+            ):
+                highlighted_id = pending_cursor_id
+            if highlighted_id is not None:
+                try:
+                    session_list.highlighted = session_list.get_option_index(highlighted_id)
+                except OptionDoesNotExist:
+                    pass
+
+        self._pending_cursor_session_id = None
+
+        if focused_kind is not None and self.has_focus_within:
+            self._focus_session_list_for_kind(focused_kind)
 
     def _option_prompt(
         self,
@@ -216,24 +244,42 @@ class SessionSidebar(Vertical):
             )
 
     def set_active(self, session_id: str) -> None:
-        """Highlight the row corresponding to the active session."""
+        """Style the active row without changing the navigation cursor."""
 
         self._active_session_id = session_id
         self._refresh_option_prompts()
+
+    def clear_active(self) -> None:
+        """Clear active-row styling without changing the navigation cursor."""
+
+        self._active_session_id = None
+        self._refresh_option_prompts()
+
+    def clear_navigation(self) -> None:
+        """Clear every visible sidebar cursor without changing active styling."""
+
+        self._pending_cursor_session_id = None
+        for session_list in self.query(OptionList):
+            session_list.highlighted = None
+
+    def move_cursor_to_session(self, session_id: str) -> None:
+        """Move the navigation cursor explicitly without changing active styling."""
+
+        self._pending_cursor_session_id = session_id
+        if any(session.id == session_id for session in self._agent_sessions):
+            self._last_agent_selection_id = session_id
+        elif any(session.id == session_id for session in self._shell_sessions):
+            self._last_shell_selection_id = session_id
+        found = False
         for session_list in self.query(OptionList):
             session_list.highlighted = None
             try:
                 session_list.highlighted = session_list.get_option_index(session_id)
+                found = True
             except OptionDoesNotExist:
                 continue
-
-    def clear_active(self) -> None:
-        """Clear the retained active identity and all visible highlights."""
-
-        self._active_session_id = None
-        self._refresh_option_prompts()
-        for session_list in self.query(OptionList):
-            session_list.highlighted = None
+        if found:
+            self._pending_cursor_session_id = None
 
     def focus_primary(self) -> None:
         """Focus the first session group, or the empty sidebar itself."""
@@ -285,15 +331,15 @@ class SessionSidebar(Vertical):
                 other_list.highlighted = None
 
         target_highlight: int | None = None
-        if self._active_session_id is not None:
+        if previous_selection_id is not None:
             try:
-                target_highlight = session_list.get_option_index(self._active_session_id)
+                target_highlight = session_list.get_option_index(previous_selection_id)
             except OptionDoesNotExist:
                 target_highlight = None
 
-        if target_highlight is None and previous_selection_id is not None:
+        if target_highlight is None and self._active_session_id is not None:
             try:
-                target_highlight = session_list.get_option_index(previous_selection_id)
+                target_highlight = session_list.get_option_index(self._active_session_id)
             except OptionDoesNotExist:
                 target_highlight = None
 
@@ -302,6 +348,22 @@ class SessionSidebar(Vertical):
 
         session_list.highlighted = target_highlight
         session_list.focus()
+
+    def _focus_session_list_for_kind(self, kind: SessionKind) -> None:
+        """Restore focus and cursor for one previously focused session group."""
+
+        if kind is SessionKind.AGENT:
+            self._focus_session_list(
+                "#agent-session-list",
+                kind,
+                self._last_agent_selection_id,
+            )
+        else:
+            self._focus_session_list(
+                "#shell-session-list",
+                kind,
+                self._last_shell_selection_id,
+            )
 
     def select_numbered_agent(self, number: int) -> None:
         """Move agent cursor only; never activate."""
@@ -328,6 +390,27 @@ class SessionSidebar(Vertical):
                 except OptionDoesNotExist:
                     continue
         return None
+
+    @property
+    def focused_session_kind(self) -> SessionKind | None:
+        """Return the kind whose actual option list currently owns focus."""
+
+        if self.query_one("#agent-session-list", OptionList).has_focus:
+            return SessionKind.AGENT
+        if self.query_one("#shell-session-list", OptionList).has_focus:
+            return SessionKind.SHELL
+        return None
+
+    def _highlighted_session_id(self, selector: str) -> str | None:
+        """Return a list's highlighted AgentHub identity, if it still exists."""
+
+        session_list = self.query_one(selector, OptionList)
+        if session_list.highlighted is None:
+            return None
+        try:
+            return session_list.get_option_at_index(session_list.highlighted).id
+        except OptionDoesNotExist:
+            return None
 
     def action_select_numbered_session(self, number: int) -> None:
         """Focus an agent ordinal when the agent list is active."""

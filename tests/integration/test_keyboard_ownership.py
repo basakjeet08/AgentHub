@@ -188,7 +188,7 @@ async def test_ctrl_g_toggles_mode_without_reaching_pty(
         write_spy.assert_not_called()
 
 
-async def test_locking_restores_active_agent_highlight(
+async def test_locking_preserves_agent_cursor_while_restoring_terminal_focus(
     sleeping_harness: AgentHarness,
 ) -> None:
     app, sessions = _app_with_sessions(sleeping_harness, count=2)
@@ -205,10 +205,10 @@ async def test_locking_restores_active_agent_highlight(
         await pilot.pause()
 
         assert sessions[1].terminal.has_focus
-        assert agent_list.highlighted == 1
+        assert agent_list.highlighted == 0
 
 
-async def test_locking_restores_active_shell_highlight(
+async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp(shell_harness=sleeping_harness)
@@ -232,7 +232,7 @@ async def test_locking_restores_active_shell_highlight(
         await pilot.pause()
 
         assert active_shell.terminal.has_focus
-        assert shell_list.highlighted == 1
+        assert shell_list.highlighted == 0
 
 
 async def test_unlocked_navigation_and_new_session_actions_fire(

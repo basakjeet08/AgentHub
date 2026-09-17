@@ -167,7 +167,9 @@ class AgentHubApp(App):
         self.query_one("#session-content", ContentSwitcher).current = self._terminal_dom_id(
             session.id
         )
-        self.query_one(SessionSidebar).set_active(session.id)
+        sidebar = self.query_one(SessionSidebar)
+        sidebar.set_active(session.id)
+        sidebar.move_cursor_to_session(session.id)
         self.call_after_refresh(self._highlight_active_sidebar)
         self.set_focus(session.terminal)
         return session
@@ -446,20 +448,19 @@ class AgentHubApp(App):
         self._start_native_session_discovery()
 
     def action_link_native_session(self) -> None:
-        """Open manual reconciliation for the selected fresh Agent runtime."""
+        """Open reconciliation for the highlighted or active fresh Agent."""
 
         if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
             return
 
-        pending = self.session_manager.active_session
+        pending = self._resolve_native_link_target()
         if pending is None:
-            self.notify(
-                "Select a running fresh agent session before linking.",
-                severity="warning",
-            )
             return
         if pending.kind is not SessionKind.AGENT:
-            self.notify("Shell sessions cannot be linked.", severity="warning")
+            self.notify(
+                "The selected session is not an Agent and cannot be linked.",
+                severity="warning",
+            )
             return
         if pending.native_session_id is not None:
             self.notify(
@@ -493,6 +494,43 @@ class AgentHubApp(App):
             partial(self._on_native_session_link_selected, pending.id),
         )
 
+    def _resolve_native_link_target(self) -> AgentSession | None:
+        """Resolve Alt+M without conflating sidebar cursor and active runtime."""
+
+        sidebar = self.query_one(SessionSidebar)
+        focused_kind = sidebar.focused_session_kind
+        if focused_kind is SessionKind.SHELL:
+            self.notify(
+                "Shell sessions cannot be linked. Select a pending Agent session.",
+                severity="warning",
+            )
+            return None
+        if focused_kind is SessionKind.AGENT:
+            session_id = sidebar.selected_session_id
+            if session_id is None:
+                self.notify(
+                    "No Agent session is highlighted for linking.",
+                    severity="warning",
+                )
+                return None
+            try:
+                return self.session_manager.get(session_id)
+            except KeyError:
+                self.notify(
+                    "The highlighted Agent session is no longer available.",
+                    severity="warning",
+                )
+                return None
+
+        active = self.session_manager.active_session
+        if active is None:
+            self.notify(
+                "Select a running fresh Agent session before linking.",
+                severity="warning",
+            )
+            return None
+        return active
+
     def _on_native_session_link_selected(
         self,
         pending_session_id: str,
@@ -518,7 +556,6 @@ class AgentHubApp(App):
         self._refresh_sidebar()
         self._refresh_status()
         self._refresh_home()
-        self.show_session(linked.id)
         self.notify(
             f"Linked running terminal to {linked.name}.",
             title="Native session linked",
@@ -750,5 +787,7 @@ class AgentHubApp(App):
         home = self.query_one(HomeScreen)
         self._refresh_home()
         self.query_one("#session-content", ContentSwitcher).current = "home-screen"
-        self.query_one(SessionSidebar).clear_active()
+        sidebar = self.query_one(SessionSidebar)
+        sidebar.clear_active()
+        sidebar.clear_navigation()
         self.set_focus(home)

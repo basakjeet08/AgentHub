@@ -172,6 +172,7 @@ class SessionManager:
             session
             for session in self._sessions.values()
             if session.id != pending.id
+            and session.id != self._active_session_id
             and session.kind is SessionKind.AGENT
             and session.harness.id == pending.harness.id
             and self._same_working_directory(session.cwd, pending.cwd)
@@ -199,8 +200,6 @@ class SessionManager:
 
         pending = self._sessions[pending_session_id]
         candidate = self._sessions[native_session_row_id]
-        if self._active_session_id != pending.id:
-            raise ValueError("pending session is not active")
         if not self._is_linkable_pending_session(pending):
             raise ValueError("pending session is not a running unidentified Agent")
         if candidate not in self.linkable_native_sessions(pending.id):

@@ -88,7 +88,7 @@ async def test_sidebar_switches_managed_sessions(
         assert app.session_manager.active_session is second
         assert switcher.current == app._terminal_dom_id(second.id)
 
-        sidebar.set_active(first.id)
+        sidebar.move_cursor_to_session(first.id)
         sidebar.focus_primary()
         await pilot.press("enter")
 
@@ -100,7 +100,7 @@ async def test_sidebar_switches_managed_sessions(
         assert first_process.poll() is None
         assert second_process.poll() is None
 
-        sidebar.set_active(second.id)
+        sidebar.move_cursor_to_session(second.id)
         sidebar.focus_primary()
         await pilot.press("enter")
 
@@ -109,7 +109,7 @@ async def test_sidebar_switches_managed_sessions(
         assert second.terminal.display
         assert second.terminal.has_focus
 
-        sidebar.set_active(first.id)
+        sidebar.move_cursor_to_session(first.id)
         sidebar.focus_primary()
         await pilot.press("enter")
 
@@ -117,7 +117,7 @@ async def test_sidebar_switches_managed_sessions(
         assert first.terminal.display
         assert first.terminal.has_focus
 
-        sidebar.set_active(second.id)
+        sidebar.move_cursor_to_session(second.id)
         sidebar.focus_primary()
         await pilot.press("enter")
 
@@ -376,7 +376,7 @@ async def test_hidden_output_and_screen_state_survive_switching(
         assert "while-hidden" in hidden_screen
 
         sidebar = app.query_one(SessionSidebar)
-        sidebar.set_active(first.id)
+        sidebar.move_cursor_to_session(first.id)
         sidebar.focus_primary()
         await pilot.press("enter")
 

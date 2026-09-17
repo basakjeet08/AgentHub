@@ -90,6 +90,12 @@ identity and title onto the fresh row, and removes the duplicate discovered row.
 Shell sessions continue to use AgentHub's current working directory and do not
 participate in native discovery or linking.
 
+When the `AGENTS` list owns focus, Alt+M targets its highlighted row without
+requiring Enter first. Otherwise it targets the currently active Agent. Linking
+a highlighted hidden runtime does not activate it or replace the terminal that
+is currently visible. If the `SHELLS` list owns focus, linking is rejected
+instead of falling back to an unrelated active Agent.
+
 ## Keyboard Ownership
 
 AgentHub starts Unlocked. Ctrl+G explicitly transfers keyboard ownership:
@@ -106,7 +112,7 @@ Ctrl+G                Lock AgentHub
 Ctrl+N                Create a new agent session
 Ctrl+Shift+S          New shell session
 Ctrl+Shift+R          Re-sync native sessions
-Alt+M                 Link selected fresh agent to a discovered native session
+Alt+M                 Link highlighted or active fresh agent
 Ctrl+P                Command Palette
 Ctrl+Q                Quit
 Ctrl+A, 1...9, Enter  Navigate / open agent

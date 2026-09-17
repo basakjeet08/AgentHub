@@ -192,8 +192,7 @@ async def test_sidebar_styles_active_running_and_unloaded_sessions_independently
             assert all(isinstance(style, str) for style in styles)
             return styles  # type: ignore[return-value]
 
-        assert agent_list.highlighted == 1
-        agent_list.highlighted = 0
+        assert agent_list.highlighted == 0
         assert prompt_styles(running) == ["$foreground", "$foreground"]
         assert prompt_styles(active) == ["$success", "$foreground", "bold"]
         assert prompt_styles(unloaded) == ["$text-muted", "$foreground"]
@@ -316,3 +315,40 @@ async def test_sidebar_restores_cursor_by_session_identity_on_mutation(
         assert current_shell_list.get_option_at_index(current_shell_list.highlighted).id == shells[2].id
 
 
+async def test_sidebar_keeps_active_identity_separate_from_agent_cursor(
+    sleeping_harness: AgentHarness,
+) -> None:
+    agents = _sessions(
+        sleeping_harness,
+        SessionKind.AGENT,
+        "Active Agent",
+        "Highlighted Agent",
+    )
+    app = SidebarTestApp(agents, ())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        sidebar.set_active(agents[0].id)
+        sidebar.move_cursor_to_session(agents[0].id)
+        sidebar.focus_agents()
+        await pilot.press("down")
+
+        assert sidebar.focused_session_kind is SessionKind.AGENT
+        assert sidebar.selected_session_id == agents[1].id
+
+        agents[1].name = "Linked Provider Title"
+        sidebar.update_sessions(agents)
+        await pilot.pause()
+
+        current_agent_list = app.query_one("#agent-session-list", OptionList)
+        assert sidebar.focused_session_kind is SessionKind.AGENT
+        assert sidebar.selected_session_id == agents[1].id
+        assert current_agent_list.highlighted == 1
+
+        active_prompt = current_agent_list.get_option(agents[0].id).prompt
+        highlighted_prompt = current_agent_list.get_option(agents[1].id).prompt
+        assert isinstance(active_prompt, Content)
+        assert isinstance(highlighted_prompt, Content)
+        assert any(span.style == "bold" for span in active_prompt.spans)
+        assert all(span.style != "bold" for span in highlighted_prompt.spans)

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from textual.widgets import Label, OptionList
+from textual.widgets import ContentSwitcher, Label, OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
@@ -120,6 +120,154 @@ async def test_alt_m_links_selected_native_row_without_restarting_terminal(
         assert pending.name == "Renamed by provider"
         assert pending.terminal is terminal
         assert terminal.board.process is process
+
+
+async def test_alt_m_links_highlighted_hidden_agent_without_activating_it(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    app = AgentHubApp(
+        agent_harnesses={sleeping_harness.id: sleeping_harness},
+        native_session_adapters={},
+    )
+    pending = app.session_manager.create(
+        name="New session",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+    candidate = app.session_manager.add_discovered(
+        native_session=NativeSession(
+            sleeping_harness.id,
+            "native-hidden",
+            "Hidden Agent Title",
+            tmp_path,
+        ),
+        harness=sleeping_harness,
+    )
+    active = app.session_manager.create(
+        name="Active Agent",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pending_terminal = pending.terminal
+        active_terminal = active.terminal
+        assert pending_terminal is not None
+        assert active_terminal is not None
+        pending_process = pending_terminal.board.process
+        active_process = active_terminal.board.process
+        switcher = app.query_one("#session-content", ContentSwitcher)
+
+        await pilot.press("ctrl+a")
+        await pilot.press("1")
+        agent_list = app.query_one("#agent-session-list", OptionList)
+        assert agent_list.has_focus
+        assert agent_list.get_option_at_index(agent_list.highlighted).id == pending.id
+        assert app.session_manager.active_session is active
+
+        await pilot.press("alt+m")
+        await pilot.pause()
+        assert isinstance(app.screen, NativeSessionLinkModal)
+
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.session_manager.sessions == (pending, active)
+        assert candidate not in app.session_manager.sessions
+        assert app.session_manager.active_session is active
+        assert switcher.current == app._terminal_dom_id(active.id)
+        assert active_terminal.display
+        assert not pending_terminal.display
+        assert active.terminal is active_terminal
+        assert active_terminal.board.process is active_process
+        assert pending.native_session_id == "native-hidden"
+        assert pending.name == "Hidden Agent Title"
+        assert pending.cwd == tmp_path.resolve()
+        assert pending.terminal is pending_terminal
+        assert pending_terminal.board.process is pending_process
+        assert pending_terminal.is_process_running
+
+        current_agent_list = app.query_one("#agent-session-list", OptionList)
+        assert current_agent_list.has_focus
+        assert current_agent_list.highlighted is not None
+        assert (
+            current_agent_list.get_option_at_index(current_agent_list.highlighted).id == pending.id
+        )
+
+
+async def test_alt_m_from_shell_list_never_falls_back_to_active_agent(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    app, pending, native = _app_with_pending_and_native_session(
+        sleeping_harness,
+        tmp_path,
+        tmp_path,
+    )
+    shell = app.session_manager.create(
+        name="Shell",
+        kind=SessionKind.SHELL,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+    app.session_manager.select(pending.id)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        shell_list = app.query_one("#shell-session-list", OptionList)
+        assert shell_list.has_focus
+        assert shell_list.get_option_at_index(shell_list.highlighted).id == shell.id
+
+        await pilot.press("alt+m")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, NativeSessionLinkModal)
+        assert pending.native_session_id is None
+        assert app.session_manager.sessions == (pending, native, shell)
+        assert app.session_manager.active_session is pending
+        assert list(app._notifications)[-1].message.startswith("Shell sessions cannot be linked")
+
+
+async def test_ineligible_highlight_does_not_fall_back_to_eligible_active_agent(
+    sleeping_harness: AgentHarness,
+    tmp_path: Path,
+) -> None:
+    app, active, native = _app_with_pending_and_native_session(
+        sleeping_harness,
+        tmp_path,
+        tmp_path,
+    )
+    ineligible = app.session_manager.create(
+        name="Already linked",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=sleeping_harness,
+    )
+    ineligible.native_session_id = "native-already-linked"
+    app.session_manager.select(active.id)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+a")
+        agent_list = app.query_one("#agent-session-list", OptionList)
+        agent_list.highlighted = agent_list.get_option_index(ineligible.id)
+        await pilot.pause()
+
+        await pilot.press("alt+m")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, NativeSessionLinkModal)
+        assert active.native_session_id is None
+        assert native in app.session_manager.sessions
+        assert app.session_manager.active_session is active
+        assert list(app._notifications)[-1].message == (
+            "Already linked is already linked to a native session."
+        )
 
 
 async def test_link_picker_escape_keeps_both_rows_unchanged(

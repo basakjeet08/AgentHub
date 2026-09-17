@@ -865,6 +865,19 @@ revalidated on confirmation. If either changed, linking fails without a partial
 merge. Later discovery matches the linked row by exact native identity, updates
 provider metadata in place, and cannot recreate the duplicate.
 
+The target of Alt+M follows keyboard context rather than terminal visibility:
+
+```text
+AGENTS list focused → highlighted Agent row
+SHELLS list focused → reject linking
+otherwise           → active Agent session
+```
+
+Sidebar cursor identity and active-session identity are independent. Linking a
+highlighted hidden Agent preserves the currently active session and visible
+terminal; it also preserves the linked row's cursor through sidebar
+recomposition. Enter remains the operation that activates a highlighted row.
+
 The directory tree excludes dot-prefixed folders by default. Ctrl+H toggles
 those folders and reloads the native tree while preserving expansion and cursor
 state where the remaining paths permit it. Regular files remain excluded in
@@ -1142,6 +1155,8 @@ The architectural foundation now has automated coverage for:
 - explicit same-harness, same-cwd native-session linking using provider titles;
 - preservation of the fresh runtime's terminal object and process across a
   link, plus exact-ID de-duplication on later discovery;
+- independent sidebar cursor and active-session identities, including linking
+  a highlighted hidden Agent without switching the visible terminal;
 - directory-only browsing and normalized `Path` selection;
 - deferred runtime creation until both New Agent Session modals are confirmed;
 - child-process cwd inheritance from the directory picker;
@@ -1259,7 +1274,8 @@ Only unloaded native-backed rows from the same harness and cwd are offered;
 provider ID and title are transferred to the existing running row, the selected
 duplicate is removed, and the mounted terminal is preserved. This user choice
 is the reconciliation evidence—AgentHub still never guesses from mutable
-metadata.
+metadata. If the Agents list is focused, its highlighted row is the pending
+runtime; otherwise the active Agent is used. Shell-list focus blocks the action.
 
 ## Architectural Rules
 
