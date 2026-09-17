@@ -1,0 +1,30 @@
+NativeSessionDeleteModal {
+    align: center middle;
+    background: $background 70%;
+}
+
+#native-session-delete-dialog {
+    width: 54;
+    max-width: 90%;
+    height: auto;
+    padding: 2;
+    background: $surface;
+    border: tall $panel;
+}
+
+#native-session-delete-copy {
+    width: 100%;
+    height: 2;
+    color: $foreground;
+    text-style: bold;
+}
+
+#native-session-delete-actions {
+    width: 100%;
+    height: auto;
+    align-horizontal: right;
+}
+
+#native-session-delete-actions Button {
+    margin-left: 1;
+}

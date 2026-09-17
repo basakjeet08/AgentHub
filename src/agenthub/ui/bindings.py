@@ -50,6 +50,14 @@ LINK_NATIVE_SESSION_BINDING = Binding(
     priority=True,
 )
 
+DELETE_NATIVE_SESSION_BINDING = Binding(
+    "ctrl+d",
+    "delete_native_session",
+    "Delete native session",
+    key_display="Ctrl+D",
+    priority=True,
+)
+
 FOCUS_AGENTS_BINDING = Binding(
     "ctrl+a",
     "focus_agents",
@@ -106,6 +114,7 @@ APPLICATION_BINDINGS = (
     COMMAND_PALETTE_BINDING,
     RESYNC_SESSIONS_BINDING,
     LINK_NATIVE_SESSION_BINDING,
+    DELETE_NATIVE_SESSION_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
     QUIT_BINDING,
@@ -129,6 +138,7 @@ HOME_SHORTCUTS = (
 __all__ = [
     "APPLICATION_BINDINGS",
     "COMMAND_PALETTE_BINDING",
+    "DELETE_NATIVE_SESSION_BINDING",
     "FOCUS_AGENTS_BINDING",
     "FOCUS_SHELLS_BINDING",
     "HOME_SHORTCUTS",

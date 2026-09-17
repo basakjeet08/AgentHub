@@ -17,6 +17,14 @@ class NativeSessionResumeError(NativeSessionError):
     """A provider could not construct an exact-session resume launch."""
 
 
+class NativeSessionDeletionError(NativeSessionError):
+    """A provider could not permanently delete a native conversation."""
+
+
+class NativeSessionDeletionUnavailableError(NativeSessionDeletionError):
+    """A provider has no programmatic native-conversation deletion API."""
+
+
 class NativeSessionAdapter(Protocol):
     """Provider-specific native conversation operations used by AgentHub."""
 
@@ -31,3 +39,6 @@ class NativeSessionAdapter(Protocol):
 
     async def resume(self, session: NativeSession) -> LaunchSpec:
         """Return the exact launch needed to resume ``session``."""
+
+    async def delete(self, session: NativeSession) -> None:
+        """Permanently delete ``session`` through the native provider."""

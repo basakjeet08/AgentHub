@@ -255,6 +255,39 @@ class SessionManager:
         session.state = SessionState.UNLOADED
         return terminal
 
+    def begin_native_deletion(self, session_id: str) -> AgentTerminal | None:
+        """Enter native deletion and detach the disposable runtime atomically."""
+
+        session = self._sessions[session_id]
+        if session.kind is not SessionKind.AGENT or session.native_session_id is None:
+            raise ValueError("session is not a native-backed Agent")
+        if session.state not in {SessionState.RUNNING, SessionState.UNLOADED}:
+            raise ValueError(f"session cannot be deleted while {session.state.value}")
+
+        terminal = session.terminal
+        session.terminal = None
+        session.state = SessionState.DELETING
+        if self._active_session_id == session_id:
+            self._active_session_id = None
+        return terminal
+
+    def fail_native_deletion(self, session_id: str) -> AgentSession:
+        """Return a failed deletion to a resumable unloaded state."""
+
+        session = self._sessions[session_id]
+        if session.state is not SessionState.DELETING:
+            raise ValueError("session is not being deleted")
+        session.state = SessionState.UNLOADED
+        return session
+
+    def complete_native_deletion(self, session_id: str) -> AgentSession:
+        """Remove a logical row only after its native conversation is gone."""
+
+        session = self._sessions[session_id]
+        if session.state is not SessionState.DELETING:
+            raise ValueError("session is not being deleted")
+        return self.remove(session_id)
+
     def select(self, session_id: str) -> AgentSession:
         """Select and return an existing session.
 

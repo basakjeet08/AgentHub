@@ -7,7 +7,10 @@ from urllib.parse import unquote, urlparse
 
 from ._normalize import normalize_session, unique_sessions
 from ._sqlite import read_rows
-from .adapter import NativeSessionDiscoveryError
+from .adapter import (
+    NativeSessionDeletionUnavailableError,
+    NativeSessionDiscoveryError,
+)
 from .model import LaunchSpec, NativeSession
 
 
@@ -74,3 +77,12 @@ class AntigravitySessionAdapter:
     async def resume(self, session: NativeSession) -> LaunchSpec:
         cwd = session.cwd if session.cwd is not None and session.cwd.is_dir() else Path.home()
         return LaunchSpec(("agy", "--conversation", session.native_session_id), cwd)
+
+    async def delete(self, session: NativeSession) -> None:
+        """Reject unsafe storage edits when no headless native delete API exists."""
+
+        raise NativeSessionDeletionUnavailableError(
+            "Antigravity does not currently expose programmatic conversation deletion.\n"
+            "Delete it using Antigravity's /resume picker, then AgentHub will refresh "
+            "automatically."
+        )

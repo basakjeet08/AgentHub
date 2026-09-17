@@ -71,9 +71,11 @@ bittty / PTY → coding agent`.
 - opens an Alt+M picker for explicit reconciliation of a selected fresh runtime
   with an unloaded discovered conversation from the same harness and cwd;
 - creates Fish shell sessions via Ctrl+Shift+S with an optional name;
-- maps terminal-exit events back to their owning sessions, retains native-backed
-  agents as unloaded, removes disposable unidentified agents and shells, and
-  shows Home after an active exit.
+- maps terminal-exit events back to their owning sessions, reconciles an exited
+  native-backed Agent with only its provider, removes disposable unidentified
+  agents and shells, and shows Home after an active exit;
+- owns focus-scoped Ctrl+D navigation and confirmation while delegating native
+  deletion to the selected session's provider adapter.
 
 `SessionManager` currently:
 
@@ -86,7 +88,9 @@ bittty / PTY → coding agent`.
 - constructs terminal runtimes without mounting them.
 - retains discovered logical sessions without terminal runtimes;
 - deduplicates native conversations by harness ID and native session ID;
-- attaches and detaches disposable terminal runtimes.
+- attaches and detaches disposable terminal runtimes;
+- coordinates native-deletion state and removes a logical row only after the
+  provider operation succeeds and absence is verified.
 
 `AgentSession` currently connects an ephemeral AgentHub ID and name with its
 native session ID, optional working directory, explicit agent-or-shell kind,
@@ -569,6 +573,30 @@ Ctrl+A focuses agents where digits 1…9 move highlight and Enter activates; Ctr
 focuses shells for arrow-key navigation. Ctrl+Shift+S opens shell creation.
 Ctrl+digit combinations remain unbound by AgentHub and reach the active terminal.
 
+Ctrl+D is handled by AgentHub only when the AGENTS option list has actual focus,
+and it targets that list's highlighted row. When a terminal has focus, the
+priority binding is rejected so the original Ctrl+D reaches the PTY unchanged.
+Shells do not participate in native deletion.
+
+Permanent deletion follows this ownership sequence:
+
+```text
+highlighted native-backed Agent
+        ↓ confirmation
+SessionManager enters DELETING and detaches runtime
+        ↓
+AgentHubApp unmounts/stops the terminal
+        ↓
+NativeSessionAdapter.delete(exact native ID)
+        ↓
+same-provider discovery verifies absence
+        ├── absent        → SessionManager removes logical row
+        └── present/error → preserve native ID and return row to UNLOADED
+```
+
+Provider-specific commands and failures remain inside native-session adapters;
+the app contains no harness-ID branches.
+
 This policy does not belong inside `AgentTerminal`; that boundary continues to
 forward terminal input without knowing AgentHub navigation rules.
 
@@ -645,7 +673,9 @@ AgentHubApp resolves the affected AgentSession
         ▼
 SessionManager updates session/runtime coordination
         │
-        ├── native-backed Agent → detach terminal and retain unloaded row
+        ├── native-backed Agent → detach terminal, mark unloaded, reconcile provider
+        │                         ├── native ID remains → retain/update row
+        │                         └── native ID absent  → remove stale row
         ├── unidentified Agent or Shell → remove the session
         ├── keep an active sibling visible when a hidden child exited
         └── show Home when the active child exited
@@ -656,6 +686,11 @@ manager mutation with DOM removal, and keeps AgentHub running even when no
 sessions remain. Home uses contextual guidance when other live sessions remain.
 The terminal reports process exit but does not know about the manager,
 selection, Home, or application quit policy.
+
+Exit reconciliation uses the same manager reconciliation as startup and
+Ctrl+Shift+R, but is scoped to the exiting session's harness. A provider failure
+leaves the row unloaded. Fresh Agents without a native ID retain the disposable
+exit path and do not trigger discovery.
 
 ## Terminal Boundary and Bitty
 
@@ -1061,9 +1096,9 @@ The architectural foundation is implemented:
     `New session` agent. Ctrl+A moves cursor highlight across numbered agents
     (Enter activates), and Ctrl+Shift+S creates named shells.
 11. Sessions carry explicit agent-or-shell identity.
-12. Native-backed Agents are retained as unloaded after exit; unidentified
-    Agents and shells are removed. Active exits return to contextual Home, and
-    hidden exits do not interrupt the current terminal.
+12. Native-backed Agents are unloaded and reconciled with only their provider
+    after exit; unidentified Agents and shells are removed. Active exits return
+    to contextual Home, and hidden exits do not interrupt the current terminal.
 13. Antigravity and Devin are registry-driven harnesses using the same
     working-directory, session, terminal, switching, and cleanup paths as the
     existing coding agents.
@@ -1072,12 +1107,16 @@ The architectural foundation is implemented:
     exact-ID resume launches on selection.
 15. Alt+M explicitly links a selected fresh runtime to an eligible unloaded
     native row from the same harness and cwd without restarting its terminal.
+16. Ctrl+D on the focused AGENTS list confirms provider-native deletion of the
+    highlighted row, stops an attached runtime first, verifies provider absence,
+    and preserves the logical row and native ID on failure.
 
 The remaining sequence is:
 
 1. Create and title native conversations through the provider adapters if a
    reliable provider-native mechanism becomes available.
-2. Add explicit native-session deletion.
+2. Add a supported non-interactive Antigravity deletion entry point when its
+   provider exposes one; other adapters use their native deletion commands.
 
 ## Validation Tasks
 
@@ -1338,10 +1377,12 @@ switching runtime are implemented and tested. Normal startup and incomplete or
 cancelled modal flows create no session or child process. Multiple terminals
 have been proven to survive repeated switching, retain hidden output and screen
 state, isolate input, run concurrently in distinct working directories, and
-shut down with the app. Active exits return to Home, and hidden exits are removed
-without interrupting the current terminal.
+shut down with the app. Native-backed exits reconcile only their provider;
+active exits return to Home, and hidden exits do not interrupt the current
+terminal. Ctrl+D deletes only the highlighted native-backed Agent while the
+AGENTS list is focused, and terminal-focused Ctrl+D still reaches the PTY.
 Locked hub shortcuts have been proven to fall through at the PTY-write
-boundary. Next: create native conversations through the adapters, retain agent
-sessions as unloaded when their CLI exits, and add native deletion. AgentHub
-persistence remains deferred.
+boundary. Next: create native conversations through the adapters and add a
+supported non-interactive Antigravity deletion entry point. AgentHub persistence
+remains deferred.
 ```

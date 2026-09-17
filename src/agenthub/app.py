@@ -20,6 +20,8 @@ from agenthub.native_sessions import (
     NATIVE_SESSION_ADAPTERS,
     NativeSession,
     NativeSessionAdapter,
+    NativeSessionDeletionError,
+    NativeSessionDeletionUnavailableError,
 )
 from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
@@ -31,6 +33,7 @@ from agenthub.ui import (
 from agenthub.ui.bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
 from agenthub.ui.modals import (
     HarnessSelectionModal,
+    NativeSessionDeleteModal,
     NativeSessionLinkModal,
     SessionNameModal,
     WorkingDirectoryModal,
@@ -38,6 +41,7 @@ from agenthub.ui.modals import (
 
 _SESSION_WORKFLOW_MODALS = (
     HarnessSelectionModal,
+    NativeSessionDeleteModal,
     NativeSessionLinkModal,
     SessionNameModal,
     WorkingDirectoryModal,
@@ -95,7 +99,9 @@ class AgentHubApp(App):
             Path.home() if working_directory_root is None else working_directory_root
         )
         self._discovery_executor: ThreadPoolExecutor | None = None
+        self._discovery_executors: set[ThreadPoolExecutor] = set()
         self._discovery_in_progress = False
+        self._provider_locks: dict[str, asyncio.Lock] = {}
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -149,7 +155,8 @@ class AgentHubApp(App):
     def on_unmount(self) -> None:
         """Stop accepting discovery work when the application is unmounted."""
 
-        self._shutdown_discovery_executor()
+        for executor in tuple(self._discovery_executors):
+            self._shutdown_discovery_executor(executor)
 
     @staticmethod
     def _terminal_dom_id(session_id: str) -> str:
@@ -180,7 +187,7 @@ class AgentHubApp(App):
         session = self.session_manager.get(session_id)
         if session.terminal is not None:
             return self.show_session(session.id)
-        if session.state is SessionState.STARTING:
+        if session.state is not SessionState.UNLOADED:
             return session
         if session.kind is not SessionKind.AGENT or session.native_session_id is None:
             raise ValueError(f"session {session_id!r} cannot be resumed")
@@ -253,16 +260,12 @@ class AgentHubApp(App):
             title="Session discovery",
             markup=False,
         )
-        executor = ThreadPoolExecutor(
-            max_workers=min(4, len(providers)),
-            thread_name_prefix="agenthub-discovery",
-        )
-        self._discovery_executor = executor
+        executor = self._create_discovery_executor(max_workers=min(4, len(providers)))
         try:
             discoveries = await asyncio.gather(
                 *(
-                    self._discover_from_adapter(adapter, executor)
-                    for _harness, adapter in providers
+                    self._discover_and_reconcile_provider(harness, adapter, executor)
+                    for harness, adapter in providers
                 )
             )
         finally:
@@ -279,16 +282,7 @@ class AgentHubApp(App):
                 summary_lines.append(f"{harness.display_name} - failed: {result.error}")
                 continue
 
-            native_sessions = tuple(
-                native_session
-                for native_session in result.sessions
-                if native_session.harness_id == harness.id
-            )
-            summary_lines.append(f"{harness.display_name} - {len(native_sessions)}")
-            self.session_manager.reconcile_discovered(
-                native_sessions=native_sessions,
-                harness=harness,
-            )
+            summary_lines.append(f"{harness.display_name} - {len(result.sessions)}")
         self._refresh_sidebar()
         self._refresh_status()
         self._refresh_home()
@@ -339,6 +333,63 @@ class AgentHubApp(App):
                 future.cancel()
         return _DiscoveryResult(sessions=native_sessions)
 
+    async def _discover_and_reconcile_provider(
+        self,
+        harness: AgentHarness,
+        adapter: NativeSessionAdapter,
+        executor: ThreadPoolExecutor,
+    ) -> _DiscoveryResult:
+        """Discover and normally reconcile exactly one serialized provider."""
+
+        async with self._provider_lock(harness.id):
+            result = await self._discover_from_adapter(adapter, executor)
+            if result.error is not None:
+                return result
+            native_sessions = tuple(
+                session
+                for session in result.sessions
+                if session.harness_id == harness.id
+            )
+            self.session_manager.reconcile_discovered(
+                native_sessions=native_sessions,
+                harness=harness,
+            )
+            return _DiscoveryResult(sessions=native_sessions)
+
+    async def _reconcile_native_provider(self, harness_id: str) -> _DiscoveryResult:
+        """Run normal reconciliation for one harness and no unrelated providers."""
+
+        harness = self._agent_harnesses.get(harness_id)
+        adapter = self._native_session_adapters.get(harness_id)
+        if harness is None or adapter is None:
+            return _DiscoveryResult(error="native-session adapter is unavailable")
+
+        executor = self._create_discovery_executor(max_workers=1)
+        try:
+            return await self._discover_and_reconcile_provider(harness, adapter, executor)
+        finally:
+            self._shutdown_discovery_executor(executor)
+
+    def _provider_lock(self, harness_id: str) -> asyncio.Lock:
+        """Return the app-owned serialization lock for one native provider."""
+
+        lock = self._provider_locks.get(harness_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._provider_locks[harness_id] = lock
+        return lock
+
+    def _create_discovery_executor(self, *, max_workers: int) -> ThreadPoolExecutor:
+        """Create and track a bounded executor outside Python's default pool."""
+
+        executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="agenthub-discovery",
+        )
+        self._discovery_executors.add(executor)
+        self._discovery_executor = executor
+        return executor
+
     def _shutdown_discovery_executor(
         self,
         executor: ThreadPoolExecutor | None = None,
@@ -349,11 +400,15 @@ class AgentHubApp(App):
         if target is None:
             return
         target.shutdown(wait=False, cancel_futures=True)
+        self._discovery_executors.discard(target)
         if self._discovery_executor is target:
-            self._discovery_executor = None
+            self._discovery_executor = next(iter(self._discovery_executors), None)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Gate hub-owned keys while an active terminal owns the keyboard."""
+
+        if action == "delete_native_session":
+            return self.focused is not None and self.focused.id == "agent-session-list"
 
         terminal_is_active = self.session_manager.active_session is not None
         if self.hub_locked and terminal_is_active and action in TERMINAL_GATED_ACTIONS:
@@ -492,6 +547,184 @@ class AgentHubApp(App):
         self.push_screen(
             NativeSessionLinkModal(pending, candidates),
             partial(self._on_native_session_link_selected, pending.id),
+        )
+
+    def action_delete_native_session(self) -> None:
+        """Confirm deletion of the highlighted row only while AGENTS owns focus."""
+
+        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
+            return
+
+        sidebar = self.query_one(SessionSidebar)
+        if sidebar.focused_session_kind is not SessionKind.AGENT:
+            return
+        session_id = sidebar.selected_session_id
+        if session_id is None:
+            self.notify(
+                "No Agent session is highlighted for deletion.",
+                severity="warning",
+            )
+            return
+        try:
+            session = self.session_manager.get(session_id)
+        except KeyError:
+            self.notify(
+                "The highlighted Agent session is no longer available.",
+                severity="warning",
+            )
+            return
+        if session.native_session_id is None:
+            self.notify(
+                "Fresh Agents are not linked to a native conversation and "
+                "cannot be permanently deleted.",
+                severity="warning",
+            )
+            return
+        if session.state is SessionState.DELETING:
+            self.notify(
+                f"{session.name} is already being deleted.",
+                severity="warning",
+                markup=False,
+            )
+            return
+        if session.harness.id not in self._native_session_adapters:
+            self.notify(
+                f"No native-session adapter is available for {session.harness.display_name}.",
+                severity="error",
+            )
+            return
+
+        self.push_screen(
+            NativeSessionDeleteModal(session.name),
+            partial(self._on_native_session_delete_confirmed, session.id),
+        )
+
+    async def _on_native_session_delete_confirmed(
+        self,
+        session_id: str,
+        confirmed: bool,
+    ) -> None:
+        """Begin irreversible work only after an explicit modal confirmation."""
+
+        if not confirmed:
+            return
+        await self._delete_native_session(session_id)
+
+    async def _delete_native_session(self, session_id: str) -> None:
+        """Stop a runtime, delete natively, verify absence, then remove its row."""
+
+        try:
+            session = self.session_manager.get(session_id)
+        except KeyError:
+            self.notify(
+                "The selected Agent session is no longer available.",
+                severity="error",
+            )
+            return
+
+        adapter = self._native_session_adapters.get(session.harness.id)
+        if (
+            session.kind is not SessionKind.AGENT
+            or session.native_session_id is None
+            or adapter is None
+        ):
+            self.notify(
+                "The selected Agent is not eligible for native deletion.",
+                severity="error",
+            )
+            return
+
+        native_session = NativeSession(
+            harness_id=session.harness.id,
+            native_session_id=session.native_session_id,
+            name=session.name,
+            cwd=session.cwd,
+        )
+        harness = session.harness
+        was_active = self.session_manager.active_session is session
+        try:
+            terminal = self.session_manager.begin_native_deletion(session.id)
+        except ValueError as error:
+            self.notify(f"Could not delete {session.name}: {error}", severity="error")
+            return
+
+        if was_active:
+            self._show_home()
+        self._refresh_sidebar()
+        self._refresh_status()
+
+        try:
+            if terminal is not None and terminal.is_mounted:
+                await terminal.remove()
+            if terminal is not None and terminal.is_process_running:
+                raise NativeSessionDeletionError(
+                    "the native runtime could not be stopped safely"
+                )
+
+            executor = self._create_discovery_executor(max_workers=1)
+            try:
+                async with self._provider_lock(harness.id):
+                    await adapter.delete(native_session)
+                    discovery = await self._discover_from_adapter(adapter, executor)
+                    if discovery.error is not None:
+                        raise NativeSessionDeletionError(
+                            f"could not verify deletion: {discovery.error}"
+                        )
+                    native_sessions = tuple(
+                        discovered
+                        for discovered in discovery.sessions
+                        if discovered.harness_id == harness.id
+                    )
+                    if any(
+                        discovered.native_session_id
+                        == native_session.native_session_id
+                        for discovered in native_sessions
+                    ):
+                        raise NativeSessionDeletionError(
+                            "the provider still reports the conversation"
+                        )
+
+                    self.session_manager.complete_native_deletion(session.id)
+                    self.session_manager.reconcile_discovered(
+                        native_sessions=native_sessions,
+                        harness=harness,
+                    )
+            finally:
+                self._shutdown_discovery_executor(executor)
+        except Exception as error:  # noqa: BLE001 - preserve row across provider boundary
+            try:
+                current = self.session_manager.get(session.id)
+            except KeyError:
+                current = None
+            if current is not None and current.state is SessionState.DELETING:
+                self.session_manager.fail_native_deletion(session.id)
+            self._refresh_sidebar()
+            self._refresh_status()
+            self._refresh_home()
+            deletion_unavailable = isinstance(
+                error,
+                NativeSessionDeletionUnavailableError,
+            )
+            detail = str(error) or type(error).__name__
+            self.notify(
+                detail if deletion_unavailable else f"Could not delete {session.name}: {detail}",
+                title=(
+                    "Native deletion unavailable"
+                    if deletion_unavailable
+                    else "Native session deletion failed"
+                ),
+                severity="warning" if deletion_unavailable else "error",
+                markup=False,
+            )
+            return
+
+        self._refresh_sidebar()
+        self._refresh_status()
+        self._refresh_home()
+        self.notify(
+            f'Deleted "{native_session.name}" permanently.',
+            title="Native session deleted",
+            markup=False,
         )
 
     def _resolve_native_link_target(self) -> AgentSession | None:
@@ -746,7 +979,7 @@ class AgentHubApp(App):
             await self._remove_exited_session(session)
 
     async def _unload_exited_native_session(self, session: AgentSession) -> None:
-        """Detach an exited runtime while preserving its native-backed row."""
+        """Detach an exited runtime and reconcile only its native provider."""
 
         if session not in self.session_manager.sessions:
             return
@@ -762,6 +995,18 @@ class AgentHubApp(App):
 
         self._refresh_sidebar()
         self._refresh_status()
+        result = await self._reconcile_native_provider(session.harness.id)
+        self._refresh_sidebar()
+        self._refresh_status()
+        self._refresh_home()
+        if result.error is not None:
+            self.notify(
+                f"Could not reconcile {session.harness.display_name} after exit: "
+                f"{result.error}",
+                title="Session reconciliation failed",
+                severity="warning",
+                markup=False,
+            )
 
     async def _remove_exited_session(self, session: AgentSession) -> None:
         """Synchronize process-exit cleanup across manager, DOM, and UI."""

@@ -2,6 +2,8 @@
 
 from .adapter import (
     NativeSessionAdapter,
+    NativeSessionDeletionError,
+    NativeSessionDeletionUnavailableError,
     NativeSessionDiscoveryError,
     NativeSessionError,
     NativeSessionResumeError,
@@ -14,6 +16,8 @@ __all__ = [
     "LaunchSpec",
     "NativeSession",
     "NativeSessionAdapter",
+    "NativeSessionDeletionError",
+    "NativeSessionDeletionUnavailableError",
     "NativeSessionDiscoveryError",
     "NativeSessionError",
     "NativeSessionResumeError",

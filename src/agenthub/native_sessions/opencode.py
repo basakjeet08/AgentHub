@@ -4,6 +4,7 @@ import os
 import sqlite3
 from pathlib import Path
 
+from ._command import run_delete_command
 from ._normalize import normalize_session, unique_sessions
 from ._sqlite import read_rows
 from .adapter import NativeSessionDiscoveryError
@@ -88,3 +89,10 @@ class OpenCodeSessionAdapter:
     async def resume(self, session: NativeSession) -> LaunchSpec:
         cwd = session.cwd if session.cwd is not None and session.cwd.is_dir() else Path.home()
         return LaunchSpec(("opencode", "--session", session.native_session_id), cwd)
+
+    async def delete(self, session: NativeSession) -> None:
+        """Permanently delete an OpenCode session by its exact native ID."""
+
+        await run_delete_command(
+            ("opencode", "session", "delete", session.native_session_id)
+        )

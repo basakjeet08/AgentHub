@@ -2,10 +2,14 @@
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agenthub.native_sessions import NativeSessionDiscoveryError
+from agenthub.native_sessions import (
+    NativeSessionDeletionError,
+    NativeSessionDiscoveryError,
+)
 from agenthub.native_sessions.antigravity import AntigravitySessionAdapter
 from agenthub.native_sessions.codex import CodexSessionAdapter
 from agenthub.native_sessions.devin import DevinSessionAdapter
@@ -286,3 +290,47 @@ async def test_opencode_rejects_an_unsupported_database_schema(tmp_path: Path) -
 
     with pytest.raises(NativeSessionDiscoveryError, match="unsupported schema"):
         OpenCodeSessionAdapter(database).discover()
+
+
+@pytest.mark.parametrize(
+    ("adapter", "module", "expected_command"),
+    (
+        (
+            CodexSessionAdapter(),
+            "agenthub.native_sessions.codex.run_delete_command",
+            ("codex", "delete", "--force", "native-id"),
+        ),
+        (
+            DevinSessionAdapter(),
+            "agenthub.native_sessions.devin.run_delete_command",
+            ("devin", "rm", "--force", "native-id"),
+        ),
+        (
+            OpenCodeSessionAdapter(),
+            "agenthub.native_sessions.opencode.run_delete_command",
+            ("opencode", "session", "delete", "native-id"),
+        ),
+    ),
+)
+async def test_native_adapters_delete_by_exact_provider_id(
+    adapter,
+    module: str,
+    expected_command: tuple[str, ...],
+) -> None:
+    native_session = NativeSession(adapter.harness_id, "native-id", "Title")
+
+    with patch(module, AsyncMock()) as delete_command:
+        await adapter.delete(native_session)
+
+    delete_command.assert_awaited_once_with(expected_command)
+
+
+async def test_antigravity_delete_fails_safely_without_a_headless_native_api() -> None:
+    adapter = AntigravitySessionAdapter()
+    native_session = NativeSession("antigravity", "native-id", "Title")
+
+    with pytest.raises(
+        NativeSessionDeletionError,
+        match="does not currently expose programmatic conversation deletion",
+    ):
+        await adapter.delete(native_session)

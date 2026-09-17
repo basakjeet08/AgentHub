@@ -8,6 +8,7 @@ from agenthub.sessions import SessionKind
 from agenthub.ui.bindings import (
     APPLICATION_BINDINGS,
     COMMAND_PALETTE_BINDING,
+    DELETE_NATIVE_SESSION_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
     LINK_NATIVE_SESSION_BINDING,
@@ -92,6 +93,11 @@ def test_application_navigation_bindings_are_reserved() -> None:
     assert LINK_NATIVE_SESSION_BINDING.priority is True
     assert LINK_NATIVE_SESSION_BINDING in APPLICATION_BINDINGS
     assert "link_native_session" in TERMINAL_GATED_ACTIONS
+    assert DELETE_NATIVE_SESSION_BINDING.key == "ctrl+d"
+    assert DELETE_NATIVE_SESSION_BINDING.action == "delete_native_session"
+    assert DELETE_NATIVE_SESSION_BINDING.priority is True
+    assert DELETE_NATIVE_SESSION_BINDING in APPLICATION_BINDINGS
+    assert "delete_native_session" not in TERMINAL_GATED_ACTIONS
     assert [binding.key for binding in NUMBERED_SESSION_BINDINGS] == [
         str(number) for number in range(1, 10)
     ]

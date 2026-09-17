@@ -49,9 +49,12 @@ multi-session runtime architecture:
   Ctrl+H; typing filters the current directory's immediate child folders by
   name.
 - It creates Fish shell sessions with Ctrl+Shift+S with an optional session name.
-- It retains native-backed agents as unloaded rows when their child exits,
-  removes unidentified agents and shells, and returns active exits to Home
-  without interrupting a live active sibling.
+- When a native-backed agent exits, it unloads the runtime and reconciles only
+  that harness so conversations deleted in the native CLI do not leave stale
+  rows. Unidentified agents and shells retain their existing exit behavior.
+- With the AGENTS list focused, Ctrl+D confirms and permanently deletes the
+  highlighted native-backed conversation through its provider adapter. The
+  logical row is removed only after native deletion is verified.
 - It keeps hidden terminals mounted, running, and buffering output while focus
   follows the visible terminal.
 - It starts Unlocked for immediate navigation and lets the user transfer all
@@ -75,9 +78,11 @@ not installed. Each native CLI owns its authentication and first-run setup.
 AgentHub does not yet provide:
 
 - a complete shortcuts dialog;
-- user-initiated stopping, restarting, or removal of live sessions;
+- generic user-initiated stopping or restarting of sessions;
 - persisted session metadata;
-- creation, renaming, or deletion of native harness conversations.
+- creation or renaming of native harness conversations;
+- non-interactive Antigravity conversation deletion (the native CLI currently
+  exposes deletion only through its interactive conversation picker).
 
 Normal startup begins native-session discovery and may populate the agent
 sidebar without starting any child process. Ctrl+N launches a fresh native CLI
@@ -113,6 +118,7 @@ Ctrl+N                Create a new agent session
 Ctrl+Shift+S          New shell session
 Ctrl+Shift+R          Re-sync native sessions
 Alt+M                 Link highlighted or active fresh agent
+Ctrl+D                Delete highlighted native-backed agent
 Ctrl+P                Command Palette
 Ctrl+Q                Quit
 Ctrl+A, 1...9, Enter  Navigate / open agent
@@ -124,6 +130,11 @@ without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and `1` thr
 moves the highlight cursor to the nth agent, while `Enter` switches to it. `Ctrl+S`
 focuses shells for arrow-key navigation, while numeric keys are ignored. `Ctrl+Shift+S`
 prompts for an optional shell name and creates a shell.
+
+Ctrl+D is owned by AgentHub only while the AGENTS list has focus. With terminal
+focus it continues to reach the hosted native CLI unchanged. Fresh Agents show
+a warning because they have no provider-native conversation to delete; shells
+do not participate in native deletion.
 
 Ctrl+G remains AgentHub's ownership toggle even when a hosted CLI also assigns
 that key. AgentHub does not rewrite the native CLI's other bindings.

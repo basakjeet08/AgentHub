@@ -5,6 +5,7 @@ import re
 import sqlite3
 from pathlib import Path
 
+from ._command import run_delete_command
 from ._normalize import normalize_session, unique_sessions
 from ._sqlite import read_rows
 from .adapter import NativeSessionDiscoveryError
@@ -77,3 +78,8 @@ class CodexSessionAdapter:
     async def resume(self, session: NativeSession) -> LaunchSpec:
         cwd = session.cwd if session.cwd is not None and session.cwd.is_dir() else Path.home()
         return LaunchSpec(("codex", "resume", session.native_session_id), cwd)
+
+    async def delete(self, session: NativeSession) -> None:
+        """Permanently delete a Codex thread by its exact UUID."""
+
+        await run_delete_command(("codex", "delete", "--force", session.native_session_id))

@@ -224,6 +224,75 @@ def test_remove_rejects_unknown_session_without_changing_selection(
     assert manager.active_session is session
 
 
+def test_native_deletion_transitions_detach_and_preserve_identity_on_failure(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    session = manager.create(
+        name="Native",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    session.native_session_id = "native-1"
+    terminal = session.terminal
+
+    assert manager.begin_native_deletion(session.id) is terminal
+    assert session.terminal is None
+    assert session.state is SessionState.DELETING
+    assert session.native_session_id == "native-1"
+    assert manager.active_session is None
+
+    assert manager.fail_native_deletion(session.id) is session
+    assert session.state is SessionState.UNLOADED
+    assert session.native_session_id == "native-1"
+    assert manager.sessions == (session,)
+
+
+def test_native_deletion_removes_row_only_from_deleting_state(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    session = manager.create(
+        name="Native",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    session.native_session_id = "native-1"
+
+    with pytest.raises(ValueError, match="not being deleted"):
+        manager.complete_native_deletion(session.id)
+
+    manager.begin_native_deletion(session.id)
+    assert manager.complete_native_deletion(session.id) is session
+    assert manager.sessions == ()
+
+
+def test_native_deletion_rejects_fresh_agents_and_shells(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    fresh = manager.create(
+        name="Fresh",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    shell = manager.create(
+        name="Shell",
+        kind=SessionKind.SHELL,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    shell.native_session_id = "not-eligible"
+
+    with pytest.raises(ValueError, match="not a native-backed Agent"):
+        manager.begin_native_deletion(fresh.id)
+    with pytest.raises(ValueError, match="not a native-backed Agent"):
+        manager.begin_native_deletion(shell.id)
+
+
 def test_linkable_native_sessions_filters_to_unique_unloaded_same_harness_agents(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
