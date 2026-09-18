@@ -93,6 +93,41 @@ async def test_locked_hub_binding_reaches_pty(
         assert app.session_manager.sessions == (session,)
 
 
+@pytest.mark.parametrize("locked", [False, True])
+@pytest.mark.parametrize(
+    ("key", "expected_input"),
+    [
+        ("left", "\x1b[D"),
+        ("right", "\x1b[C"),
+    ],
+)
+async def test_sidebar_tab_arrows_reach_active_terminal(
+    sleeping_harness: AgentHarness,
+    locked: bool,
+    key: str,
+    expected_input: str,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        if locked:
+            await pilot.press("ctrl+g")
+            assert app.hub_locked
+
+        assert session.terminal.has_focus
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press(key)
+            await pilot.pause()
+
+        write_spy.assert_called_once_with(expected_input)
+        assert session.terminal.has_focus
+        assert app.session_manager.active_session is session
+
+
 async def test_super_a_is_consumed_without_crashing_or_reaching_pty(
     sleeping_harness: AgentHarness,
 ) -> None:
