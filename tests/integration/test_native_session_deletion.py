@@ -7,13 +7,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from textual.widgets import Button, OptionList, Static
+from textual.widgets import Button, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
 from agenthub.sessions import SessionKind, SessionState
-from agenthub.ui import SessionSidebar
 from agenthub.ui.modals import NativeSessionDeleteModal
 
 
@@ -116,7 +115,7 @@ async def test_manual_native_deletion_is_reconciled_after_only_its_process_exits
         assert unrelated_adapter.discover_calls == 1
 
 
-async def test_ctrl_d_deletes_highlighted_agent_not_active_agent(
+async def test_explicit_target_deletes_inactive_agent_not_active_agent(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -139,11 +138,7 @@ async def test_ctrl_d_deletes_highlighted_agent_not_active_agent(
         active, highlighted = app.session_manager.sessions
         await app.activate_session(active.id)
         await pilot.pause()
-        sidebar = app.query_one(SessionSidebar)
-        sidebar.move_cursor_to_session(highlighted.id)
-        sidebar.focus_agents()
-
-        await pilot.press("ctrl+d")
+        app._request_native_session_delete(highlighted.id)
         await pilot.pause()
 
         assert isinstance(app.screen, NativeSessionDeleteModal)
@@ -225,7 +220,8 @@ async def test_cancel_native_deletion_leaves_everything_untouched(
         await app.workers.wait_for_complete()
         await pilot.pause()
         session = app.session_manager.sessions[0]
-        await pilot.press("ctrl+a", "ctrl+d")
+        app._request_native_session_delete(session.id)
+        await pilot.pause()
         assert isinstance(app.screen, NativeSessionDeleteModal)
 
         if cancel_with == "escape":
@@ -271,7 +267,8 @@ async def test_failed_native_deletion_preserves_row_and_native_identity(
         await app.workers.wait_for_complete()
         await pilot.pause()
         session = app.session_manager.sessions[0]
-        await pilot.press("ctrl+a", "ctrl+d")
+        app._request_native_session_delete(session.id)
+        await pilot.pause()
         await pilot.click("#native-session-delete-confirm")
         for _ in range(20):
             if session.state is not SessionState.DELETING:
@@ -319,7 +316,7 @@ async def test_unavailable_native_deletion_shows_provider_guidance_as_warning(
         terminal = session.terminal
         assert terminal is not None and terminal.is_process_running
 
-        await pilot.press("ctrl+a", "ctrl+d")
+        app._request_native_session_delete(session.id)
         await pilot.pause()
 
         notification = list(app._notifications)[-1]
@@ -363,7 +360,8 @@ async def test_running_native_agent_is_stopped_before_provider_deletion(
             (session.terminal, terminal.is_process_running)
         )
 
-        await pilot.press("ctrl+a", "ctrl+d")
+        app._request_native_session_delete(session.id)
+        await pilot.pause()
         await pilot.click("#native-session-delete-confirm")
         for _ in range(20):
             if session not in app.session_manager.sessions:
@@ -375,7 +373,7 @@ async def test_running_native_agent_is_stopped_before_provider_deletion(
         assert app.session_manager.active_session is None
 
 
-async def test_fresh_agent_warns_and_shell_focus_cannot_delete_natively(
+async def test_fresh_agent_and_shell_targets_cannot_delete_natively(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -401,19 +399,13 @@ async def test_fresh_agent_warns_and_shell_focus_cannot_delete_natively(
     async with app.run_test() as pilot:
         await app.workers.wait_for_complete()
         await pilot.pause()
-        sidebar = app.query_one(SessionSidebar)
-        sidebar.focus_agents()
-        await pilot.press("ctrl+d")
+        app._request_native_session_delete(fresh.id)
         await pilot.pause()
 
         assert not isinstance(app.screen, NativeSessionDeleteModal)
         assert "Fresh Agents are not linked" in list(app._notifications)[-1].message
 
-        sidebar.focus_shells()
-        await pilot.pause()
-        shell_list = app.query_one("#shell-session-list", OptionList)
-        assert shell_list.has_focus
-        await pilot.press("ctrl+d")
+        app._request_native_session_delete(shell.id)
         await pilot.pause()
 
         assert app.session_manager.sessions == (fresh, shell)

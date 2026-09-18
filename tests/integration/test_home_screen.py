@@ -61,8 +61,17 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
         assert all(key != "Ctrl+0" for key, _description in HOME_SHORTCUTS)
         assert ("Ctrl+A, 1…9, Enter", "Navigate / open agent") in HOME_SHORTCUTS
         assert ("Ctrl+S, ↑↓, Enter", "Navigate / open shell") in HOME_SHORTCUTS
-        assert ("Ctrl+Shift+S", "New shell") in HOME_SHORTCUTS
+        assert all(
+            key not in {"Ctrl+N", "Ctrl+Shift+S", "Alt+M", "Ctrl+D", "Ctrl+Q"}
+            for key, _description in HOME_SHORTCUTS
+        )
         assert ("Ctrl+P", "Command palette") in HOME_SHORTCUTS
+        mode_note = home.query_one("#shortcut-mode-note", Static)
+        quit_note = home.query_one("#shortcut-quit-note", Static)
+        assert quit_note.content == (
+            "Note: To quit AgentHub, press Ctrl+P and select Quit AgentHub."
+        )
+        assert quit_note.region.y == mode_note.region.bottom + 1
 
 
 async def test_home_navigation_moves_focus_without_creating_a_session() -> None:

@@ -63,19 +63,20 @@ bittty / PTY → coding agent`.
 - routes sidebar selection through an activation operation that either resumes
   an unloaded session or shows its existing runtime;
 - owns terminal-first Locked/Unlocked keyboard policy and priority candidates
-  for Ctrl+G, Ctrl+N, Ctrl+P, Ctrl+Q, and sidebar-group focus;
+  for Ctrl+G, Ctrl+P, Ctrl+Shift+R, and sidebar-group focus;
 - gates hub navigation through `check_action()` while a terminal is active so
   rejected key events continue unchanged to `AgentTerminal`;
-- coordinates a registry-driven harness picker and directory picker from
-  Ctrl+N, creating no runtime until both are confirmed;
-- opens an Alt+M picker for explicit reconciliation of a selected fresh runtime
-  with an unloaded discovered conversation from the same harness and cwd;
-- creates Fish shell sessions via Ctrl+Shift+S with an optional name;
+- coordinates a registry-driven harness picker and directory picker from the
+  New Agent palette command, creating no runtime until both are confirmed;
+- opens a contextual Link picker for explicit reconciliation of the active
+  fresh runtime with an unloaded discovered conversation from the same harness
+  and cwd;
+- creates Fish shell sessions via the New Shell palette command;
 - maps terminal-exit events back to their owning sessions, reconciles an exited
   native-backed Agent with only its provider, removes disposable unidentified
   agents and shells, and shows Home after an active exit;
-- owns focus-scoped Ctrl+D navigation and confirmation while delegating native
-  deletion to the selected session's provider adapter.
+- exposes contextual Delete for the active native-backed Agent while delegating
+  native deletion to the selected session's provider adapter.
 
 `SessionManager` currently:
 
@@ -174,7 +175,7 @@ The authoritative source and test layout is documented in
 
 The core ownership boundaries, Home-first shell, persistent sidebar and status
 bar, native-session discovery and exact-ID resume, and switching runtime are
-now implemented. Normal startup creates no terminal or child process. Ctrl+N
+now implemented. Normal startup creates no terminal or child process. New Agent
 creates a fresh native CLI runtime with a temporary AgentHub label and no known
 native session ID.
 
@@ -561,27 +562,24 @@ Ctrl+G toggles keyboard ownership
    ├── Locked + active terminal → other hub actions fail check_action()
    │                              and their original keys reach the PTY
    │
-   └── Unlocked → Ctrl+N opens the New Agent Session modal flow,
-                  Alt+M opens explicit native-session linking for an eligible
-                  runtime, Ctrl+A/Ctrl+S focus a sidebar group, and a following
-                  plain digit selects its numbered entry
+   └── Unlocked → Ctrl+P opens the command palette,
+                  Ctrl+Shift+R refreshes native sessions,
+                  Ctrl+A/Ctrl+S focus a sidebar group, and a following
+                  plain digit selects its numbered Agent entry
 ```
 
 Home is the intentional exception: with no active terminal, application
 shortcuts work even while the authoritative mode remains Locked. In the sidebar,
 Ctrl+A focuses agents where digits 1…9 move highlight and Enter activates; Ctrl+S
-focuses shells for arrow-key navigation. Ctrl+Shift+S opens shell creation.
-Ctrl+digit combinations remain unbound by AgentHub and reach the active terminal.
-
-Ctrl+D is handled by AgentHub only when the AGENTS option list has actual focus,
-and it targets that list's highlighted row. When a terminal has focus, the
-priority binding is rejected so the original Ctrl+D reaches the PTY unchanged.
-Shells do not participate in native deletion.
+focuses shells for arrow-key navigation. Ctrl+digit combinations remain unbound
+by AgentHub and reach the active terminal. New Agent, New Shell, Link, Delete,
+and Quit are palette-only actions; their former keys also reach a focused
+terminal unchanged.
 
 Permanent deletion follows this ownership sequence:
 
 ```text
-highlighted native-backed Agent
+active native-backed Agent → Ctrl+P → Delete
         ↓ adapter capability check
         ├── unsupported → guidance toast; no modal or runtime change
         └── supported
@@ -853,11 +851,11 @@ keyboard-ownership state and Ctrl+G action remain grouped on the right.
 The Home screen is a content view inside the application shell rather than a
 separate Textual screen stack entry. This keeps shared navigation and status
 chrome mounted while future content changes inside the `ContentSwitcher`.
-Agent creation begins as a keyboard action and is configured through two small
+Agent creation begins as a palette action and is configured through two small
 modal screens:
 
 ```text
-Ctrl+N
+Ctrl+P → New Agent
    │
    ▼
 HarnessSelectionModal
@@ -885,9 +883,9 @@ nothing and leaves the previous Home or live-session state usable.
 Fresh runtime reconciliation is deliberately explicit rather than heuristic:
 
 ```text
-Select running fresh Agent (native_session_id=None)
+Open running fresh Agent (native_session_id=None)
    │
-   ▼ Alt+M
+   ▼ Ctrl+P → Link
 NativeSessionLinkModal
    │ same-harness, same-cwd, unloaded, unique-ID native rows only
    ▼ user selects one row
@@ -904,18 +902,9 @@ revalidated on confirmation. If either changed, linking fails without a partial
 merge. Later discovery matches the linked row by exact native identity, updates
 provider metadata in place, and cannot recreate the duplicate.
 
-The target of Alt+M follows keyboard context rather than terminal visibility:
-
-```text
-AGENTS list focused → highlighted Agent row
-SHELLS list focused → reject linking
-otherwise           → active Agent session
-```
-
-Sidebar cursor identity and active-session identity are independent. Linking a
-highlighted hidden Agent preserves the currently active session and visible
-terminal; it also preserves the linked row's cursor through sidebar
-recomposition. Enter remains the operation that activates a highlighted row.
+Link always targets the session currently displayed in the main terminal area.
+Sidebar cursor identity and active-session identity remain independent; users
+press Enter before invoking Link when another row should become the target.
 
 The directory tree excludes dot-prefixed folders by default. Ctrl+H toggles
 those folders and reloads the native tree while preserving expansion and cursor
@@ -975,8 +964,8 @@ Agent rows can be highlighted with Ctrl+A, then 1…9, and activated with Enter.
 Shell rows are navigated with Ctrl+S and arrow keys, and activated with Enter.
 Agent sessions remain selectable directly from the
 sidebar. The sidebar does not operate directly on `SessionManager` or terminal
-internals. Ctrl+N uses the agent-only harness and working-directory modal flow;
-Ctrl+Shift+S opens the lightweight shell naming workflow.
+internals. New Agent uses the agent-only harness and working-directory modal
+flow; New Shell opens the lightweight shell naming workflow.
 
 ## Repository Structure
 
@@ -1107,10 +1096,10 @@ The architectural foundation is implemented:
    establish the shared UI foundation.
 9. Sidebar presentation accepts `AGENTS` and `SHELLS` collections backed by the
    same manager and selection flow.
-10. Ctrl+N opens a registry-driven harness picker followed by a
+10. New Agent opens a registry-driven harness picker followed by a
     working-directory browser; confirming both creates and focuses a fresh
     `New session` agent. Ctrl+A moves cursor highlight across numbered agents
-    (Enter activates), and Ctrl+Shift+S creates named shells.
+    (Enter activates), and New Shell creates named shells.
 11. Sessions carry explicit agent-or-shell identity.
 12. Native-backed Agents are unloaded and reconciled with only their provider
     after exit; unidentified Agents and shells are removed. Active exits return
@@ -1121,10 +1110,10 @@ The architectural foundation is implemented:
 14. Provider-specific adapters discover Codex, OpenCode, Devin, and Antigravity
     conversations, normalize them into unloaded sessions, and construct
     exact-ID resume launches on selection.
-15. Alt+M explicitly links a selected fresh runtime to an eligible unloaded
-    native row from the same harness and cwd without restarting its terminal.
-16. Ctrl+D on the focused AGENTS list checks provider deletion capability,
-    confirms supported provider-native deletion of the highlighted row, stops
+15. Contextual Link explicitly links the active fresh runtime to an eligible
+    unloaded native row from the same harness and cwd without restarting its terminal.
+16. Contextual Delete checks provider deletion capability, confirms supported
+    provider-native deletion of the active row, stops
     an attached runtime first, verifies provider absence, and preserves the
     logical row and native ID on failure. Unsupported providers show guidance
     without touching the runtime.
@@ -1324,18 +1313,18 @@ Ctrl+Shift+R schedules the same provider discovery pipeline after startup. A
 successful provider result updates known native metadata, adds newly discovered
 conversations, and removes unloaded entries that the provider no longer
 reports. Sessions with attached runtimes are retained so re-sync never
-interrupts a running terminal. Because a fresh Ctrl+N runtime has no native ID,
+interrupts a running terminal. Because a fresh New Agent runtime has no native ID,
 discovery does not guess its identity from title, cwd, timestamps, or ordering.
 The native conversation is therefore added as a separate unloaded row when no
 exact-ID match exists. Repeated discovery deduplicates that native-backed row by
 `(harness_id, native_session_id)`. Failed providers retain their existing
-entries. The user can then select the unidentified running row and press Alt+M.
+entries. The user can then open the unidentified running row and choose Link.
 Only unloaded native-backed rows from the same harness and cwd are offered;
 provider ID and title are transferred to the existing running row, the selected
 duplicate is removed, and the mounted terminal is preserved. This user choice
 is the reconciliation evidence—AgentHub still never guesses from mutable
-metadata. If the Agents list is focused, its highlighted row is the pending
-runtime; otherwise the active Agent is used. Shell-list focus blocks the action.
+metadata. The active main-terminal Agent is always the pending runtime;
+highlighting another sidebar row does not retarget the palette action.
 
 ## Architectural Rules
 
@@ -1400,8 +1389,8 @@ have been proven to survive repeated switching, retain hidden output and screen
 state, isolate input, run concurrently in distinct working directories, and
 shut down with the app. Native-backed exits reconcile only their provider;
 active exits return to Home, and hidden exits do not interrupt the current
-terminal. Ctrl+D deletes only the highlighted native-backed Agent while the
-AGENTS list is focused, and terminal-focused Ctrl+D still reaches the PTY.
+terminal. Contextual Delete operates only on the active native-backed Agent,
+and Ctrl+D reaches a focused terminal unchanged.
 Locked hub shortcuts have been proven to fall through at the PTY-write
 boundary. Next: create native conversations through the adapters and add a
 supported non-interactive Antigravity deletion entry point. AgentHub persistence

@@ -127,7 +127,7 @@ async def test_shell_name_input_owns_ctrl_v_over_a_mounted_terminal(
     app, (session,) = _app_with_sessions(sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.pause()
         assert isinstance(app.screen, SessionNameModal)
         name_input = app.screen.query_one("#session-name-input", Input)
@@ -214,10 +214,10 @@ async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
     app = AgentHubApp(shell_harness=sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.press("enter")
         await pilot.pause()
         shell_list = app.query_one("#shell-session-list", OptionList)
@@ -235,25 +235,17 @@ async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
         assert shell_list.highlighted == 0
 
 
-async def test_unlocked_navigation_and_new_session_actions_fire(
+async def test_unlocked_navigation_actions_fire(
     sleeping_harness: AgentHarness,
 ) -> None:
     app, sessions = _app_with_sessions(sleeping_harness, count=2)
-    new_session_calls = 0
-
-    def record_new_session() -> None:
-        nonlocal new_session_calls
-        new_session_calls += 1
-
-    app.action_new_session = record_new_session  # type: ignore[method-assign]
-
     async with app.run_test() as pilot:
         assert not app.hub_locked
 
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.press("enter")
         await pilot.pause()
 
@@ -271,11 +263,8 @@ async def test_unlocked_navigation_and_new_session_actions_fire(
         assert agent_list.highlighted == agent_list.get_option_index(sessions[0].id)
         assert shell_list.highlighted is None
 
-        await pilot.press("ctrl+n")
-        assert new_session_calls == 1
 
-
-async def test_unlocked_command_palette_and_quit_actions_fire(
+async def test_command_palette_quit_action_exits(
     sleeping_harness: AgentHarness,
 ) -> None:
     app, _sessions = _app_with_sessions(sleeping_harness)
@@ -286,8 +275,10 @@ async def test_unlocked_command_palette_and_quit_actions_fire(
         await pilot.pause()
         assert isinstance(app.screen, CommandPalette)
 
-        await pilot.press("escape")
-        await pilot.press("ctrl+q")
+        app.screen.query_one(Input).value = "Quit AgentHub"
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        await pilot.press("enter")
 
     assert not app.is_running
 
@@ -331,7 +322,8 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("ctrl+n")
+        app.action_new_session()
+        await pilot.pause()
         if stage == "cwd":
             await pilot.press("enter")
             await pilot.pause()
@@ -373,7 +365,8 @@ async def test_locking_on_home_keeps_new_session_modal_open(
     )
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+n")
+        app.action_new_session()
+        await pilot.pause()
         if stage == "cwd":
             await pilot.press("enter")
             await pilot.pause()
@@ -394,7 +387,7 @@ async def test_ctrl_0_passes_through_to_active_terminal_without_opening_shell(
     app = AgentHubApp(shell_harness=sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.press("enter")
         await pilot.pause()
         session = app.session_manager.active_session
@@ -416,7 +409,7 @@ async def test_ctrl_digit_no_longer_opens_shell_while_unlocked(
     app = AgentHubApp(shell_harness=sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.press("enter")
         await pilot.pause()
         session = app.session_manager.active_session
@@ -450,7 +443,7 @@ async def test_ctrl_m_remains_terminal_enter_while_unlocked(
         assert not isinstance(app.screen, NativeSessionLinkModal)
 
 
-async def test_home_uses_unlocked_shortcuts_by_default() -> None:
+async def test_home_uses_retained_shortcuts_and_ignores_removed_creation_key() -> None:
     app = AgentHubApp()
     new_session_calls = 0
 
@@ -469,9 +462,49 @@ async def test_home_uses_unlocked_shortcuts_by_default() -> None:
         await pilot.press("ctrl+s")
         assert app.query_one(SessionSidebar).has_focus
         await pilot.press("ctrl+n")
-        assert new_session_calls == 1
+        assert new_session_calls == 0
 
         await pilot.press("ctrl+p")
         await app.workers.wait_for_complete()
         await pilot.pause()
         assert isinstance(app.screen, CommandPalette)
+
+
+@pytest.mark.parametrize(
+    ("key", "expected_input"),
+    [
+        ("ctrl+n", "\x0e"),
+        ("ctrl+shift+s", "\x13"),
+        ("alt+m", "m"),
+        ("ctrl+d", "\x04"),
+        ("ctrl+q", "\x11"),
+    ],
+)
+async def test_removed_shortcuts_reach_unlocked_terminal(
+    sleeping_harness: AgentHarness,
+    key: str,
+    expected_input: str,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press(key)
+            await pilot.pause()
+
+        write_spy.assert_called_once_with(expected_input)
+        assert app.is_running
+        assert app.session_manager.sessions == (session,)
+        assert not isinstance(
+            app.screen,
+            (
+                HarnessSelectionModal,
+                NativeSessionLinkModal,
+                SessionNameModal,
+                WorkingDirectoryModal,
+            ),
+        )

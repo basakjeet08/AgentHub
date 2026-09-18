@@ -23,7 +23,7 @@ def _app_with_session(harness: AgentHarness) -> tuple[AgentHubApp, AgentSession]
     return app, session
 
 
-async def test_unlocked_ctrl_q_exits_while_terminal_has_focus(
+async def test_quit_action_exits_and_stops_the_active_terminal(
     sleeping_harness: AgentHarness,
 ) -> None:
     app, created_session = _app_with_session(sleeping_harness)
@@ -41,7 +41,7 @@ async def test_unlocked_ctrl_q_exits_while_terminal_has_focus(
         assert status.query_one("#session-count", Static).content == "Sessions 1"
         assert status.query_one("#running-count", Static).content == "Running 1"
 
-        await pilot.press("ctrl+q")
+        await app.action_quit()
 
     assert not app.is_running
     assert process.wait(timeout=1) is not None

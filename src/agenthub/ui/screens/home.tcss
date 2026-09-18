@@ -78,3 +78,10 @@ HomeScreen {
     height: auto;
     margin-top: 1;
 }
+
+#shortcut-quit-note {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+    color: $warning;
+}

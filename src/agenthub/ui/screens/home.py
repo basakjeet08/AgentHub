@@ -45,6 +45,10 @@ class HomeScreen(VerticalScroll):
                     id="shortcut-mode-note",
                     classes="muted",
                 )
+                yield Static(
+                    "Note: To quit AgentHub, press Ctrl+P and select Quit AgentHub.",
+                    id="shortcut-quit-note",
+                )
 
     def update_for_sessions(self, has_sessions: bool) -> None:
         """Keep Home guidance accurate when live sessions remain available."""

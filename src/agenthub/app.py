@@ -410,8 +410,10 @@ class AgentHubApp(App):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Gate hub-owned keys while an active terminal owns the keyboard."""
 
-        if action == "delete_native_session":
-            return self.focused is not None and self.focused.id == "agent-session-list"
+        # Textual contributes a hidden Ctrl+Q binding from its base App class.
+        # Disable only binding dispatch; the palette calls action_quit directly.
+        if action == "quit":
+            return False
 
         terminal_is_active = self.session_manager.active_session is not None
         if self.hub_locked and terminal_is_active and action in TERMINAL_GATED_ACTIONS:
@@ -669,17 +671,6 @@ class AgentHubApp(App):
 
         await self.activate_session(session.id)
 
-    def action_link_native_session(self) -> None:
-        """Open reconciliation for the highlighted or active fresh Agent."""
-
-        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
-            return
-
-        pending = self._resolve_native_link_target()
-        if pending is None:
-            return
-        self._begin_native_session_link(pending.id)
-
     def _begin_native_session_link(self, session_id: str) -> None:
         """Open native reconciliation for one explicit AgentHub session ID."""
 
@@ -730,24 +721,6 @@ class AgentHubApp(App):
             NativeSessionLinkModal(pending, candidates),
             partial(self._on_native_session_link_selected, pending.id),
         )
-
-    def action_delete_native_session(self) -> None:
-        """Confirm deletion of the highlighted row only while AGENTS owns focus."""
-
-        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
-            return
-
-        sidebar = self.query_one(SessionSidebar)
-        if sidebar.focused_session_kind is not SessionKind.AGENT:
-            return
-        session_id = sidebar.selected_session_id
-        if session_id is None:
-            self.notify(
-                "No Agent session is highlighted for deletion.",
-                severity="warning",
-            )
-            return
-        self._request_native_session_delete(session_id)
 
     def _request_native_session_delete(self, session_id: str) -> None:
         """Validate one explicit session ID and request native deletion."""
@@ -953,43 +926,6 @@ class AgentHubApp(App):
             title="Native session deleted",
             markup=False,
         )
-
-    def _resolve_native_link_target(self) -> AgentSession | None:
-        """Resolve Alt+M without conflating sidebar cursor and active runtime."""
-
-        sidebar = self.query_one(SessionSidebar)
-        focused_kind = sidebar.focused_session_kind
-        if focused_kind is SessionKind.SHELL:
-            self.notify(
-                "Shell sessions cannot be linked. Select a pending Agent session.",
-                severity="warning",
-            )
-            return None
-        if focused_kind is SessionKind.AGENT:
-            session_id = sidebar.selected_session_id
-            if session_id is None:
-                self.notify(
-                    "No Agent session is highlighted for linking.",
-                    severity="warning",
-                )
-                return None
-            try:
-                return self.session_manager.get(session_id)
-            except KeyError:
-                self.notify(
-                    "The highlighted Agent session is no longer available.",
-                    severity="warning",
-                )
-                return None
-
-        active = self.session_manager.active_session
-        if active is None:
-            self.notify(
-                "Select a running fresh Agent session before linking.",
-                severity="warning",
-            )
-            return None
-        return active
 
     def _on_native_session_link_selected(
         self,

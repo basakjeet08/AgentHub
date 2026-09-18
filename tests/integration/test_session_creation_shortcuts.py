@@ -1,4 +1,4 @@
-"""Integration coverage for temporary agent and Fish creation shortcuts."""
+"""Integration coverage for Agent and Fish creation workflows."""
 
 import sys
 from pathlib import Path
@@ -18,7 +18,8 @@ from agenthub.ui.modals import SessionNameModal, WorkingDirectoryModal
 async def _create_agent(app: AgentHubApp, pilot) -> None:
     """Complete the two-stage New Agent Session workflow."""
 
-    await pilot.press("ctrl+n")
+    app.action_new_session()
+    await pilot.pause()
     await pilot.press("enter")
     await pilot.pause()
     assert isinstance(app.screen, WorkingDirectoryModal)
@@ -33,7 +34,7 @@ async def _create_named_shell(
 ) -> None:
     """Complete the New Shell Session modal workflow."""
 
-    await pilot.press("ctrl+shift+s")
+    app.action_new_shell()
     await pilot.pause()
     assert isinstance(app.screen, SessionNameModal)
     if name is not None:
@@ -42,7 +43,7 @@ async def _create_named_shell(
     await pilot.pause()
 
 
-async def test_ctrl_n_modals_create_and_mount_fresh_agent(
+async def test_new_agent_modals_create_and_mount_fresh_agent(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp(agent_harnesses={sleeping_harness.id: sleeping_harness})
@@ -68,7 +69,7 @@ async def test_ctrl_n_modals_create_and_mount_fresh_agent(
         )
 
 
-async def test_ctrl_shift_s_creates_fish_shells_and_ctrl_s_navigates(
+async def test_new_shell_action_creates_fish_shells_and_ctrl_s_navigates(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp(
@@ -270,7 +271,7 @@ async def test_shell_naming_modal_workflow_rules(
 
     async with app.run_test() as pilot:
         # Rule 1: Blank name uses default "Shell"
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.pause()
         assert isinstance(app.screen, SessionNameModal)
         await pilot.press("enter")
@@ -279,7 +280,7 @@ async def test_shell_naming_modal_workflow_rules(
         assert app.session_manager.sessions[0].name == "Shell"
 
         # Rule 2: Whitespace trimming on custom name
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.pause()
         app.screen.query_one("#session-name-input", Input).value = "   Server Shell   "
         await pilot.press("enter")
@@ -288,7 +289,7 @@ async def test_shell_naming_modal_workflow_rules(
         assert app.session_manager.sessions[1].name == "Server Shell"
 
         # Rule 3: Duplicate shell names are allowed
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
@@ -296,7 +297,7 @@ async def test_shell_naming_modal_workflow_rules(
         assert app.session_manager.sessions[2].name == "Shell"
 
         # Rule 4: Canceling with Esc creates no shell
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.pause()
         assert isinstance(app.screen, SessionNameModal)
         await pilot.press("escape")
@@ -311,13 +312,13 @@ async def test_shell_creation_modal_reentry_guard(
     app = AgentHubApp(shell_harness=sleeping_harness)
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.pause()
         assert isinstance(app.screen, SessionNameModal)
         first_modal = app.screen
 
-        # Repeated Ctrl+Shift+S does not push another modal
-        await pilot.press("ctrl+shift+s")
+        # Repeated New Shell actions do not push another modal.
+        app.action_new_shell()
         await pilot.pause()
         assert app.screen is first_modal
 
@@ -326,13 +327,13 @@ async def test_shell_creation_modal_reentry_guard(
         await pilot.pause()
         assert not isinstance(app.screen, SessionNameModal)
 
-        # During Ctrl+N flow, Ctrl+Shift+S is also ignored
-        await pilot.press("ctrl+n")
+        # During New Agent flow, New Shell is also ignored.
+        app.action_new_session()
         await pilot.pause()
         from agenthub.ui.modals import HarnessSelectionModal
         assert isinstance(app.screen, HarnessSelectionModal)
         harness_modal = app.screen
 
-        await pilot.press("ctrl+shift+s")
+        app.action_new_shell()
         await pilot.pause()
         assert app.screen is harness_modal

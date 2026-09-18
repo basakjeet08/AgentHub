@@ -10,22 +10,6 @@ TOGGLE_HUB_LOCK_BINDING = Binding(
     priority=True,
 )
 
-NEW_SESSION_BINDING = Binding(
-    "ctrl+n",
-    "new_session",
-    "New agent session",
-    key_display="Ctrl+N",
-    priority=True,
-)
-
-NEW_SHELL_BINDING = Binding(
-    "ctrl+shift+s",
-    "new_shell",
-    "New shell",
-    key_display="Ctrl+Shift+S",
-    priority=True,
-)
-
 COMMAND_PALETTE_BINDING = Binding(
     "ctrl+p",
     "command_palette",
@@ -42,22 +26,6 @@ RESYNC_SESSIONS_BINDING = Binding(
     priority=True,
 )
 
-LINK_NATIVE_SESSION_BINDING = Binding(
-    "alt+m",
-    "link_native_session",
-    "Link native session",
-    key_display="Alt+M",
-    priority=True,
-)
-
-DELETE_NATIVE_SESSION_BINDING = Binding(
-    "ctrl+d",
-    "delete_native_session",
-    "Delete native session",
-    key_display="Ctrl+D",
-    priority=True,
-)
-
 FOCUS_AGENTS_BINDING = Binding(
     "ctrl+a",
     "focus_agents",
@@ -71,14 +39,6 @@ FOCUS_SHELLS_BINDING = Binding(
     "focus_shells",
     "Focus shell sessions",
     key_display="Ctrl+S",
-    priority=True,
-)
-
-QUIT_BINDING = Binding(
-    "ctrl+q",
-    "quit",
-    "Quit",
-    key_display="Ctrl+Q",
     priority=True,
 )
 
@@ -99,25 +59,16 @@ TERMINAL_GATED_ACTIONS = frozenset(
         "command_palette",
         "focus_agents",
         "focus_shells",
-        "link_native_session",
-        "new_session",
-        "new_shell",
-        "quit",
         "resync_sessions",
     }
 )
 
 APPLICATION_BINDINGS = (
     TOGGLE_HUB_LOCK_BINDING,
-    NEW_SESSION_BINDING,
-    NEW_SHELL_BINDING,
     COMMAND_PALETTE_BINDING,
     RESYNC_SESSIONS_BINDING,
-    LINK_NATIVE_SESSION_BINDING,
-    DELETE_NATIVE_SESSION_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
-    QUIT_BINDING,
 )
 
 HOME_SHORTCUTS = (
@@ -125,8 +76,6 @@ HOME_SHORTCUTS = (
         (binding.key_display or binding.key, binding.description)
         for binding in (
             TOGGLE_HUB_LOCK_BINDING,
-            NEW_SESSION_BINDING,
-            NEW_SHELL_BINDING,
             COMMAND_PALETTE_BINDING,
             RESYNC_SESSIONS_BINDING,
         )
@@ -138,15 +87,10 @@ HOME_SHORTCUTS = (
 __all__ = [
     "APPLICATION_BINDINGS",
     "COMMAND_PALETTE_BINDING",
-    "DELETE_NATIVE_SESSION_BINDING",
     "FOCUS_AGENTS_BINDING",
     "FOCUS_SHELLS_BINDING",
     "HOME_SHORTCUTS",
-    "LINK_NATIVE_SESSION_BINDING",
-    "NEW_SESSION_BINDING",
-    "NEW_SHELL_BINDING",
     "NUMBERED_SESSION_BINDINGS",
-    "QUIT_BINDING",
     "RESYNC_SESSIONS_BINDING",
     "TERMINAL_GATED_ACTIONS",
     "TOGGLE_HUB_LOCK_BINDING",

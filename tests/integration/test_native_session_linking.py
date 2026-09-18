@@ -39,7 +39,7 @@ def _app_with_pending_and_native_session(
     return app, pending, native
 
 
-async def test_alt_m_links_selected_native_row_without_restarting_terminal(
+async def test_explicit_target_links_native_row_without_restarting_terminal(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -68,7 +68,7 @@ async def test_alt_m_links_selected_native_row_without_restarting_terminal(
         assert terminal is not None
         process = terminal.board.process
 
-        await pilot.press("alt+m")
+        app._begin_native_session_link(pending.id)
         await pilot.pause()
 
         assert isinstance(app.screen, NativeSessionLinkModal)
@@ -122,7 +122,7 @@ async def test_alt_m_links_selected_native_row_without_restarting_terminal(
         assert terminal.board.process is process
 
 
-async def test_alt_m_links_highlighted_hidden_agent_without_activating_it(
+async def test_explicit_target_links_hidden_agent_without_activating_it(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -169,7 +169,7 @@ async def test_alt_m_links_highlighted_hidden_agent_without_activating_it(
         assert agent_list.get_option_at_index(agent_list.highlighted).id == pending.id
         assert app.session_manager.active_session is active
 
-        await pilot.press("alt+m")
+        app._begin_native_session_link(pending.id)
         await pilot.pause()
         assert isinstance(app.screen, NativeSessionLinkModal)
 
@@ -199,7 +199,7 @@ async def test_alt_m_links_highlighted_hidden_agent_without_activating_it(
         )
 
 
-async def test_alt_m_from_shell_list_never_falls_back_to_active_agent(
+async def test_explicit_shell_target_never_falls_back_to_active_agent(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -223,17 +223,19 @@ async def test_alt_m_from_shell_list_never_falls_back_to_active_agent(
         assert shell_list.has_focus
         assert shell_list.get_option_at_index(shell_list.highlighted).id == shell.id
 
-        await pilot.press("alt+m")
+        app._begin_native_session_link(shell.id)
         await pilot.pause()
 
         assert not isinstance(app.screen, NativeSessionLinkModal)
         assert pending.native_session_id is None
         assert app.session_manager.sessions == (pending, native, shell)
         assert app.session_manager.active_session is pending
-        assert list(app._notifications)[-1].message.startswith("Shell sessions cannot be linked")
+        assert list(app._notifications)[-1].message == (
+            "The selected session is not an Agent and cannot be linked."
+        )
 
 
-async def test_ineligible_highlight_does_not_fall_back_to_eligible_active_agent(
+async def test_ineligible_explicit_target_does_not_fall_back_to_active_agent(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -253,12 +255,7 @@ async def test_ineligible_highlight_does_not_fall_back_to_eligible_active_agent(
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("ctrl+a")
-        agent_list = app.query_one("#agent-session-list", OptionList)
-        agent_list.highlighted = agent_list.get_option_index(ineligible.id)
-        await pilot.pause()
-
-        await pilot.press("alt+m")
+        app._begin_native_session_link(ineligible.id)
         await pilot.pause()
 
         assert not isinstance(app.screen, NativeSessionLinkModal)
@@ -284,7 +281,7 @@ async def test_link_picker_escape_keeps_both_rows_unchanged(
         await pilot.pause()
         terminal = pending.terminal
 
-        await pilot.press("alt+m")
+        app._begin_native_session_link(pending.id)
         await pilot.pause()
         assert isinstance(app.screen, NativeSessionLinkModal)
 
@@ -298,21 +295,15 @@ async def test_link_picker_escape_keeps_both_rows_unchanged(
         assert app.session_manager.active_session is pending
 
 
-async def test_alt_m_does_not_open_picker_for_home_shell_or_linked_agent(
+async def test_explicit_ineligible_targets_do_not_open_link_picker(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
-    home_app = AgentHubApp(native_session_adapters={})
-    async with home_app.run_test() as pilot:
-        await pilot.press("alt+m")
-        await pilot.pause()
-        assert not isinstance(home_app.screen, NativeSessionLinkModal)
-
     shell_app = AgentHubApp(
         shell_harness=sleeping_harness,
         native_session_adapters={},
     )
-    shell_app.session_manager.create(
+    shell = shell_app.session_manager.create(
         name="Shell",
         kind=SessionKind.SHELL,
         cwd=tmp_path,
@@ -320,7 +311,7 @@ async def test_alt_m_does_not_open_picker_for_home_shell_or_linked_agent(
     )
     async with shell_app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("alt+m")
+        shell_app._begin_native_session_link(shell.id)
         await pilot.pause()
         assert not isinstance(shell_app.screen, NativeSessionLinkModal)
 
@@ -332,6 +323,6 @@ async def test_alt_m_does_not_open_picker_for_home_shell_or_linked_agent(
     linked_app.session_manager.link_native_session(linked.id, native.id)
     async with linked_app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("alt+m")
+        linked_app._begin_native_session_link(linked.id)
         await pilot.pause()
         assert not isinstance(linked_app.screen, NativeSessionLinkModal)

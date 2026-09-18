@@ -27,7 +27,8 @@ async def _open_working_directory_modal(
 ) -> WorkingDirectoryModal:
     """Select the highlighted harness without creating a runtime."""
 
-    await pilot.press("ctrl+n")
+    app.action_new_session()
+    await pilot.pause()
     await pilot.press("enter")
     await pilot.pause()
     assert isinstance(app.screen, WorkingDirectoryModal)
@@ -62,11 +63,12 @@ async def _confirm_directory(
     await pilot.pause()
 
 
-async def test_ctrl_n_opens_registry_derived_harness_modal_without_creating() -> None:
+async def test_new_agent_action_opens_registry_harness_modal_without_creating() -> None:
     app = AgentHubApp()
 
     async with app.run_test(size=(100, 36)) as pilot:
-        await pilot.press("ctrl+n")
+        app.action_new_session()
+        await pilot.pause()
         await pilot.pause()
 
         assert isinstance(app.screen, HarnessSelectionModal)
@@ -98,7 +100,8 @@ async def test_escape_from_harness_modal_preserves_empty_home() -> None:
     app = AgentHubApp()
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+n")
+        app.action_new_session()
+        await pilot.pause()
         await pilot.press("escape")
         await pilot.pause()
 
@@ -159,7 +162,7 @@ async def test_directory_modal_uses_compact_height_and_header_spacing(
         assert tree.region.y == title.region.bottom + 1
 
 
-async def test_ctrl_n_does_not_stack_a_second_workflow_over_directory_modal(
+async def test_new_agent_action_does_not_stack_over_directory_modal(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
@@ -170,7 +173,7 @@ async def test_ctrl_n_does_not_stack_a_second_workflow_over_directory_modal(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        await pilot.press("ctrl+n")
+        app.action_new_session()
         await pilot.pause()
 
         assert app.screen is modal
@@ -939,7 +942,8 @@ async def test_multiple_harness_navigation_connects_selection_to_fresh_session(
     )
 
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+n")
+        app.action_new_session()
+        await pilot.pause()
         harness_list = app.screen.query_one("#harness-selection-list", OptionList)
         await pilot.press("down")
         assert harness_list.highlighted == 1

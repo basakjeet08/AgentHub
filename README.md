@@ -34,10 +34,10 @@ multi-session runtime architecture:
   mounts the resulting terminal, and reuses that runtime on later selections.
 - It re-syncs native conversations in place with Ctrl+Shift+R while preserving
   running terminals and reconciling unloaded sidebar entries.
-- It lets the user reconcile a selected fresh runtime with a discovered,
-  unloaded conversation from the same harness and working directory via Alt+M.
-  Linking adopts the native ID and title without restarting the existing
-  terminal.
+- It lets the user reconcile the active fresh runtime with a discovered,
+  unloaded conversation from the same harness and working directory through
+  the command palette. Linking adopts the native ID and title without
+  restarting the existing terminal.
 - It provides a session sidebar for switching between managed sessions.
 - It groups Agent rows under counted, display-only `LOADED` and `UNLOADED`
   headings, keeping attached runtimes above discovered conversations while
@@ -47,21 +47,19 @@ multi-session runtime architecture:
   ellipsis.
 - It keeps `AGENTS` and `SHELLS` sidebar groups visible at all times, allocating
   more space to agent conversations with a 70/30 split.
-- It opens a registry-driven harness picker and working-directory browser with
-  Ctrl+N, then launches the selected coding agent in the chosen directory after
-  both steps are confirmed. Fresh runtimes use the temporary label `New session`
+- Its New Agent palette command opens a registry-driven harness picker and
+  working-directory browser, then launches the selected coding agent after both
+  steps are confirmed. Fresh runtimes use the temporary label `New session`
   until explicitly linked; AgentHub does not assign provider-native titles. The
   directory browser hides dot-prefixed folders by default and toggles them with
-  Ctrl+H; typing filters the current directory's immediate child folders by
-  name.
-- It creates Fish shell sessions with Ctrl+Shift+S with an optional session name.
+  Ctrl+H; typing filters the current directory's immediate child folders by name.
+- Its New Shell palette command creates Fish shell sessions with an optional name.
 - When a native-backed agent exits, it unloads the runtime and reconciles only
   that harness so conversations deleted in the native CLI do not leave stale
   rows. Unidentified agents and shells retain their existing exit behavior.
-- With the AGENTS list focused, Ctrl+D confirms and permanently deletes a
-  highlighted native-backed conversation when its provider supports deletion.
-  The logical row is removed only after native deletion is verified; unsupported
-  providers show guidance without stopping a running terminal.
+- Its contextual Delete palette command operates on the active native-backed
+  Agent. The logical row is removed only after native deletion is verified;
+  unsupported providers show guidance without stopping a running terminal.
 - It keeps hidden terminals mounted, running, and buffering output while focus
   follows the visible terminal.
 - It starts Unlocked for immediate navigation and lets the user transfer all
@@ -92,21 +90,15 @@ AgentHub does not yet provide:
   exposes deletion only through its interactive conversation picker).
 
 Normal startup begins native-session discovery and may populate the agent
-sidebar without starting any child process. Ctrl+N launches a fresh native CLI
-runtime with no known native session ID. If later discovery finds the native
+sidebar without starting any child process. New Agent launches a fresh native
+CLI runtime with no known native session ID. If later discovery finds the native
 conversation, it is kept as a separate native-backed row rather than guessed to
-belong to the unidentified runtime. Select the fresh running row and press Alt+M
-to choose an unloaded native conversation from the same harness and working
-directory. AgentHub keeps the terminal running, transfers the chosen native
-identity and title onto the fresh row, and removes the duplicate discovered row.
-Shell sessions continue to use AgentHub's current working directory and do not
-participate in native discovery or linking.
-
-When the `AGENTS` list owns focus, Alt+M targets its highlighted row without
-requiring Enter first. Otherwise it targets the currently active Agent. Linking
-a highlighted hidden runtime does not activate it or replace the terminal that
-is currently visible. If the `SHELLS` list owns focus, linking is rejected
-instead of falling back to an unrelated active Agent.
+belong to the unidentified runtime. Open the fresh running row, then choose its
+contextual Link command to select an unloaded native conversation from the same
+harness and working directory. AgentHub keeps the terminal running, transfers
+the chosen native identity and title onto the fresh row, and removes the
+duplicate discovered row. Shell sessions continue to use AgentHub's current
+working directory and do not participate in native discovery or linking.
 
 ## Keyboard Ownership
 
@@ -121,13 +113,8 @@ Unlocked bindings are:
 
 ```text
 Ctrl+G                Lock AgentHub
-Ctrl+N                Create a new agent session
-Ctrl+Shift+S          New shell session
 Ctrl+Shift+R          Re-sync native sessions
-Alt+M                 Link highlighted or active fresh agent
-Ctrl+D                Delete highlighted native-backed agent
 Ctrl+P                Command Palette
-Ctrl+Q                Quit
 Ctrl+A, 1...9, Enter  Navigate / open agent
 Ctrl+S, ↑↓, Enter     Navigate / open shell
 ```
@@ -137,8 +124,7 @@ Native Sessions, Open Session, Quit AgentHub, and Shortcuts. Open Session
 presents running Agents, unloaded native Agents, and running Shells in one
 picker. Its search matches harness names and session titles, while each result
 shows only the harness icon and title with an icon legend below the list. The
-other entries invoke the same application action as their corresponding
-keyboard shortcut.
+other entries invoke their existing application actions directly.
 
 The palette also captures the session currently open in the main terminal area,
 even when the sidebar has keyboard focus. Depending on that active Agent's state,
@@ -153,14 +139,12 @@ the searchable Open Session picker.
 Home has no terminal to protect, so these application shortcuts work there
 without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and `1` through `9`
 moves the highlight cursor to the nth agent, while `Enter` switches to it. `Ctrl+S`
-focuses shells for arrow-key navigation, while numeric keys are ignored. `Ctrl+Shift+S`
-prompts for an optional shell name and creates a shell.
+focuses shells for arrow-key navigation, while numeric keys are ignored.
 
-Ctrl+D is owned by AgentHub only while the AGENTS list has focus. With terminal
-focus it continues to reach the hosted native CLI unchanged. Fresh Agents show
-a warning because they have no provider-native conversation to delete; shells
-do not participate in native deletion. Antigravity shows native-picker guidance
-without opening confirmation or changing its current runtime.
+New Agent, New Shell, Link, Delete, and Quit are palette-only operations.
+Their former shortcuts are no longer intercepted by AgentHub and reach a
+focused terminal unchanged. Antigravity's Delete command shows native-picker
+guidance without opening confirmation or changing its current runtime.
 
 Ctrl+G remains AgentHub's ownership toggle even when a hosted CLI also assigns
 that key. AgentHub does not rewrite the native CLI's other bindings.

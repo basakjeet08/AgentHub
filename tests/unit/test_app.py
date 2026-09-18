@@ -8,14 +8,9 @@ from agenthub.sessions import SessionKind
 from agenthub.ui.bindings import (
     APPLICATION_BINDINGS,
     COMMAND_PALETTE_BINDING,
-    DELETE_NATIVE_SESSION_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
-    LINK_NATIVE_SESSION_BINDING,
-    NEW_SESSION_BINDING,
-    NEW_SHELL_BINDING,
     NUMBERED_SESSION_BINDINGS,
-    QUIT_BINDING,
     RESYNC_SESSIONS_BINDING,
     TERMINAL_GATED_ACTIONS,
     TOGGLE_HUB_LOCK_BINDING,
@@ -57,16 +52,9 @@ def test_application_bindings_are_priority_candidates_for_keyboard_ownership() -
     assert TOGGLE_HUB_LOCK_BINDING.key == "ctrl+g"
     assert TOGGLE_HUB_LOCK_BINDING.action == "toggle_hub_lock"
     assert TOGGLE_HUB_LOCK_BINDING.priority is True
-    assert QUIT_BINDING.key == "ctrl+q"
-    assert QUIT_BINDING.action == "quit"
-    assert QUIT_BINDING.priority is True
 
 
 def test_application_navigation_bindings_are_reserved() -> None:
-    assert NEW_SESSION_BINDING.action == "new_session"
-    assert NEW_SHELL_BINDING.key == "ctrl+shift+s"
-    assert NEW_SHELL_BINDING.action == "new_shell"
-    assert "new_shell" in TERMINAL_GATED_ACTIONS
     assert FOCUS_AGENTS_BINDING.key == "ctrl+a"
     assert FOCUS_AGENTS_BINDING.action == "focus_agents"
     assert FOCUS_SHELLS_BINDING.key == "ctrl+s"
@@ -74,8 +62,6 @@ def test_application_navigation_bindings_are_reserved() -> None:
     assert all(
         binding.priority
         for binding in (
-            NEW_SESSION_BINDING,
-            NEW_SHELL_BINDING,
             FOCUS_AGENTS_BINDING,
             FOCUS_SHELLS_BINDING,
         )
@@ -88,18 +74,23 @@ def test_application_navigation_bindings_are_reserved() -> None:
     assert RESYNC_SESSIONS_BINDING.priority is True
     assert RESYNC_SESSIONS_BINDING in APPLICATION_BINDINGS
     assert "resync_sessions" in TERMINAL_GATED_ACTIONS
-    assert LINK_NATIVE_SESSION_BINDING.key == "alt+m"
-    assert LINK_NATIVE_SESSION_BINDING.action == "link_native_session"
-    assert LINK_NATIVE_SESSION_BINDING.priority is True
-    assert LINK_NATIVE_SESSION_BINDING in APPLICATION_BINDINGS
-    assert "link_native_session" in TERMINAL_GATED_ACTIONS
-    assert DELETE_NATIVE_SESSION_BINDING.key == "ctrl+d"
-    assert DELETE_NATIVE_SESSION_BINDING.action == "delete_native_session"
-    assert DELETE_NATIVE_SESSION_BINDING.priority is True
-    assert DELETE_NATIVE_SESSION_BINDING in APPLICATION_BINDINGS
-    assert "delete_native_session" not in TERMINAL_GATED_ACTIONS
+    assert {binding.key for binding in APPLICATION_BINDINGS}.isdisjoint(
+        {"ctrl+n", "ctrl+shift+s", "alt+m", "ctrl+d", "ctrl+q"}
+    )
+    assert TERMINAL_GATED_ACTIONS == {
+        "command_palette",
+        "focus_agents",
+        "focus_shells",
+        "resync_sessions",
+    }
     assert [binding.key for binding in NUMBERED_SESSION_BINDINGS] == [
         str(number) for number in range(1, 10)
     ]
     assert all(not binding.priority for binding in NUMBERED_SESSION_BINDINGS)
     assert all(binding not in APPLICATION_BINDINGS for binding in NUMBERED_SESSION_BINDINGS)
+
+
+def test_textual_default_quit_binding_is_disabled() -> None:
+    app = AgentHubApp()
+
+    assert app.check_action("quit", ()) is False
