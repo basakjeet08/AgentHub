@@ -124,9 +124,9 @@ Four coding-agent harnesses are registered:
 
 | Registry key  | Command    | Icon | Default | Scroll policy |
 | ------------- | ---------- | ---- | ------- | ------------- |
-| `antigravity` | `agy`      | `✨` | no      | native terminal behavior |
+| `antigravity` | `agy`      | `🛸` | no      | native terminal behavior |
 | `codex`       | `codex`    | `🌀` | no      | native terminal behavior |
-| `devin`       | `devin`    | `🟩` | no      | native terminal behavior |
+| `devin`       | `devin`    | `🤖` | no      | native terminal behavior |
 | `opencode`    | `opencode` | `💻` | yes     | semantic transcript shortcuts |
 
 Fish is a built-in shell definition used for shell sessions. It
@@ -958,7 +958,19 @@ The implemented sidebar-to-terminal relationship is conceptually:
 
 The sidebar always renders `AGENTS` and `SHELLS`, even when either collection is
 empty, and allocates them 70% and 30% of the available section space
-respectively. Both collections use `AgentSession`, one `SessionManager`, and the
+respectively. Within `AGENTS`, the sidebar presentation groups sessions with an
+attached terminal under `LOADED` above native-backed sessions without a terminal
+under `UNLOADED`; each visible heading includes its current row count, and empty
+subgroup headings are hidden. The headings are non-selectable rows in one
+navigation list, so arrows cross the boundary and 1…9 continues to address the
+overall displayed Agent order. Within each subgroup, rows are sorted
+case-insensitively by provider display name and then session title. Cursor
+identity is preserved by session ID when a runtime attachment moves a row
+between groups. A secondary-accent leading bar marks the active session
+independently from the neutral cursor-highlight background. Session options use
+compact, single-line rendering and ellipsize labels that exceed the available
+sidebar width.
+Both top-level collections use `AgentSession`, one `SessionManager`, and the
 Agent rows can be highlighted with Ctrl+A, then 1…9, and activated with Enter.
 Shell rows are navigated with Ctrl+S and arrow keys, and activated with Enter.
 Agent sessions remain selectable directly from the
@@ -1202,6 +1214,9 @@ The architectural foundation now has automated coverage for:
   link, plus exact-ID de-duplication on later discovery;
 - independent sidebar cursor and active-session identities, including linking
   a highlighted hidden Agent without switching the visible terminal;
+- loaded-before-unloaded Agent presentation, non-selectable subgroup headings,
+  seamless cross-group navigation, and session-ID cursor preservation when a
+  runtime attaches or detaches;
 - directory-only browsing and normalized `Path` selection;
 - deferred runtime creation until both New Agent Session modals are confirmed;
 - child-process cwd inheritance from the directory picker;
@@ -1376,7 +1391,7 @@ Antigravity conversations at startup. They appear unloaded, resume by exact
 native ID when selected, and reuse an already-running terminal. The
 harness/terminal/session/manager boundaries, Home-first
 application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
-ownership, grouped sidebar presentation, registry-driven Antigravity, Codex,
+ownership, loaded/unloaded Agent grouping, registry-driven Antigravity, Codex,
 Devin, and OpenCode selection, required session naming, working-directory
 browsing, shell creation and navigation, explicit session kinds, exited-runtime cleanup, and multi-session
 switching runtime are implemented and tested. Normal startup and incomplete or

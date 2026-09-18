@@ -14,8 +14,8 @@ from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, OPENCODE, AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.ui.bindings import NUMBERED_SESSION_BINDINGS
 
-_RUNNING_INDICATOR = "●"
-_UNLOADED_INDICATOR = "○"
+_ACTIVE_INDICATOR = "▌"
+_INACTIVE_INDICATOR = " "
 
 
 class SessionSidebar(Vertical):
@@ -42,7 +42,7 @@ class SessionSidebar(Vertical):
         """Retain AgentHub identity and display data for composition."""
 
         super().__init__(id=id)
-        self._agent_sessions = tuple(agent_sessions)
+        self._agent_sessions = self._group_agent_sessions(tuple(agent_sessions))
         self._shell_sessions = tuple(shell_sessions)
         self._visible_sessions = self._agent_sessions + self._shell_sessions
         self._agent_session_snapshot = self._session_snapshot(self._agent_sessions)
@@ -72,7 +72,7 @@ class SessionSidebar(Vertical):
     ) -> None:
         """Refresh grouped presentation from application-owned session state."""
 
-        next_agents = tuple(agent_sessions)
+        next_agents = self._group_agent_sessions(tuple(agent_sessions))
         next_shells = tuple(shell_sessions)
         next_agent_snapshot = self._session_snapshot(next_agents)
         next_shell_snapshot = self._session_snapshot(next_shells)
@@ -89,6 +89,32 @@ class SessionSidebar(Vertical):
         self._shell_session_snapshot = next_shell_snapshot
         if self.is_mounted:
             self.call_next(self._recompose_sessions)
+
+    @staticmethod
+    def _group_agent_sessions(
+        sessions: tuple[AgentSession, ...],
+    ) -> tuple[AgentSession, ...]:
+        """Group Agents by runtime and sort each group by provider and title."""
+
+        def sort_key(session: AgentSession) -> tuple[str, str]:
+            return (
+                session.harness.display_name.casefold(),
+                session.name.casefold(),
+            )
+
+        loaded = tuple(
+            sorted(
+                (session for session in sessions if session.terminal is not None),
+                key=sort_key,
+            )
+        )
+        unloaded = tuple(
+            sorted(
+                (session for session in sessions if session.terminal is None),
+                key=sort_key,
+            )
+        )
+        return loaded + unloaded
 
     @staticmethod
     def _session_snapshot(
@@ -118,6 +144,8 @@ class SessionSidebar(Vertical):
         }
         pending_cursor_id = self._pending_cursor_session_id
         await self.recompose()
+        if not self.is_mounted or len(self.query(OptionList).nodes) < 2:
+            return
 
         for kind, selector in (
             (SessionKind.AGENT, "#agent-session-list"),
@@ -151,18 +179,16 @@ class SessionSidebar(Vertical):
         """Format and style a session independently from the navigation cursor."""
 
         is_active = session.id == self._active_session_id
-        is_unloaded = session.kind is SessionKind.AGENT and session.terminal is None
-        indicator = _UNLOADED_INDICATOR if is_unloaded else _RUNNING_INDICATOR
-        indicator_style = (
-            "$success" if is_active else "$text-muted" if is_unloaded else "$foreground"
-        )
+        indicator = _ACTIVE_INDICATOR if is_active else _INACTIVE_INDICATOR
         badge = (
             f"{session.harness.icon} "
             if session.harness.icon
             else f"{session.harness.display_name} · "
         )
         prompt = Content(f"{indicator} {badge}{session.name}")
-        prompt = prompt.stylize(indicator_style, 0, 1).stylize("$foreground", 2)
+        prompt = prompt.stylize("$foreground", 2)
+        if is_active:
+            prompt = prompt.stylize("$secondary", 0, 1)
         return prompt.stylize("bold", 2) if is_active else prompt
 
     def _refresh_option_prompts(self) -> None:
@@ -183,6 +209,26 @@ class SessionSidebar(Vertical):
                     # Session data may lead the mounted options during recomposition.
                     continue
 
+    def _agent_options(self) -> Iterable[Option]:
+        """Build one navigable Agent list with display-only group headings."""
+
+        loaded = tuple(
+            session for session in self._agent_sessions if session.terminal is not None
+        )
+        unloaded = tuple(
+            session for session in self._agent_sessions if session.terminal is None
+        )
+        for group_index, (heading, sessions) in enumerate(
+            (("LOADED", loaded), ("UNLOADED", unloaded))
+        ):
+            if not sessions:
+                continue
+            if group_index == 1 and loaded:
+                yield Option("", disabled=True)
+            yield Option(f"{heading} · {len(sessions)}", disabled=True)
+            for session in sessions:
+                yield Option(self._option_prompt(session), id=session.id)
+
     def compose(self) -> ComposeResult:
         """Compose persistent agent and shell groups using the configured split."""
 
@@ -200,15 +246,10 @@ class SessionSidebar(Vertical):
                     classes="sidebar-section-shortcut",
                 )
             yield OptionList(
-                *(
-                    Option(
-                        self._option_prompt(session),
-                        id=session.id,
-                    )
-                    for session in self._agent_sessions
-                ),
+                *self._agent_options(),
                 id="agent-session-list",
                 classes="session-list",
+                compact=True,
             )
             if self._harnesses:
                 with Grid(id="agent-legend", classes="sidebar-legend"):
@@ -241,6 +282,7 @@ class SessionSidebar(Vertical):
                 ),
                 id="shell-session-list",
                 classes="session-list",
+                compact=True,
             )
 
     def set_active(self, session_id: str) -> None:
@@ -344,7 +386,10 @@ class SessionSidebar(Vertical):
                 target_highlight = None
 
         if target_highlight is None:
-            target_highlight = 0
+            sessions = (
+                self._agent_sessions if kind is SessionKind.AGENT else self._shell_sessions
+            )
+            target_highlight = session_list.get_option_index(sessions[0].id)
 
         session_list.highlighted = target_highlight
         session_list.focus()
@@ -371,11 +416,12 @@ class SessionSidebar(Vertical):
         index = number - 1
         agent_list = self.query_one("#agent-session-list", OptionList)
         if 0 <= index < len(self._agent_sessions):
+            session = self._agent_sessions[index]
             for other_list in self.query(OptionList):
                 if other_list is not agent_list:
                     other_list.highlighted = None
-            agent_list.highlighted = index
-            self._last_agent_selection_id = self._agent_sessions[index].id
+            agent_list.highlighted = agent_list.get_option_index(session.id)
+            self._last_agent_selection_id = session.id
             agent_list.focus()
 
     @property

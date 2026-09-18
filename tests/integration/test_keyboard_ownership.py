@@ -197,15 +197,15 @@ async def test_locking_preserves_agent_cursor_while_restoring_terminal_focus(
         await pilot.pause()
         agent_list = app.query_one("#agent-session-list", OptionList)
         await pilot.press("ctrl+a")
-        assert agent_list.highlighted == 1
+        assert agent_list.highlighted == agent_list.get_option_index(sessions[1].id)
         await pilot.press("up")
-        assert agent_list.highlighted == 0
+        assert agent_list.highlighted == agent_list.get_option_index(sessions[0].id)
 
         await pilot.press("ctrl+g")
         await pilot.pause()
 
         assert sessions[1].terminal.has_focus
-        assert agent_list.highlighted == 0
+        assert agent_list.highlighted == agent_list.get_option_index(sessions[0].id)
 
 
 async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
@@ -238,7 +238,7 @@ async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
 async def test_unlocked_navigation_and_new_session_actions_fire(
     sleeping_harness: AgentHarness,
 ) -> None:
-    app, _sessions = _app_with_sessions(sleeping_harness, count=2)
+    app, sessions = _app_with_sessions(sleeping_harness, count=2)
     new_session_calls = 0
 
     def record_new_session() -> None:
@@ -268,7 +268,7 @@ async def test_unlocked_navigation_and_new_session_actions_fire(
 
         await pilot.press("ctrl+a")
         assert agent_list.has_focus
-        assert agent_list.highlighted == 0
+        assert agent_list.highlighted == agent_list.get_option_index(sessions[0].id)
         assert shell_list.highlighted is None
 
         await pilot.press("ctrl+n")

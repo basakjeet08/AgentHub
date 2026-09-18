@@ -342,8 +342,8 @@ async def test_hidden_native_backed_exit_does_not_interrupt_active_sibling(
         assert active.terminal.display
         assert active.terminal.has_focus
         assert app.query_one(SessionSidebar).visible_session_ids == (
-            linked.id,
             active.id,
+            linked.id,
         )
 
 

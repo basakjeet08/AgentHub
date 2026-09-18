@@ -27,9 +27,9 @@ def test_opencode_uses_stable_registry_identity() -> None:
 @pytest.mark.parametrize(
     ("harness", "harness_id", "display_name", "command", "icon"),
     [
-        (ANTIGRAVITY, "antigravity", "Antigravity", ("agy",), "✨"),
+        (ANTIGRAVITY, "antigravity", "Antigravity", ("agy",), "🛸"),
         (CODEX, "codex", "Codex", ("codex",), "🌀"),
-        (DEVIN, "devin", "Devin", ("devin",), "🟩"),
+        (DEVIN, "devin", "Devin", ("devin",), "🤖"),
     ],
 )
 def test_native_scrolling_harnesses_use_stable_registry_identity(

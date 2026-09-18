@@ -39,6 +39,11 @@ multi-session runtime architecture:
   Linking adopts the native ID and title without restarting the existing
   terminal.
 - It provides a session sidebar for switching between managed sessions.
+- It groups Agent rows under counted, display-only `LOADED` and `UNLOADED`
+  headings, keeping attached runtimes above discovered conversations while
+  sorting each group by provider and session title in one continuous navigation
+  order. A secondary-accent bar marks the active session independently from the
+  sidebar cursor, and long option labels stay on one line with an ellipsis.
 - It keeps `AGENTS` and `SHELLS` sidebar groups visible at all times, allocating
   more space to agent conversations with a 70/30 split.
 - It opens a registry-driven harness picker and working-directory browser with
@@ -66,9 +71,9 @@ multi-session runtime architecture:
 
 ## Supported Coding-Agent Harnesses
 
-- ✨ Antigravity (`agy`)
+- 🛸 Antigravity (`agy`)
 - 🌀 Codex (`codex`)
-- 🟩 Devin (`devin`)
+- 🤖 Devin (`devin`)
 - 💻 OpenCode (`opencode`)
 
 The picker lists harnesses supported by AgentHub even when their executables are

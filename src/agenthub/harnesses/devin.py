@@ -7,5 +7,5 @@ DEVIN = AgentHarness(
     display_name="Devin",
     command=("devin",),
     scroll=None,
-    icon="🟩",
+    icon="🤖",
 )

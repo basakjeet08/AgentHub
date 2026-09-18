@@ -163,7 +163,7 @@ async def test_alt_m_links_highlighted_hidden_agent_without_activating_it(
         switcher = app.query_one("#session-content", ContentSwitcher)
 
         await pilot.press("ctrl+a")
-        await pilot.press("1")
+        await pilot.press("2")
         agent_list = app.query_one("#agent-session-list", OptionList)
         assert agent_list.has_focus
         assert agent_list.get_option_at_index(agent_list.highlighted).id == pending.id

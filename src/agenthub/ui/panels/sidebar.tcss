@@ -6,6 +6,18 @@ SessionSidebar {
     overflow-y: auto;
 }
 
+SessionSidebar,
+.session-list {
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $surface;
+    scrollbar-background-hover: $surface;
+    scrollbar-background-active: $surface;
+    scrollbar-color: $panel;
+    scrollbar-color-hover: $secondary;
+    scrollbar-color-active: $primary;
+    scrollbar-corner-color: $surface;
+}
+
 #sidebar-brand {
     width: 100%;
     height: 3;
@@ -56,16 +68,25 @@ SessionSidebar {
     background: transparent;
     border: none;
     overflow-y: auto;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
 .session-list > .option-list--option {
-    padding: 0 1;
+    padding: 0;
 }
 
 .session-list > .option-list--option-highlighted {
+    padding: 0;
     background: $panel;
     color: $foreground;
     text-style: none;
+}
+
+#agent-session-list > .option-list--option-disabled {
+    padding: 0;
+    color: $secondary;
+    text-style: bold;
 }
 
 #agent-legend {
@@ -83,4 +104,3 @@ SessionSidebar {
     color: $text-muted;
     overflow: hidden;
 }
-
