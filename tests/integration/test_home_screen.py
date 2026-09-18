@@ -5,7 +5,7 @@ from textual.widgets import Button, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.terminal import AgentTerminal
-from agenthub.ui import AgentHubStatusBar, HomeScreen, SessionSidebar
+from agenthub.ui import AgentHubStatusBar, HomeScreen, SessionSidebar, SidebarTab
 from agenthub.ui.bindings import HOME_SHORTCUTS
 from agenthub.ui.panels.status_bar import UNLOCKED_ICON
 
@@ -25,20 +25,16 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
 
         sidebar = app.query_one(SessionSidebar)
         assert sidebar.query_one("#sidebar-brand", Static).content == ">_  AGENTHUB"
-        headings = [str(heading.content) for heading in sidebar.query(".sidebar-section-title")]
-        assert headings == ["AGENTS", "SHELLS"]
-        assert sidebar.query_one("#agent-section-shortcut", Static).content == "Ctrl+A"
-        assert sidebar.query_one("#shell-section-shortcut", Static).content == "Ctrl+S"
-        assert len(sidebar.query(OptionList).nodes) == 2
-        assert all(not option_list.options for option_list in sidebar.query(OptionList))
+        assert sidebar.selected_tab is SidebarTab.LOADED
+        assert [
+            str(sidebar.query_one(f"#sidebar-tab-{tab.value}", Static).content)
+            for tab in SidebarTab
+        ] == ["LOADED 0", "UNLOADED 0", "SHELLS 0"]
+        assert len(sidebar.query(OptionList).nodes) == 1
+        assert not sidebar.query_one(OptionList).options
         brand = sidebar.query_one("#sidebar-brand", Static)
-        shell_section = sidebar.query_one("#shell-section")
         assert brand.styles.border_bottom == ("solid", Color.parse("#BB9AF7"))
-        assert shell_section.styles.border_bottom[0] == ""
-        assert shell_section.region.bottom == sidebar.content_region.bottom
-        assert all(
-            option_list.styles.overflow_y == "auto" for option_list in sidebar.query(OptionList)
-        )
+        assert sidebar.query_one(OptionList).styles.overflow_y == "auto"
 
         status = app.query_one(AgentHubStatusBar)
         assert [child.id for child in status.children] == [
@@ -59,8 +55,9 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
         expected_labels = [value for shortcut in HOME_SHORTCUTS for value in shortcut]
         assert shortcut_labels == expected_labels
         assert all(key != "Ctrl+0" for key, _description in HOME_SHORTCUTS)
-        assert ("Ctrl+A, ↑↓, Enter", "Navigate / open agent") in HOME_SHORTCUTS
-        assert ("Ctrl+S, ↑↓, Enter", "Navigate / open shell") in HOME_SHORTCUTS
+        assert ("Ctrl+S", "Focus sidebar") in HOME_SHORTCUTS
+        assert ("← / →", "Change sidebar tab") in HOME_SHORTCUTS
+        assert ("↑ / ↓, Enter", "Navigate / open session") in HOME_SHORTCUTS
         assert all(
             key not in {"Ctrl+N", "Ctrl+Shift+S", "Alt+M", "Ctrl+D", "Ctrl+Q"}
             for key, _description in HOME_SHORTCUTS
@@ -81,7 +78,7 @@ async def test_home_navigation_moves_focus_without_creating_a_session() -> None:
         await pilot.pause()
 
         await pilot.press("ctrl+a")
-        assert app.query_one(SessionSidebar).has_focus
+        assert not app.query_one(SessionSidebar).has_focus
 
         await pilot.press("ctrl+s")
         assert app.query_one(SessionSidebar).has_focus

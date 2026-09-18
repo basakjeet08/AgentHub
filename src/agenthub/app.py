@@ -123,8 +123,7 @@ class AgentHubApp(App):
         with Vertical(id="app-shell"):
             with Horizontal(id="application-body"):
                 yield SessionSidebar(
-                    self._agent_sessions(),
-                    shell_sessions=self._shell_sessions(),
+                    sessions,
                     id="session-sidebar",
                 )
                 yield ContentSwitcher(
@@ -1004,15 +1003,10 @@ class AgentHubApp(App):
             self.show_session(session.id)
         return session
 
-    def action_focus_agents(self) -> None:
-        """Move keyboard focus to the agent-session list."""
+    def action_focus_sidebar(self) -> None:
+        """Move keyboard focus to the selected sidebar category."""
 
-        self.query_one(SessionSidebar).focus_agents()
-
-    def action_focus_shells(self) -> None:
-        """Move keyboard focus to the shell-session list."""
-
-        self.query_one(SessionSidebar).focus_shells()
+        self.query_one(SessionSidebar).focus_sidebar()
 
     async def _create_and_mount_session(
         self,
@@ -1069,10 +1063,7 @@ class AgentHubApp(App):
         sidebars = self.query(SessionSidebar).nodes
         if not sidebars:
             return
-        sidebars[0].update_sessions(
-            self._agent_sessions(),
-            shell_sessions=self._shell_sessions(),
-        )
+        sidebars[0].update_sessions(self.session_manager.sessions)
 
     def _refresh_home(self) -> None:
         """Synchronize Home guidance with the current logical sessions."""

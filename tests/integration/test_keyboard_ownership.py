@@ -11,7 +11,7 @@ from textual.widgets import Input, OptionList, Static
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
-from agenthub.ui import AgentHubStatusBar, SessionSidebar
+from agenthub.ui import AgentHubStatusBar, SessionSidebar, SidebarTab
 from agenthub.ui.modals import (
     HarnessSelectionModal,
     NativeSessionLinkModal,
@@ -55,6 +55,7 @@ def _app_with_sessions(
         ("ctrl+backspace", "\x17"),
         ("ctrl+0", "0"),
         ("ctrl+1", "1"),
+        ("tab", "\t"),
         ("alt+m", "m"),
     ],
 )
@@ -195,17 +196,17 @@ async def test_locking_preserves_agent_cursor_while_restoring_terminal_focus(
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        agent_list = app.query_one("#agent-session-list", OptionList)
-        await pilot.press("ctrl+a")
-        assert agent_list.highlighted == agent_list.get_option_index(sessions[1].id)
+        session_list = app.query_one("#sidebar-session-list", OptionList)
+        await pilot.press("ctrl+s")
+        assert session_list.highlighted == session_list.get_option_index(sessions[1].id)
         await pilot.press("up")
-        assert agent_list.highlighted == agent_list.get_option_index(sessions[0].id)
+        assert session_list.highlighted == session_list.get_option_index(sessions[0].id)
 
         await pilot.press("ctrl+g")
         await pilot.pause()
 
         assert sessions[1].terminal.has_focus
-        assert agent_list.highlighted == agent_list.get_option_index(sessions[0].id)
+        assert session_list.highlighted == session_list.get_option_index(sessions[0].id)
 
 
 async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
@@ -220,11 +221,11 @@ async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
         app.action_new_shell()
         await pilot.press("enter")
         await pilot.pause()
-        shell_list = app.query_one("#shell-session-list", OptionList)
+        session_list = app.query_one("#sidebar-session-list", OptionList)
         await pilot.press("ctrl+s")
-        assert shell_list.highlighted == 1
+        assert session_list.highlighted == 1
         await pilot.press("up")
-        assert shell_list.highlighted == 0
+        assert session_list.highlighted == 0
 
         active_shell = app.session_manager.active_session
         assert active_shell is not None
@@ -232,7 +233,7 @@ async def test_locking_preserves_shell_cursor_while_restoring_terminal_focus(
         await pilot.pause()
 
         assert active_shell.terminal.has_focus
-        assert shell_list.highlighted == 0
+        assert session_list.highlighted == 0
 
 
 async def test_unlocked_navigation_actions_fire(
@@ -249,19 +250,20 @@ async def test_unlocked_navigation_actions_fire(
         await pilot.press("enter")
         await pilot.pause()
 
-        agent_list = app.query_one("#agent-session-list", OptionList)
-        shell_list = app.query_one("#shell-session-list", OptionList)
-        assert shell_list.highlighted == 1
+        sidebar = app.query_one(SessionSidebar)
+        session_list = app.query_one("#sidebar-session-list", OptionList)
+        assert sidebar.selected_tab is SidebarTab.SHELLS
+        assert session_list.highlighted == 1
 
         await pilot.press("ctrl+s")
-        assert shell_list.has_focus
-        assert shell_list.highlighted == 1
-        assert agent_list.highlighted is None
+        assert session_list.has_focus
+        assert sidebar.selected_tab is SidebarTab.SHELLS
+        assert session_list.highlighted == 1
 
-        await pilot.press("ctrl+a")
-        assert agent_list.has_focus
-        assert agent_list.highlighted == agent_list.get_option_index(sessions[0].id)
-        assert shell_list.highlighted is None
+        await pilot.press("right")
+        assert sidebar.selected_tab is SidebarTab.LOADED
+        assert session_list.has_focus
+        assert session_list.highlighted == session_list.get_option_index(sessions[1].id)
 
 
 async def test_command_palette_quit_action_exits(
@@ -478,7 +480,7 @@ async def test_home_uses_retained_shortcuts_and_ignores_removed_creation_key() -
         assert not app.hub_locked
 
         await pilot.press("ctrl+a")
-        assert app.query_one(SessionSidebar).has_focus
+        assert not app.query_one(SessionSidebar).has_focus
 
         await pilot.press("ctrl+s")
         assert app.query_one(SessionSidebar).has_focus
@@ -495,7 +497,9 @@ async def test_home_uses_retained_shortcuts_and_ignores_removed_creation_key() -
     ("key", "expected_input"),
     [
         ("ctrl+n", "\x0e"),
+        ("ctrl+a", "\x01"),
         ("ctrl+shift+s", "\x13"),
+        ("tab", "\t"),
         ("alt+m", "m"),
         ("ctrl+d", "\x04"),
         ("ctrl+q", "\x11"),

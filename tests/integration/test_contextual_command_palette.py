@@ -98,7 +98,7 @@ async def test_sidebar_focus_keeps_palette_context_on_the_active_session(
         await pilot.pause()
         sidebar = app.query_one(SessionSidebar)
         sidebar.move_cursor_to_session(pending.id)
-        sidebar.focus_agents()
+        sidebar.focus_sidebar()
 
         await pilot.press("ctrl+p")
         await app.workers.wait_for_complete()
@@ -148,7 +148,7 @@ async def test_unloaded_agent_uses_open_session_instead_of_contextual_resume(
         await pilot.pause()
         session = app.session_manager.sessions[0]
 
-        await pilot.press("ctrl+a", "ctrl+p")
+        await pilot.press("ctrl+s", "right", "ctrl+p")
         await app.workers.wait_for_complete()
         await pilot.pause()
 

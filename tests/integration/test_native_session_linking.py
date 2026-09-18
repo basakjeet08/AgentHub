@@ -8,7 +8,7 @@ from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import NativeSession
 from agenthub.sessions import AgentSession, SessionKind
-from agenthub.ui import SessionSidebar
+from agenthub.ui import SessionSidebar, SidebarTab
 from agenthub.ui.modals import NativeSessionLinkModal
 
 
@@ -96,10 +96,9 @@ async def test_explicit_target_links_native_row_without_restarting_terminal(
         assert terminal.board.process is process
         assert terminal.is_process_running
         assert terminal.has_focus
-        assert app.query_one(SessionSidebar).visible_session_ids == (
-            pending.id,
-            irrelevant.id,
-        )
+        sidebar = app.query_one(SessionSidebar)
+        assert sidebar.visible_session_ids == (pending.id,)
+        assert sidebar.tab_counts[SidebarTab.UNLOADED] == 1
 
         reconciled = app.session_manager.reconcile_discovered(
             native_sessions=(
@@ -162,11 +161,11 @@ async def test_explicit_target_links_hidden_agent_without_activating_it(
         active_process = active_terminal.board.process
         switcher = app.query_one("#session-content", ContentSwitcher)
 
-        await pilot.press("ctrl+a")
+        await pilot.press("ctrl+s")
         await pilot.press("up")
-        agent_list = app.query_one("#agent-session-list", OptionList)
-        assert agent_list.has_focus
-        assert agent_list.get_option_at_index(agent_list.highlighted).id == pending.id
+        session_list = app.query_one("#sidebar-session-list", OptionList)
+        assert session_list.has_focus
+        assert session_list.get_option_at_index(session_list.highlighted).id == pending.id
         assert app.session_manager.active_session is active
 
         app._begin_native_session_link(pending.id)
@@ -191,11 +190,12 @@ async def test_explicit_target_links_hidden_agent_without_activating_it(
         assert pending_terminal.board.process is pending_process
         assert pending_terminal.is_process_running
 
-        current_agent_list = app.query_one("#agent-session-list", OptionList)
-        assert current_agent_list.has_focus
-        assert current_agent_list.highlighted is not None
+        current_session_list = app.query_one("#sidebar-session-list", OptionList)
+        assert current_session_list.has_focus
+        assert current_session_list.highlighted is not None
         assert (
-            current_agent_list.get_option_at_index(current_agent_list.highlighted).id == pending.id
+            current_session_list.get_option_at_index(current_session_list.highlighted).id
+            == pending.id
         )
 
 
@@ -218,10 +218,12 @@ async def test_explicit_shell_target_never_falls_back_to_active_agent(
 
     async with app.run_test() as pilot:
         await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        sidebar.select_tab(SidebarTab.SHELLS, focus=False)
         await pilot.press("ctrl+s")
-        shell_list = app.query_one("#shell-session-list", OptionList)
-        assert shell_list.has_focus
-        assert shell_list.get_option_at_index(shell_list.highlighted).id == shell.id
+        session_list = app.query_one("#sidebar-session-list", OptionList)
+        assert session_list.has_focus
+        assert session_list.get_option_at_index(session_list.highlighted).id == shell.id
 
         app._begin_native_session_link(shell.id)
         await pilot.pause()

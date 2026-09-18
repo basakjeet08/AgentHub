@@ -9,8 +9,7 @@ from agenthub.ui import SessionSidebar
 from agenthub.ui.bindings import (
     APPLICATION_BINDINGS,
     COMMAND_PALETTE_BINDING,
-    FOCUS_AGENTS_BINDING,
-    FOCUS_SHELLS_BINDING,
+    FOCUS_SIDEBAR_BINDING,
     RESYNC_SESSIONS_BINDING,
     TERMINAL_GATED_ACTIONS,
     TOGGLE_HUB_LOCK_BINDING,
@@ -55,17 +54,15 @@ def test_application_bindings_are_priority_candidates_for_keyboard_ownership() -
 
 
 def test_application_navigation_bindings_are_reserved() -> None:
-    assert FOCUS_AGENTS_BINDING.key == "ctrl+a"
-    assert FOCUS_AGENTS_BINDING.action == "focus_agents"
-    assert FOCUS_SHELLS_BINDING.key == "ctrl+s"
-    assert FOCUS_SHELLS_BINDING.action == "focus_shells"
-    assert all(
-        binding.priority
-        for binding in (
-            FOCUS_AGENTS_BINDING,
-            FOCUS_SHELLS_BINDING,
-        )
+    assert tuple(binding.key for binding in APPLICATION_BINDINGS) == (
+        "ctrl+g",
+        "ctrl+p",
+        "ctrl+shift+r",
+        "ctrl+s",
     )
+    assert FOCUS_SIDEBAR_BINDING.key == "ctrl+s"
+    assert FOCUS_SIDEBAR_BINDING.action == "focus_sidebar"
+    assert FOCUS_SIDEBAR_BINDING.priority is True
     assert COMMAND_PALETTE_BINDING.key == "ctrl+p"
     assert COMMAND_PALETTE_BINDING.action == "command_palette"
     assert COMMAND_PALETTE_BINDING.priority is True
@@ -79,17 +76,26 @@ def test_application_navigation_bindings_are_reserved() -> None:
     )
     assert TERMINAL_GATED_ACTIONS == {
         "command_palette",
-        "focus_agents",
-        "focus_shells",
+        "focus_sidebar",
         "resync_sessions",
     }
     assert {binding.key for binding in APPLICATION_BINDINGS}.isdisjoint(
-        {str(number) for number in range(1, 10)}
+        {
+            "ctrl+a",
+            "tab",
+            "shift+tab",
+            "left",
+            "right",
+            *(str(number) for number in range(1, 10)),
+        }
     )
 
 
-def test_sidebar_declares_no_local_navigation_bindings() -> None:
-    assert "BINDINGS" not in SessionSidebar.__dict__
+def test_sidebar_declares_only_arrow_tab_navigation() -> None:
+    assert [(binding.key, binding.action) for binding in SessionSidebar.BINDINGS] == [
+        ("left", "previous_tab"),
+        ("right", "next_tab"),
+    ]
 
 
 def test_textual_default_quit_binding_is_disabled() -> None:

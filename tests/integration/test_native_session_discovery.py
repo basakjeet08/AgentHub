@@ -11,7 +11,7 @@ from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
 from agenthub.sessions import SessionState
-from agenthub.ui import HomeScreen, SessionSidebar
+from agenthub.ui import HomeScreen, SessionSidebar, SidebarTab
 
 
 class FakeNativeSessionAdapter:
@@ -65,13 +65,15 @@ async def test_discovered_session_starts_unloaded_and_resumes_once(
         assert session.terminal is None
         assert session.state is SessionState.UNLOADED
         sidebar = app.query_one(SessionSidebar)
-        assert sidebar.visible_session_ids == (session.id,)
+        assert sidebar.selected_tab is SidebarTab.LOADED
+        assert sidebar.visible_session_ids == ()
+        assert sidebar.tab_counts[SidebarTab.UNLOADED] == 1
         assert app.query_one(HomeScreen).query_one("#home-empty-copy", Static).content == (
             "Select a session from the sidebar\nor start a new coding-agent session."
         )
         assert app._discovery_executor is None
 
-        await pilot.press("ctrl+a")
+        await pilot.press("ctrl+s", "right")
         await pilot.press("enter")
         await pilot.pause()
         terminal = session.terminal
@@ -82,7 +84,7 @@ async def test_discovered_session_starts_unloaded_and_resumes_once(
         assert terminal.is_process_running
         assert terminal.has_focus
 
-        await pilot.press("ctrl+a")
+        await pilot.press("ctrl+s")
         await pilot.press("enter")
         await pilot.pause()
 
@@ -169,7 +171,9 @@ async def test_resync_shortcut_reconciles_unloaded_native_sessions(
         assert len(sessions) == 1
         assert sessions[0].native_session_id == "native-2"
         assert sessions[0].terminal is None
-        assert app.query_one(SessionSidebar).visible_session_ids == (sessions[0].id,)
+        sidebar = app.query_one(SessionSidebar)
+        sidebar.select_tab(SidebarTab.UNLOADED, focus=False)
+        assert sidebar.visible_session_ids == (sessions[0].id,)
 
         retained = sessions[0]
         adapter._native_sessions = (
@@ -186,7 +190,7 @@ async def test_resync_shortcut_reconciles_unloaded_native_sessions(
 
         assert app.session_manager.sessions == (retained,)
         assert retained.name == "Renamed native session"
-        prompt = app.query_one("#agent-session-list", OptionList).get_option(retained.id).prompt
+        prompt = app.query_one("#sidebar-session-list", OptionList).get_option(retained.id).prompt
         assert "Renamed native session" in str(prompt)
         assert [notification.message for notification in app._notifications][-2:] == [
             "Discovering sessions…",
@@ -242,10 +246,11 @@ async def test_resync_keeps_unidentified_runtime_and_native_session_separate(
         assert discovered.name == "Provider title"
         assert discovered.terminal is None
         assert app.session_manager.active_session is fresh
-        assert app.query_one(SessionSidebar).visible_session_ids == (
-            fresh.id,
-            discovered.id,
-        )
+        sidebar = app.query_one(SessionSidebar)
+        assert sidebar.visible_session_ids == (fresh.id,)
+        assert sidebar.tab_counts[SidebarTab.UNLOADED] == 1
+        sidebar.select_tab(SidebarTab.UNLOADED, focus=False)
+        assert sidebar.visible_session_ids == (discovered.id,)
 
         await pilot.press("ctrl+shift+r")
         await app.workers.wait_for_complete()

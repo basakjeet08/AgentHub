@@ -11,7 +11,7 @@ from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.sessions import SessionKind
 from agenthub.terminal import AgentTerminal
-from agenthub.ui import AgentHubStatusBar, SessionSidebar
+from agenthub.ui import AgentHubStatusBar, SessionSidebar, SidebarTab
 from agenthub.ui.modals import SessionNameModal, WorkingDirectoryModal
 
 
@@ -91,10 +91,10 @@ async def test_new_shell_action_creates_fish_shells_and_ctrl_s_navigates(
         assert shell_one.terminal.working_directory == Path.cwd().resolve()
         assert shell_one is not first_agent
         assert not isinstance(app.screen, WorkingDirectoryModal)
-        agent_list = app.query_one("#agent-session-list", OptionList)
-        shell_list = app.query_one("#shell-session-list", OptionList)
-        assert agent_list.highlighted is None
-        assert shell_list.highlighted == shell_list.get_option_index(shell_one.id)
+        sidebar = app.query_one(SessionSidebar)
+        session_list = app.query_one("#sidebar-session-list", OptionList)
+        assert sidebar.selected_tab is SidebarTab.SHELLS
+        assert session_list.highlighted == session_list.get_option_index(shell_one.id)
 
         await _create_named_shell(app, pilot, "Custom Shell")
         shell_two = app.session_manager.active_session
@@ -102,17 +102,15 @@ async def test_new_shell_action_creates_fish_shells_and_ctrl_s_navigates(
         assert shell_two.name == "Custom Shell"
         assert shell_two.kind is SessionKind.SHELL
         assert shell_two not in (first_agent, shell_one)
-        agent_list = app.query_one("#agent-session-list", OptionList)
-        shell_list = app.query_one("#shell-session-list", OptionList)
-        assert agent_list.highlighted is None
-        assert shell_list.highlighted == shell_list.get_option_index(shell_two.id)
+        assert sidebar.selected_tab is SidebarTab.SHELLS
+        assert session_list.highlighted == session_list.get_option_index(shell_two.id)
 
         await pilot.press("ctrl+s")
         await pilot.press("up")
         await pilot.press("enter")
         assert app.session_manager.active_session is shell_one
         assert len(app.session_manager.sessions) == 3
-        assert shell_list.highlighted == shell_list.get_option_index(shell_one.id)
+        assert session_list.highlighted == session_list.get_option_index(shell_one.id)
 
 
 async def test_mixed_sessions_update_grouped_sidebar_and_status(
@@ -141,26 +139,29 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
         assert second_agent is not None
         assert second_agent not in (first_agent, shell_one, shell_two)
 
-        await pilot.press("ctrl+a")
+        await pilot.press("ctrl+s")
         await pilot.press("enter")
         assert app.session_manager.active_session is second_agent
 
         await pilot.press("ctrl+s")
-        await pilot.press("down")
+        await pilot.press("right", "right")
         await pilot.press("enter")
         assert app.session_manager.active_session is shell_two
 
-        await pilot.press("ctrl+a")
+        await pilot.press("ctrl+s")
+        await pilot.press("right")
         await pilot.press("up")
         await pilot.press("enter")
         assert app.session_manager.active_session is first_agent
 
         await pilot.press("ctrl+s")
+        await pilot.press("right", "right")
         await pilot.press("up")
         await pilot.press("enter")
         assert app.session_manager.active_session is shell_one
 
-        await pilot.press("ctrl+a")
+        await pilot.press("ctrl+s")
+        await pilot.press("right")
         await pilot.press("enter")
         assert app.session_manager.active_session is first_agent
 
@@ -168,22 +169,20 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
         assert sidebar.visible_session_ids == (
             first_agent.id,
             second_agent.id,
-            shell_one.id,
-            shell_two.id,
         )
-        headings = [str(heading.content) for heading in sidebar.query(".sidebar-section-title")]
-        assert headings == ["AGENTS", "SHELLS"]
+        assert sidebar.tab_counts == {
+            SidebarTab.LOADED: 2,
+            SidebarTab.UNLOADED: 0,
+            SidebarTab.SHELLS: 2,
+        }
         option_prompts = [
             str(option.prompt)
             for option_list in sidebar.query(OptionList)
             for option in option_list.options
         ]
         assert option_prompts == [
-            "LOADED · 2",
             "▌ Test Sleeper · New session",
             "  Test Sleeper · New session",
-            "  Test Sleeper · Shell 1",
-            "  Test Sleeper · Shell 2",
         ]
 
         status = app.query_one(AgentHubStatusBar)

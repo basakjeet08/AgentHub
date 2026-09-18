@@ -63,7 +63,7 @@ bittty / PTY → coding agent`.
 - routes sidebar selection through an activation operation that either resumes
   an unloaded session or shows its existing runtime;
 - owns terminal-first Locked/Unlocked keyboard policy and priority candidates
-  for Ctrl+G, Ctrl+P, Ctrl+Shift+R, and sidebar-group focus;
+  for Ctrl+G, Ctrl+P, Ctrl+Shift+R, and sidebar focus;
 - gates hub navigation through `check_action()` while a terminal is active so
   rejected key events continue unchanged to `AgentTerminal`;
 - coordinates a registry-driven harness picker and directory picker from the
@@ -564,14 +564,15 @@ Ctrl+G toggles keyboard ownership
    │
    └── Unlocked → Ctrl+P opens the command palette,
                   Ctrl+Shift+R refreshes native sessions, and
-                  Ctrl+A/Ctrl+S focus a sidebar group for arrow-key navigation
+                  Ctrl+S focuses the tabbed sidebar
 ```
 
 Home is the intentional exception: with no active terminal, application
-shortcuts work even while the authoritative mode remains Locked. In the sidebar,
-Ctrl+A focuses agents and Ctrl+S focuses shells; arrow keys move the highlight
-within either list and Enter activates the highlighted session. Plain and
-modified number keys remain unbound by AgentHub and reach the active terminal.
+shortcuts work even while the authoritative mode remains Locked. Ctrl+S focuses
+the sidebar without changing its selected tab. While the sidebar owns focus,
+left and right cycle through Loaded, Unloaded, and Shells; up and down move the
+highlight and Enter activates the highlighted session. Ctrl+A, Tab, and plain
+or modified number keys remain unbound by AgentHub and reach the active terminal.
 New Agent, New Shell, Link, Delete, and Quit are palette-only actions; their
 former keys also reach a focused terminal unchanged.
 
@@ -944,23 +945,23 @@ The implemented sidebar-to-terminal relationship is conceptually:
 └──────────────────────┴────────────────────────────────────┘
 ```
 
-The sidebar always renders `AGENTS` and `SHELLS`, even when either collection is
-empty, and allocates them 70% and 30% of the available section space
-respectively. Within `AGENTS`, the sidebar presentation groups sessions with an
-attached terminal under `LOADED` above native-backed sessions without a terminal
-under `UNLOADED`; each visible heading includes its current row count, and empty
-subgroup headings are hidden. The headings are non-selectable rows in one
-navigation list, so arrows cross the boundary seamlessly. Within each subgroup,
-rows retain their existing `SessionManager` order so creation and discovery
-semantics are preserved. Cursor identity is preserved by session ID when a
-runtime attachment moves a row between groups. A secondary-accent leading bar
-marks the active session
-independently from the neutral cursor-highlight background. Session options use
-compact, single-line rendering and ellipsize labels that exceed the available
-sidebar width.
-Both top-level collections use `AgentSession`, one `SessionManager`, and the
-Agent rows are navigated with Ctrl+A and arrow keys, then activated with Enter.
-Shell rows use the same model with Ctrl+S, arrow keys, and Enter.
+The sidebar always renders counted `LOADED`, `UNLOADED`, and `SHELLS` tabs, even
+when a category is empty. Only the selected category occupies the session-list
+area. Loaded Agents have an attached terminal, unloaded Agents do not, and all
+Shell sessions belong to Shells. Rows retain their existing `SessionManager`
+order within each tab so creation and discovery semantics are preserved.
+
+The sidebar remembers one highlighted session ID per tab. On focus it restores
+that identity when still present, otherwise falling back to the active session,
+the first row, or no highlight for an empty tab. Runtime attachment changes move
+the same logical Agent between Loaded and Unloaded without creating another
+session. A secondary-accent leading bar marks the active session independently
+from the neutral cursor-highlight background. Session options use compact,
+single-line rendering and ellipsize labels that exceed the available width.
+
+Ctrl+S focuses the sidebar, left and right cycle through its tabs, up and down
+move within the selected tab, and Enter activates the highlighted session. The
+arrow bindings are sidebar-local and remain native terminal input elsewhere.
 Agent sessions remain selectable directly from the
 sidebar. The sidebar does not operate directly on `SessionManager` or terminal
 internals. New Agent uses the agent-only harness and working-directory modal
@@ -1093,12 +1094,12 @@ The architectural foundation is implemented:
 8. A persistent application shell, Textual's built-in Tokyo Night theme,
    responsive Home landing state, clean zero-session sidebar, and real status bar
    establish the shared UI foundation.
-9. Sidebar presentation accepts `AGENTS` and `SHELLS` collections backed by the
-   same manager and selection flow.
+9. Sidebar presentation classifies one manager-owned session collection into
+   counted Loaded, Unloaded, and Shells tabs backed by the same selection flow.
 10. New Agent opens a registry-driven harness picker followed by a
     working-directory browser; confirming both creates and focuses a fresh
-    `New session` agent. Ctrl+A focuses Agents for arrow-key navigation
-    (Enter activates), and New Shell creates named shells.
+    `New session` agent. Ctrl+S focuses the tabbed sidebar for arrow-key
+    navigation (Enter activates), and New Shell creates named shells.
 11. Sessions carry explicit agent-or-shell identity.
 12. Native-backed Agents are unloaded and reconciled with only their provider
     after exit; unidentified Agents and shells are removed. Active exits return

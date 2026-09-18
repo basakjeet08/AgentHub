@@ -39,14 +39,10 @@ multi-session runtime architecture:
   the command palette. Linking adopts the native ID and title without
   restarting the existing terminal.
 - It provides a session sidebar for switching between managed sessions.
-- It groups Agent rows under counted, display-only `LOADED` and `UNLOADED`
-  headings, keeping attached runtimes above discovered conversations while
-  preserving the existing session order within each group in one continuous
-  navigation order. A secondary-accent bar marks the active session independently
-  from the sidebar cursor, and long option labels stay on one line with an
-  ellipsis.
-- It keeps `AGENTS` and `SHELLS` sidebar groups visible at all times, allocating
-  more space to agent conversations with a 70/30 split.
+- It presents `LOADED`, `UNLOADED`, and `SHELLS` as counted sidebar tabs, with
+  one category occupying the session area at a time. A secondary-accent bar
+  marks the active session independently from the sidebar cursor, and long
+  option labels stay on one line with an ellipsis.
 - Its New Agent palette command opens a registry-driven harness picker and
   working-directory browser, then launches the selected coding agent after both
   steps are confirmed. Fresh runtimes use the temporary label `New session`
@@ -115,8 +111,12 @@ Unlocked bindings are:
 Ctrl+G                Lock AgentHub
 Ctrl+Shift+R          Re-sync native sessions
 Ctrl+P                Command Palette
-Ctrl+A, ↑↓, Enter     Navigate / open agent
-Ctrl+S, ↑↓, Enter     Navigate / open shell
+Ctrl+S                Focus Sidebar
+
+Sidebar:
+← / →                 Previous / next section
+↑ / ↓                 Navigate
+Enter                 Open
 ```
 
 Ctrl+P opens a searchable command palette for New Agent, New Shell, Refresh
@@ -137,9 +137,10 @@ Resume an unloaded Agent directly with `Enter` in the sidebar, or find it throug
 the searchable Open Session picker.
 
 Home has no terminal to protect, so these application shortcuts work there
-without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and
-`Ctrl+S` focuses shells. In either list, arrow keys move the highlight cursor
-and `Enter` switches to the highlighted session.
+without requiring an unlock. `Ctrl+S` focuses the sidebar while preserving its
+selected tab and cursor. Inside the sidebar, left and right move between Loaded,
+Unloaded, and Shells; up and down move the highlight cursor, and `Enter` switches
+to the highlighted session. `Ctrl+A` and `Tab` remain native terminal input.
 
 New Agent, New Shell, Link, Delete, and Quit are palette-only operations.
 Their former shortcuts are no longer intercepted by AgentHub and reach a

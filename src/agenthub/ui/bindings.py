@@ -26,18 +26,10 @@ RESYNC_SESSIONS_BINDING = Binding(
     priority=True,
 )
 
-FOCUS_AGENTS_BINDING = Binding(
-    "ctrl+a",
-    "focus_agents",
-    "Focus agent sessions",
-    key_display="Ctrl+A",
-    priority=True,
-)
-
-FOCUS_SHELLS_BINDING = Binding(
+FOCUS_SIDEBAR_BINDING = Binding(
     "ctrl+s",
-    "focus_shells",
-    "Focus shell sessions",
+    "focus_sidebar",
+    "Focus sidebar",
     key_display="Ctrl+S",
     priority=True,
 )
@@ -47,8 +39,7 @@ FOCUS_SHELLS_BINDING = Binding(
 TERMINAL_GATED_ACTIONS = frozenset(
     {
         "command_palette",
-        "focus_agents",
-        "focus_shells",
+        "focus_sidebar",
         "resync_sessions",
     }
 )
@@ -57,8 +48,7 @@ APPLICATION_BINDINGS = (
     TOGGLE_HUB_LOCK_BINDING,
     COMMAND_PALETTE_BINDING,
     RESYNC_SESSIONS_BINDING,
-    FOCUS_AGENTS_BINDING,
-    FOCUS_SHELLS_BINDING,
+    FOCUS_SIDEBAR_BINDING,
 )
 
 HOME_SHORTCUTS = (
@@ -70,15 +60,15 @@ HOME_SHORTCUTS = (
             RESYNC_SESSIONS_BINDING,
         )
     ),
-    ("Ctrl+A, ↑↓, Enter", "Navigate / open agent"),
-    ("Ctrl+S, ↑↓, Enter", "Navigate / open shell"),
+    ("Ctrl+S", "Focus sidebar"),
+    ("← / →", "Change sidebar tab"),
+    ("↑ / ↓, Enter", "Navigate / open session"),
 )
 
 __all__ = [
     "APPLICATION_BINDINGS",
     "COMMAND_PALETTE_BINDING",
-    "FOCUS_AGENTS_BINDING",
-    "FOCUS_SHELLS_BINDING",
+    "FOCUS_SIDEBAR_BINDING",
     "HOME_SHORTCUTS",
     "RESYNC_SESSIONS_BINDING",
     "TERMINAL_GATED_ACTIONS",

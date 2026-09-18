@@ -18,7 +18,7 @@ from agenthub.harnesses import (
     ScrollKeys,
 )
 from agenthub.sessions import AgentSession, SessionKind, SessionState
-from agenthub.ui import HomeScreen, SessionSidebar
+from agenthub.ui import HomeScreen, SessionSidebar, SidebarTab
 
 
 def _exiting_harness(exit_code: int) -> AgentHarness:
@@ -89,7 +89,7 @@ async def test_sidebar_switches_managed_sessions(
         assert switcher.current == app._terminal_dom_id(second.id)
 
         sidebar.move_cursor_to_session(first.id)
-        sidebar.focus_primary()
+        sidebar.focus_sidebar()
         await pilot.press("enter")
 
         assert app.session_manager.active_session is first
@@ -101,7 +101,7 @@ async def test_sidebar_switches_managed_sessions(
         assert second_process.poll() is None
 
         sidebar.move_cursor_to_session(second.id)
-        sidebar.focus_primary()
+        sidebar.focus_sidebar()
         await pilot.press("enter")
 
         assert app.session_manager.active_session is second
@@ -110,7 +110,7 @@ async def test_sidebar_switches_managed_sessions(
         assert second.terminal.has_focus
 
         sidebar.move_cursor_to_session(first.id)
-        sidebar.focus_primary()
+        sidebar.focus_sidebar()
         await pilot.press("enter")
 
         assert app.session_manager.active_session is first
@@ -118,7 +118,7 @@ async def test_sidebar_switches_managed_sessions(
         assert first.terminal.has_focus
 
         sidebar.move_cursor_to_session(second.id)
-        sidebar.focus_primary()
+        sidebar.focus_sidebar()
         await pilot.press("enter")
 
         assert app.session_manager.active_session is second
@@ -245,7 +245,7 @@ async def test_active_exit_returns_home_while_other_session_keeps_running(
             session_list.highlighted is None for session_list in app.query(OptionList)
         )
 
-        await pilot.press("ctrl+a")
+        await pilot.press("ctrl+s")
         await pilot.press("enter")
         await pilot.pause()
         assert app.session_manager.active_session is first
@@ -305,7 +305,9 @@ async def test_active_native_backed_exit_retains_unloaded_resumable_row(
         assert session.state is SessionState.UNLOADED
         assert app.query_one(HomeScreen).display
         assert app.query_one(HomeScreen).has_focus
-        assert app.query_one(SessionSidebar).visible_session_ids == (session.id,)
+        sidebar = app.query_one(SessionSidebar)
+        assert sidebar.visible_session_ids == ()
+        assert sidebar.tab_counts[SidebarTab.UNLOADED] == 1
 
 
 async def test_hidden_native_backed_exit_does_not_interrupt_active_sibling(
@@ -340,10 +342,9 @@ async def test_hidden_native_backed_exit_does_not_interrupt_active_sibling(
         assert active.terminal.is_process_running
         assert active.terminal.display
         assert active.terminal.has_focus
-        assert app.query_one(SessionSidebar).visible_session_ids == (
-            active.id,
-            linked.id,
-        )
+        sidebar = app.query_one(SessionSidebar)
+        assert sidebar.visible_session_ids == (active.id,)
+        assert sidebar.tab_counts[SidebarTab.UNLOADED] == 1
 
 
 async def test_hidden_output_and_screen_state_survive_switching(
@@ -376,7 +377,7 @@ async def test_hidden_output_and_screen_state_survive_switching(
 
         sidebar = app.query_one(SessionSidebar)
         sidebar.move_cursor_to_session(first.id)
-        sidebar.focus_primary()
+        sidebar.focus_sidebar()
         await pilot.press("enter")
 
         assert first.terminal.display
