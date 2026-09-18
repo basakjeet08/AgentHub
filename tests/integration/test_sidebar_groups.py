@@ -138,7 +138,8 @@ async def test_sidebar_groups_navigation_and_selection(
         sidebar.focus_agents()
         await pilot.pause()
         assert agent_list.has_focus
-        await pilot.press("2")
+        assert agent_list.highlighted == agent_list.get_option_index(agents[0].id)
+        await pilot.press("down")
         assert agent_list.highlighted == agent_list.get_option_index(agents[1].id)
         assert agent_list.has_focus
         assert app.selected_session_id == shells[1].id
@@ -467,7 +468,7 @@ async def test_agent_rows_group_loaded_before_unloaded_and_skip_headers(
         await pilot.press("up")
         assert sidebar.selected_session_id == loaded_two.id
 
-        await pilot.press("3")
+        await pilot.press("down")
         assert sidebar.selected_session_id == unloaded_one.id
         await pilot.press("enter")
         assert app.selected_session_id == unloaded_one.id

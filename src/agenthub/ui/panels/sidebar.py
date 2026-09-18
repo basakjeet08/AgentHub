@@ -1,7 +1,6 @@
 """Persistent session navigation and primary application action panel."""
 
 from collections.abc import Iterable
-from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.containers import Grid, Horizontal, Vertical
@@ -12,7 +11,6 @@ from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, OPENCODE, AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
-from agenthub.ui.bindings import NUMBERED_SESSION_BINDINGS
 
 _ACTIVE_INDICATOR = "▌"
 _INACTIVE_INDICATOR = " "
@@ -22,7 +20,6 @@ class SessionSidebar(Vertical):
     """Thin session panel with no knowledge of coordination or terminals."""
 
     can_focus = True
-    BINDINGS: ClassVar = list(NUMBERED_SESSION_BINDINGS)
 
     class SessionSelected(Message):
         """A user selected an AgentHub session."""
@@ -398,20 +395,6 @@ class SessionSidebar(Vertical):
                 self._last_shell_selection_id,
             )
 
-    def select_numbered_agent(self, number: int) -> None:
-        """Move agent cursor only; never activate."""
-
-        index = number - 1
-        agent_list = self.query_one("#agent-session-list", OptionList)
-        if 0 <= index < len(self._agent_sessions):
-            session = self._agent_sessions[index]
-            for other_list in self.query(OptionList):
-                if other_list is not agent_list:
-                    other_list.highlighted = None
-            agent_list.highlighted = agent_list.get_option_index(session.id)
-            self._last_agent_selection_id = session.id
-            agent_list.focus()
-
     @property
     def selected_session_id(self) -> str | None:
         """Return the session ID under the current sidebar cursor, if any."""
@@ -445,21 +428,6 @@ class SessionSidebar(Vertical):
             return session_list.get_option_at_index(session_list.highlighted).id
         except OptionDoesNotExist:
             return None
-
-    def action_select_numbered_session(self, number: int) -> None:
-        """Focus an agent ordinal when the agent list is active."""
-
-        agent_list = self.query_one("#agent-session-list", OptionList)
-        shell_list = self.query_one("#shell-session-list", OptionList)
-        if agent_list.has_focus:
-            focused_kind = SessionKind.AGENT
-        elif shell_list.has_focus:
-            focused_kind = SessionKind.SHELL
-        else:
-            focused_kind = self._focused_kind
-
-        if focused_kind is SessionKind.AGENT:
-            self.select_numbered_agent(number)
 
     def on_option_list_option_highlighted(
         self,

@@ -142,7 +142,6 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
         assert second_agent not in (first_agent, shell_one, shell_two)
 
         await pilot.press("ctrl+a")
-        await pilot.press("2")
         await pilot.press("enter")
         assert app.session_manager.active_session is second_agent
 
@@ -152,7 +151,7 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
         assert app.session_manager.active_session is shell_two
 
         await pilot.press("ctrl+a")
-        await pilot.press("1")
+        await pilot.press("up")
         await pilot.press("enter")
         assert app.session_manager.active_session is first_agent
 
@@ -162,7 +161,6 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
         assert app.session_manager.active_session is shell_one
 
         await pilot.press("ctrl+a")
-        await pilot.press("1")
         await pilot.press("enter")
         assert app.session_manager.active_session is first_agent
 

@@ -246,7 +246,6 @@ async def test_active_exit_returns_home_while_other_session_keeps_running(
         )
 
         await pilot.press("ctrl+a")
-        await pilot.press("1")
         await pilot.press("enter")
         await pilot.pause()
         assert app.session_manager.active_session is first

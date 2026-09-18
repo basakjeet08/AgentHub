@@ -425,6 +425,27 @@ async def test_ctrl_digit_no_longer_opens_shell_while_unlocked(
         assert len(app.session_manager.sessions) == 1
 
 
+@pytest.mark.parametrize("key", [str(number) for number in range(1, 10)])
+async def test_plain_digits_reach_active_terminal_while_unlocked(
+    sleeping_harness: AgentHarness,
+    key: str,
+) -> None:
+    app, (session,) = _app_with_sessions(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert session.terminal.has_focus
+        pty = session.terminal.board.pty
+        assert pty is not None
+
+        with patch.object(pty, "write", wraps=pty.write) as write_spy:
+            await pilot.press(key)
+            await pilot.pause()
+
+        write_spy.assert_called_once_with(key)
+        assert app.session_manager.active_session is session
+
+
 async def test_ctrl_m_remains_terminal_enter_while_unlocked(
     sleeping_harness: AgentHarness,
 ) -> None:

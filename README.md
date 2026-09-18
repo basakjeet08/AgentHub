@@ -115,7 +115,7 @@ Unlocked bindings are:
 Ctrl+G                Lock AgentHub
 Ctrl+Shift+R          Re-sync native sessions
 Ctrl+P                Command Palette
-Ctrl+A, 1...9, Enter  Navigate / open agent
+Ctrl+A, ↑↓, Enter     Navigate / open agent
 Ctrl+S, ↑↓, Enter     Navigate / open shell
 ```
 
@@ -137,9 +137,9 @@ Resume an unloaded Agent directly with `Enter` in the sidebar, or find it throug
 the searchable Open Session picker.
 
 Home has no terminal to protect, so these application shortcuts work there
-without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and `1` through `9`
-moves the highlight cursor to the nth agent, while `Enter` switches to it. `Ctrl+S`
-focuses shells for arrow-key navigation, while numeric keys are ignored.
+without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and
+`Ctrl+S` focuses shells. In either list, arrow keys move the highlight cursor
+and `Enter` switches to the highlighted session.
 
 New Agent, New Shell, Link, Delete, and Quit are palette-only operations.
 Their former shortcuts are no longer intercepted by AgentHub and reach a

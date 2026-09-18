@@ -563,18 +563,17 @@ Ctrl+G toggles keyboard ownership
    │                              and their original keys reach the PTY
    │
    └── Unlocked → Ctrl+P opens the command palette,
-                  Ctrl+Shift+R refreshes native sessions,
-                  Ctrl+A/Ctrl+S focus a sidebar group, and a following
-                  plain digit selects its numbered Agent entry
+                  Ctrl+Shift+R refreshes native sessions, and
+                  Ctrl+A/Ctrl+S focus a sidebar group for arrow-key navigation
 ```
 
 Home is the intentional exception: with no active terminal, application
 shortcuts work even while the authoritative mode remains Locked. In the sidebar,
-Ctrl+A focuses agents where digits 1…9 move highlight and Enter activates; Ctrl+S
-focuses shells for arrow-key navigation. Ctrl+digit combinations remain unbound
-by AgentHub and reach the active terminal. New Agent, New Shell, Link, Delete,
-and Quit are palette-only actions; their former keys also reach a focused
-terminal unchanged.
+Ctrl+A focuses agents and Ctrl+S focuses shells; arrow keys move the highlight
+within either list and Enter activates the highlighted session. Plain and
+modified number keys remain unbound by AgentHub and reach the active terminal.
+New Agent, New Shell, Link, Delete, and Quit are palette-only actions; their
+former keys also reach a focused terminal unchanged.
 
 Permanent deletion follows this ownership sequence:
 
@@ -951,17 +950,17 @@ respectively. Within `AGENTS`, the sidebar presentation groups sessions with an
 attached terminal under `LOADED` above native-backed sessions without a terminal
 under `UNLOADED`; each visible heading includes its current row count, and empty
 subgroup headings are hidden. The headings are non-selectable rows in one
-navigation list, so arrows cross the boundary and 1…9 continues to address the
-overall displayed Agent order. Within each subgroup, rows retain their existing
-`SessionManager` order so creation and discovery semantics are preserved. Cursor
-identity is preserved by session ID when a runtime attachment moves a row
-between groups. A secondary-accent leading bar marks the active session
+navigation list, so arrows cross the boundary seamlessly. Within each subgroup,
+rows retain their existing `SessionManager` order so creation and discovery
+semantics are preserved. Cursor identity is preserved by session ID when a
+runtime attachment moves a row between groups. A secondary-accent leading bar
+marks the active session
 independently from the neutral cursor-highlight background. Session options use
 compact, single-line rendering and ellipsize labels that exceed the available
 sidebar width.
 Both top-level collections use `AgentSession`, one `SessionManager`, and the
-Agent rows can be highlighted with Ctrl+A, then 1…9, and activated with Enter.
-Shell rows are navigated with Ctrl+S and arrow keys, and activated with Enter.
+Agent rows are navigated with Ctrl+A and arrow keys, then activated with Enter.
+Shell rows use the same model with Ctrl+S, arrow keys, and Enter.
 Agent sessions remain selectable directly from the
 sidebar. The sidebar does not operate directly on `SessionManager` or terminal
 internals. New Agent uses the agent-only harness and working-directory modal
@@ -1098,7 +1097,7 @@ The architectural foundation is implemented:
    same manager and selection flow.
 10. New Agent opens a registry-driven harness picker followed by a
     working-directory browser; confirming both creates and focuses a fresh
-    `New session` agent. Ctrl+A moves cursor highlight across numbered agents
+    `New session` agent. Ctrl+A focuses Agents for arrow-key navigation
     (Enter activates), and New Shell creates named shells.
 11. Sessions carry explicit agent-or-shell identity.
 12. Native-backed Agents are unloaded and reconciled with only their provider

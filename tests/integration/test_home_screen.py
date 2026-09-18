@@ -59,7 +59,7 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
         expected_labels = [value for shortcut in HOME_SHORTCUTS for value in shortcut]
         assert shortcut_labels == expected_labels
         assert all(key != "Ctrl+0" for key, _description in HOME_SHORTCUTS)
-        assert ("Ctrl+A, 1…9, Enter", "Navigate / open agent") in HOME_SHORTCUTS
+        assert ("Ctrl+A, ↑↓, Enter", "Navigate / open agent") in HOME_SHORTCUTS
         assert ("Ctrl+S, ↑↓, Enter", "Navigate / open shell") in HOME_SHORTCUTS
         assert all(
             key not in {"Ctrl+N", "Ctrl+Shift+S", "Alt+M", "Ctrl+D", "Ctrl+Q"}

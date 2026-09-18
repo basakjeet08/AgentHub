@@ -5,12 +5,12 @@ from pathlib import Path
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.sessions import SessionKind
+from agenthub.ui import SessionSidebar
 from agenthub.ui.bindings import (
     APPLICATION_BINDINGS,
     COMMAND_PALETTE_BINDING,
     FOCUS_AGENTS_BINDING,
     FOCUS_SHELLS_BINDING,
-    NUMBERED_SESSION_BINDINGS,
     RESYNC_SESSIONS_BINDING,
     TERMINAL_GATED_ACTIONS,
     TOGGLE_HUB_LOCK_BINDING,
@@ -83,11 +83,13 @@ def test_application_navigation_bindings_are_reserved() -> None:
         "focus_shells",
         "resync_sessions",
     }
-    assert [binding.key for binding in NUMBERED_SESSION_BINDINGS] == [
-        str(number) for number in range(1, 10)
-    ]
-    assert all(not binding.priority for binding in NUMBERED_SESSION_BINDINGS)
-    assert all(binding not in APPLICATION_BINDINGS for binding in NUMBERED_SESSION_BINDINGS)
+    assert {binding.key for binding in APPLICATION_BINDINGS}.isdisjoint(
+        {str(number) for number in range(1, 10)}
+    )
+
+
+def test_sidebar_declares_no_local_navigation_bindings() -> None:
+    assert "BINDINGS" not in SessionSidebar.__dict__
 
 
 def test_textual_default_quit_binding_is_disabled() -> None:
