@@ -198,7 +198,7 @@ async def test_sidebar_styles_active_running_and_unloaded_sessions_independently
             assert all(isinstance(style, str) for style in styles)
             return styles  # type: ignore[return-value]
 
-        assert agent_list.highlighted == agent_list.get_option_index(active.id)
+        assert agent_list.highlighted == agent_list.get_option_index(running.id)
         assert prompt_styles(running) == ["$foreground"]
         assert prompt_styles(active) == ["$foreground", "$secondary", "bold"]
         assert prompt_styles(unloaded) == ["$foreground"]
@@ -473,7 +473,7 @@ async def test_agent_rows_group_loaded_before_unloaded_and_skip_headers(
         assert app.selected_session_id == unloaded_one.id
 
 
-async def test_agent_groups_sort_by_provider_then_session_title() -> None:
+async def test_agent_groups_preserve_existing_order_within_each_group() -> None:
     manager = SessionManager()
     devin_loaded = manager.create(
         name="Beta",
@@ -522,12 +522,12 @@ async def test_agent_groups_sort_by_provider_then_session_title() -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.query_one(SessionSidebar).visible_session_ids == (
+            devin_loaded.id,
+            codex_zulu.id,
             antigravity_loaded.id,
             codex_alpha.id,
-            codex_zulu.id,
-            devin_loaded.id,
-            codex_unloaded.id,
             opencode_unloaded.id,
+            codex_unloaded.id,
         )
 
 

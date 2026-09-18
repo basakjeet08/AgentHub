@@ -41,9 +41,10 @@ multi-session runtime architecture:
 - It provides a session sidebar for switching between managed sessions.
 - It groups Agent rows under counted, display-only `LOADED` and `UNLOADED`
   headings, keeping attached runtimes above discovered conversations while
-  sorting each group by provider and session title in one continuous navigation
-  order. A secondary-accent bar marks the active session independently from the
-  sidebar cursor, and long option labels stay on one line with an ellipsis.
+  preserving the existing session order within each group in one continuous
+  navigation order. A secondary-accent bar marks the active session independently
+  from the sidebar cursor, and long option labels stay on one line with an
+  ellipsis.
 - It keeps `AGENTS` and `SHELLS` sidebar groups visible at all times, allocating
   more space to agent conversations with a 70/30 split.
 - It opens a registry-driven harness picker and working-directory browser with

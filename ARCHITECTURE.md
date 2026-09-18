@@ -963,8 +963,8 @@ attached terminal under `LOADED` above native-backed sessions without a terminal
 under `UNLOADED`; each visible heading includes its current row count, and empty
 subgroup headings are hidden. The headings are non-selectable rows in one
 navigation list, so arrows cross the boundary and 1…9 continues to address the
-overall displayed Agent order. Within each subgroup, rows are sorted
-case-insensitively by provider display name and then session title. Cursor
+overall displayed Agent order. Within each subgroup, rows retain their existing
+`SessionManager` order so creation and discovery semantics are preserved. Cursor
 identity is preserved by session ID when a runtime attachment moves a row
 between groups. A secondary-accent leading bar marks the active session
 independently from the neutral cursor-highlight background. Session options use

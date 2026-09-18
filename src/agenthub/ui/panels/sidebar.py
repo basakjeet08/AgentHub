@@ -94,25 +94,13 @@ class SessionSidebar(Vertical):
     def _group_agent_sessions(
         sessions: tuple[AgentSession, ...],
     ) -> tuple[AgentSession, ...]:
-        """Group Agents by runtime and sort each group by provider and title."""
-
-        def sort_key(session: AgentSession) -> tuple[str, str]:
-            return (
-                session.harness.display_name.casefold(),
-                session.name.casefold(),
-            )
+        """Group Agents by runtime while preserving their existing order."""
 
         loaded = tuple(
-            sorted(
-                (session for session in sessions if session.terminal is not None),
-                key=sort_key,
-            )
+            session for session in sessions if session.terminal is not None
         )
         unloaded = tuple(
-            sorted(
-                (session for session in sessions if session.terminal is None),
-                key=sort_key,
-            )
+            session for session in sessions if session.terminal is None
         )
         return loaded + unloaded
 
