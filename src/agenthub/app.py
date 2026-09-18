@@ -104,6 +104,7 @@ class AgentHubApp(App):
         self._discovery_executors: set[ThreadPoolExecutor] = set()
         self._discovery_in_progress = False
         self._provider_locks: dict[str, asyncio.Lock] = {}
+        self._command_palette_target_id: str | None = None
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -515,6 +516,82 @@ class AgentHubApp(App):
             "Select and open an Agent or Shell session",
             self.action_open_session,
         )
+        yield from self._contextual_system_commands()
+
+    def action_command_palette(self) -> None:
+        """Open the palette with an immutable snapshot of its session target."""
+
+        if not self.use_command_palette or CommandPalette.is_open(self):
+            return
+
+        self._command_palette_target_id = self._resolve_palette_session_id()
+        self.push_screen(
+            CommandPalette(id="--command-palette"),
+            self._on_command_palette_closed,
+        )
+
+    def _on_command_palette_closed(self, _result: object) -> None:
+        """Discard context after the palette's ID-bound callbacks are built."""
+
+        self._command_palette_target_id = None
+
+    def _resolve_palette_session_id(self) -> str | None:
+        """Resolve only the session displayed in the main terminal area."""
+
+        if isinstance(self.screen, ModalScreen):
+            return None
+
+        active = self.session_manager.active_session
+        if active is not None and active.terminal is not None:
+            return active.id
+        return None
+
+    def _contextual_system_commands(self) -> Iterable[SystemCommand]:
+        """Yield lifecycle commands bound to the palette's captured session ID."""
+
+        session_id = self._command_palette_target_id
+        if session_id is None:
+            return
+        try:
+            session = self.session_manager.get(session_id)
+        except KeyError:
+            return
+
+        if self._can_link_native_session(session):
+            yield SystemCommand(
+                f'Link "{session.name}"',
+                "Link this running Agent to a native conversation",
+                partial(self._begin_native_session_link, session.id),
+            )
+        if self._can_offer_native_session_delete(session):
+            yield SystemCommand(
+                f'Delete "{session.name}"',
+                "Permanently delete this native conversation",
+                partial(self._request_native_session_delete, session.id),
+            )
+
+    def _can_link_native_session(self, session: AgentSession) -> bool:
+        """Return whether a running fresh Agent has a safe link candidate."""
+
+        return (
+            session.kind is SessionKind.AGENT
+            and session.native_session_id is None
+            and session.terminal is not None
+            and session.state is SessionState.RUNNING
+            and session.terminal.is_process_running
+            and bool(self.session_manager.linkable_native_sessions(session.id))
+        )
+
+    def _can_offer_native_session_delete(self, session: AgentSession) -> bool:
+        """Return whether Delete can act or provide provider-specific guidance."""
+
+        adapter = self._native_session_adapters.get(session.harness.id)
+        return (
+            session.kind is SessionKind.AGENT
+            and session.native_session_id is not None
+            and session.state in {SessionState.RUNNING, SessionState.UNLOADED}
+            and adapter is not None
+        )
 
     def action_new_session(self) -> None:
         """Begin the user-driven New Agent Session modal workflow."""
@@ -601,6 +678,21 @@ class AgentHubApp(App):
         pending = self._resolve_native_link_target()
         if pending is None:
             return
+        self._begin_native_session_link(pending.id)
+
+    def _begin_native_session_link(self, session_id: str) -> None:
+        """Open native reconciliation for one explicit AgentHub session ID."""
+
+        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
+            return
+        try:
+            pending = self.session_manager.get(session_id)
+        except KeyError:
+            self.notify(
+                "The selected Agent session is no longer available.",
+                severity="warning",
+            )
+            return
         if pending.kind is not SessionKind.AGENT:
             self.notify(
                 "The selected session is not an Agent and cannot be linked.",
@@ -655,11 +747,24 @@ class AgentHubApp(App):
                 severity="warning",
             )
             return
+        self._request_native_session_delete(session_id)
+
+    def _request_native_session_delete(self, session_id: str) -> None:
+        """Validate one explicit session ID and request native deletion."""
+
+        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
+            return
         try:
             session = self.session_manager.get(session_id)
         except KeyError:
             self.notify(
-                "The highlighted Agent session is no longer available.",
+                "The selected Agent session is no longer available.",
+                severity="warning",
+            )
+            return
+        if session.kind is not SessionKind.AGENT:
+            self.notify(
+                "The selected session is not an Agent and cannot be deleted.",
                 severity="warning",
             )
             return
@@ -690,6 +795,12 @@ class AgentHubApp(App):
                 NativeSessionDeletionUnavailableError.for_provider(
                     session.harness.display_name
                 ),
+            )
+            return
+        if session.state not in {SessionState.RUNNING, SessionState.UNLOADED}:
+            self.notify(
+                "The selected Agent session can no longer be deleted.",
+                severity="warning",
             )
             return
 

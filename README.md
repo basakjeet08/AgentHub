@@ -140,6 +140,16 @@ shows only the harness icon and title with an icon legend below the list. The
 other entries invoke the same application action as their corresponding
 keyboard shortcut.
 
+The palette also captures the session currently open in the main terminal area,
+even when the sidebar has keyboard focus. Depending on that active Agent's state,
+the palette can offer `Link "…"` or `Delete "…"`. Providers without native
+deletion support, such as Antigravity, show provider-specific guidance when
+Delete is selected instead of opening a confirmation. Merely highlighting
+another sidebar row does not retarget these commands: open that session with
+`Enter` first. Home and active Shell sessions do not add lifecycle commands.
+Resume an unloaded Agent directly with `Enter` in the sidebar, or find it through
+the searchable Open Session picker.
+
 Home has no terminal to protect, so these application shortcuts work there
 without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and `1` through `9`
 moves the highlight cursor to the nth agent, while `Enter` switches to it. `Ctrl+S`
