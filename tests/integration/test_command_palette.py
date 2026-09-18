@@ -5,6 +5,15 @@ from textual.command import CommandList, CommandPalette
 
 from agenthub.app import AgentHubApp
 
+PALETTE_COMMAND_TITLES = {
+    "New Agent",
+    "New Shell",
+    "Refresh Native Sessions",
+    "Open Session",
+    "Quit AgentHub",
+    "Shortcuts",
+}
+
 
 @pytest.mark.parametrize("size", [(100, 36), (60, 20), (40, 15)])
 async def test_command_palette_is_centered_and_contained(
@@ -39,7 +48,7 @@ async def test_command_palette_is_centered_and_contained(
         assert not isinstance(app.screen, CommandPalette)
 
 
-async def test_command_palette_calls_textual_keys_help_shortcuts() -> None:
+async def test_command_palette_exposes_agenthub_actions() -> None:
     app = AgentHubApp()
 
     async with app.run_test(size=(100, 36)) as pilot:
@@ -50,5 +59,26 @@ async def test_command_palette_calls_textual_keys_help_shortcuts() -> None:
         command_list = app.screen.query_one(CommandList)
         command_titles = [str(option.prompt).splitlines()[0] for option in command_list.options]
 
-        assert "Shortcuts" in command_titles
+        assert PALETTE_COMMAND_TITLES <= set(command_titles)
         assert "Keys" not in command_titles
+        assert "Quit" not in command_titles
+        assert command_titles.count("Shortcuts") == 1
+        assert command_titles.count("Quit AgentHub") == 1
+
+
+async def test_command_palette_callbacks_reuse_existing_actions() -> None:
+    app = AgentHubApp()
+
+    async with app.run_test():
+        commands = {
+            command.title: command for command in app.get_system_commands(app.screen)
+        }
+
+        assert commands["New Agent"].callback == app.action_new_session
+        assert commands["New Shell"].callback == app.action_new_shell
+        assert commands["Refresh Native Sessions"].callback == app.action_resync_sessions
+        assert commands["Open Session"].callback == app.action_open_session
+        assert "Focus Agents" not in commands
+        assert "Focus Shells" not in commands
+        assert commands["Quit AgentHub"].callback == app.action_quit
+        assert commands["Shortcuts"].callback == app.action_show_help_panel

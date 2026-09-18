@@ -36,6 +36,7 @@ from agenthub.ui.modals import (
     NativeSessionDeleteModal,
     NativeSessionLinkModal,
     SessionNameModal,
+    SessionSelectionModal,
     WorkingDirectoryModal,
 )
 
@@ -43,6 +44,7 @@ _SESSION_WORKFLOW_MODALS = (
     HarnessSelectionModal,
     NativeSessionDeleteModal,
     NativeSessionLinkModal,
+    SessionSelectionModal,
     SessionNameModal,
     WorkingDirectoryModal,
 )
@@ -473,7 +475,7 @@ class AgentHubApp(App):
             self.show_session(session.id)
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
-        """Expose Textual's Keys command using AgentHub product language."""
+        """Expose existing AgentHub actions through Textual's command palette."""
 
         for command in super().get_system_commands(screen):
             if command.title == "Keys":
@@ -483,8 +485,36 @@ class AgentHubApp(App):
                     command.callback,
                     command.discover,
                 )
+            elif command.title == "Quit":
+                yield SystemCommand(
+                    "Quit AgentHub",
+                    command.help,
+                    command.callback,
+                    command.discover,
+                )
             else:
                 yield command
+
+        yield SystemCommand(
+            "New Agent",
+            "Create a new coding-agent session",
+            self.action_new_session,
+        )
+        yield SystemCommand(
+            "New Shell",
+            "Create a new Fish shell session",
+            self.action_new_shell,
+        )
+        yield SystemCommand(
+            "Refresh Native Sessions",
+            "Discover provider-native conversations again",
+            self.action_resync_sessions,
+        )
+        yield SystemCommand(
+            "Open Session",
+            "Select and open an Agent or Shell session",
+            self.action_open_session,
+        )
 
     def action_new_session(self) -> None:
         """Begin the user-driven New Agent Session modal workflow."""
@@ -501,6 +531,66 @@ class AgentHubApp(App):
         """Refresh provider-native sessions without restarting live runtimes."""
 
         self._start_native_session_discovery()
+
+    def action_open_session(self) -> None:
+        """Open the unified picker for managed Agent and Shell sessions."""
+
+        if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
+            return
+
+        sessions = self._openable_sessions()
+        if not sessions:
+            self.notify(
+                "No sessions are available to open.",
+                severity="information",
+            )
+            return
+
+        self.push_screen(
+            SessionSelectionModal(sessions),
+            self._on_open_session_selected,
+        )
+
+    def _openable_sessions(self) -> tuple[AgentSession, ...]:
+        """Return sessions whose existing runtime or native identity can be opened."""
+
+        return tuple(
+            session
+            for session in self.session_manager.sessions
+            if (
+                session.terminal is not None
+                and session.state is SessionState.RUNNING
+            )
+            or (
+                session.kind is SessionKind.AGENT
+                and session.native_session_id is not None
+                and session.state is SessionState.UNLOADED
+            )
+        )
+
+    async def _on_open_session_selected(self, session_id: str | None) -> None:
+        """Revalidate and activate the session selected by the picker."""
+
+        if session_id is None:
+            return
+
+        try:
+            session = self.session_manager.get(session_id)
+        except KeyError:
+            self.notify(
+                "The selected session is no longer available.",
+                severity="warning",
+            )
+            return
+
+        if session not in self._openable_sessions():
+            self.notify(
+                "The selected session can no longer be opened.",
+                severity="warning",
+            )
+            return
+
+        await self.activate_session(session.id)
 
     def action_link_native_session(self) -> None:
         """Open reconciliation for the highlighted or active fresh Agent."""

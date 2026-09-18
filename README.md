@@ -132,6 +132,14 @@ Ctrl+A, 1...9, Enter  Navigate / open agent
 Ctrl+S, ↑↓, Enter     Navigate / open shell
 ```
 
+Ctrl+P opens a searchable command palette for New Agent, New Shell, Refresh
+Native Sessions, Open Session, Quit AgentHub, and Shortcuts. Open Session
+presents running Agents, unloaded native Agents, and running Shells in one
+picker. Its search matches harness names and session titles, while each result
+shows only the harness icon and title with an icon legend below the list. The
+other entries invoke the same application action as their corresponding
+keyboard shortcut.
+
 Home has no terminal to protect, so these application shortcuts work there
 without requiring an unlock. In the sidebar, `Ctrl+A` focuses agents and `1` through `9`
 moves the highlight cursor to the nth agent, while `Enter` switches to it. `Ctrl+S`
