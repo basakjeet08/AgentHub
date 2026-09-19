@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from agenthub.activity import AgentActivity
 from agenthub.harnesses import AgentHarness
 from agenthub.terminal import AgentTerminal
 
@@ -38,3 +39,4 @@ class AgentSession:
     terminal: AgentTerminal | None
     native_session_id: str | None = None
     state: SessionState = SessionState.RUNNING
+    activity: AgentActivity = AgentActivity.UNKNOWN

@@ -3,6 +3,7 @@
 from pathlib import Path
 from uuid import uuid4
 
+from agenthub.activity import AgentActivity, AgentActivityEvent, reduce_activity
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import NativeSession
 from agenthub.terminal import AgentTerminal
@@ -35,6 +36,24 @@ class SessionManager:
         """Return one managed session by its ephemeral AgentHub identity."""
 
         return self._sessions[session_id]
+
+    def apply_activity_event(self, event: AgentActivityEvent) -> bool:
+        """Apply an event to its exact loaded Agent, returning whether it changed."""
+
+        session = self._sessions.get(event.session_id)
+        if (
+            session is None
+            or session.kind is not SessionKind.AGENT
+            or session.terminal is None
+            or session.state is not SessionState.RUNNING
+        ):
+            return False
+
+        activity = reduce_activity(session.activity, event)
+        if activity is session.activity:
+            return False
+        session.activity = activity
+        return True
 
     def create(
         self,
@@ -244,6 +263,7 @@ class SessionManager:
             raise ValueError(f"session {session_id!r} already has a terminal")
         session.terminal = terminal
         session.state = SessionState.RUNNING
+        session.activity = AgentActivity.UNKNOWN
         return session
 
     def detach_terminal(self, session_id: str) -> AgentTerminal | None:
@@ -253,6 +273,7 @@ class SessionManager:
         terminal = session.terminal
         session.terminal = None
         session.state = SessionState.UNLOADED
+        session.activity = AgentActivity.UNKNOWN
         return terminal
 
     def begin_native_deletion(self, session_id: str) -> AgentTerminal | None:
@@ -267,6 +288,7 @@ class SessionManager:
         terminal = session.terminal
         session.terminal = None
         session.state = SessionState.DELETING
+        session.activity = AgentActivity.UNKNOWN
         if self._active_session_id == session_id:
             self._active_session_id = None
         return terminal

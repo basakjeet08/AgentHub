@@ -1,7 +1,10 @@
 """Terminal widget adapter: the textual-tty and Bitty integration boundary."""
 
 import asyncio
+import json
+import os
 import subprocess
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from time import monotonic
@@ -138,9 +141,11 @@ class AgentTerminal(TtyTerminal):
         self._last_paste_key_at = 0.0
         self._paste_lock = asyncio.Lock()
         self._selection_anchor_cell: Offset | None = None
-        launch_command = harness.command if command is None else tuple(command)
+        self._child_command = harness.command if command is None else tuple(command)
+        self._environment_overrides: dict[str, str] = {}
+        self._environment_file: Path | None = None
         super().__init__(
-            command=list(build_launch_command(launch_directory, launch_command)),
+            command=list(build_launch_command(launch_directory, self._child_command)),
             name=name,
             id=id,
             classes=classes,
@@ -174,6 +179,35 @@ class AgentTerminal(TtyTerminal):
         return self._process is not None and self._process.poll() is None
 
     @property
+    def child_command(self) -> tuple[str, ...]:
+        """Return the provider command that the terminal launcher will execute."""
+
+        return self._child_command
+
+    def configure_launch(
+        self,
+        *,
+        command: Sequence[str] | None = None,
+        environment_overrides: dict[str, str] | None = None,
+    ) -> None:
+        """Configure an unmounted child without changing the parent environment."""
+
+        if self.is_mounted or self._process is not None:
+            raise RuntimeError("a mounted terminal launch cannot be reconfigured")
+        if command is not None:
+            if not command:
+                raise ValueError("a terminal launch command may not be empty")
+            self._child_command = tuple(command)
+        if environment_overrides is not None:
+            for key, value in environment_overrides.items():
+                if not key or "=" in key or "\x00" in key or "\x00" in value:
+                    raise ValueError("invalid child environment override")
+            self._environment_overrides = dict(environment_overrides)
+        self.board.command = list(
+            build_launch_command(self.working_directory, self._child_command)
+        )
+
+    @property
     def text_selection(self) -> Selection | None:
         """Hide selection only while the upstream renderer paints terminal cells."""
 
@@ -201,7 +235,19 @@ class AgentTerminal(TtyTerminal):
         # automatic parent call because this adapter invokes it explicitly.
         event.prevent_default()
         self._validate_working_directory(self.working_directory)
-        await super().on_mount()
+        environment_file = self._write_environment_file()
+        self.board.command = list(
+            build_launch_command(
+                self.working_directory,
+                self._child_command,
+                environment_file=environment_file,
+            )
+        )
+        try:
+            await super().on_mount()
+        except Exception:
+            self._remove_environment_file()
+            raise
 
     async def on_unmount(self, event: events.Unmount) -> None:
         """Stop the terminal and await Bitty's asynchronous cleanup."""
@@ -209,6 +255,7 @@ class AgentTerminal(TtyTerminal):
         # Own the complete parent cleanup sequence so its cancelled reader task
         # and child process can be awaited before Textual finishes unmounting.
         event.prevent_default()
+        self._remove_environment_file()
         reader_task = self.board.host._reader_task
         process = self._process
         super().on_unmount()
@@ -218,6 +265,48 @@ class AgentTerminal(TtyTerminal):
 
         if process is not None:
             await self._wait_for_process_exit(process)
+
+    def _write_environment_file(self) -> Path | None:
+        """Create a mode-0600 one-shot file consumed by the child launcher."""
+
+        self._remove_environment_file()
+        if not self._environment_overrides:
+            return None
+        descriptor: int | None = None
+        raw_path: str | None = None
+        try:
+            descriptor, raw_path = tempfile.mkstemp(prefix="agenthub-env-", suffix=".json")
+            encoded = json.dumps(self._environment_overrides).encode("utf-8")
+            offset = 0
+            while offset < len(encoded):
+                written = os.write(descriptor, encoded[offset:])
+                if written == 0:
+                    raise OSError("could not write child environment overrides")
+                offset += written
+            os.close(descriptor)
+            descriptor = None
+            self._environment_file = Path(raw_path)
+            return self._environment_file
+        except OSError:
+            if descriptor is not None:
+                os.close(descriptor)
+            if raw_path is not None:
+                try:
+                    Path(raw_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            return None
+
+    def _remove_environment_file(self) -> None:
+        """Remove an unconsumed child environment file when possible."""
+
+        path = self._environment_file
+        self._environment_file = None
+        if path is not None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     @staticmethod
     async def _wait_for_process_exit(process: subprocess.Popen) -> None:

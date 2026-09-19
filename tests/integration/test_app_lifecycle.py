@@ -5,6 +5,7 @@ from pathlib import Path
 
 from textual.widgets import ContentSwitcher, Static
 
+from agenthub.activity import AgentActivity, AgentActivityEvent, AgentActivityEventKind
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
 from agenthub.sessions import AgentSession, SessionKind
@@ -78,3 +79,21 @@ async def test_only_child_exiting_returns_to_empty_home() -> None:
         status = app.query_one(AgentHubStatusBar)
         assert status.query_one("#session-count", Static).content == "Sessions 0"
         assert status.query_one("#running-count", Static).content == "Running 0"
+
+
+async def test_showing_a_done_session_acknowledges_its_attention_state(
+    sleeping_harness: AgentHarness,
+) -> None:
+    app, session = _app_with_session(sleeping_harness)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.session_manager.apply_activity_event(
+            AgentActivityEvent(session.id, AgentActivityEventKind.TURN_COMPLETED)
+        )
+        assert session.activity is AgentActivity.DONE
+
+        app.show_session(session.id)
+        await pilot.pause()
+
+        assert session.activity is AgentActivity.IDLE

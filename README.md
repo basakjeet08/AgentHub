@@ -27,6 +27,10 @@ multi-session runtime architecture:
   styles.
 - It represents logical native conversations with `AgentSession`, keeps their
   terminal runtime optional, and coordinates them through `SessionManager`.
+- It keeps provider activity separate from runtime lifecycle through a
+  provider-neutral `AgentActivity` model and reducer. Loaded Agents show
+  Unknown, Idle, Working, Needs Input, or Done in the sidebar; Codex
+  drives those states through its native lifecycle hooks.
 - It launches each terminal child in its session's normalized working directory
   without changing AgentHub's own directory or using a shell command.
 - It discovers Codex, OpenCode, Devin, and Antigravity sessions through
@@ -75,6 +79,12 @@ multi-session runtime architecture:
 The picker lists harnesses supported by AgentHub even when their executables are
 not installed. Each native CLI owns its authentication and first-run setup.
 
+Codex activity hooks require the normal Codex trust review. On the first Codex
+launch after this feature is installed, open `/hooks`, inspect the static
+AgentHub hook command, and trust it. Until trusted, Codex continues normally and
+the sidebar remains at its initial `Idle` state instead of receiving live
+updates. AgentHub does not bypass hook trust.
+
 ## Current Limitations
 
 AgentHub does not yet provide:
@@ -82,6 +92,8 @@ AgentHub does not yet provide:
 - a complete shortcuts dialog;
 - generic user-initiated stopping or restarting of sessions;
 - persisted session metadata;
+- live activity reporting for Devin, OpenCode, or Antigravity (their loaded
+  rows remain `Unknown`);
 - creation or renaming of native harness conversations;
 - non-interactive Antigravity conversation deletion (the native CLI currently
   exposes deletion only through its interactive conversation picker).

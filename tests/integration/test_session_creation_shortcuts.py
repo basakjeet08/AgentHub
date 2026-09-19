@@ -180,9 +180,10 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
             for option_list in sidebar.query(OptionList)
             for option in option_list.options
         ]
+        activity_indent = " " * len("Test Sleeper · ")
         assert option_prompts == [
-            "▌ Test Sleeper · New session",
-            "  Test Sleeper · New session",
+            f"▌ Test Sleeper · New session\n▌ {activity_indent}· Unknown",
+            f"  Test Sleeper · New session\n  {activity_indent}· Unknown",
         ]
 
         status = app.query_one(AgentHubStatusBar)

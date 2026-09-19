@@ -10,14 +10,26 @@ from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical
 from textual.content import Content
 from textual.message import Message
+from textual.timer import Timer
 from textual.widgets import OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
+from agenthub.activity import AgentActivity
 from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, OPENCODE, AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 
 _ACTIVE_INDICATOR = "▌"
 _INACTIVE_INDICATOR = " "
+_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+_ANIMATION_TICK_SECONDS = 0.05
+_WORKING_TICKS_PER_FRAME = 2
+_ANIMATION_CYCLE_TICKS = 20
+_STATIC_ACTIVITY_PRESENTATION = {
+    AgentActivity.UNKNOWN: ("·", "Unknown", "$text-muted"),
+    AgentActivity.IDLE: ("·", "Idle", "$text-muted"),
+    AgentActivity.NEEDS_INPUT: ("!", "Needs Input", "bold $warning"),
+    AgentActivity.DONE: ("✓", "Done", "$success"),
+}
 
 
 class SidebarTab(StrEnum):
@@ -76,6 +88,8 @@ class SessionSidebar(Vertical):
         self._active_session_id: str | None = None
         self._pending_cursor_session_id: str | None = None
         self._cursor_visible = True
+        self._animation_tick = 0
+        self._activity_animation_timer: Timer | None = None
         self._harnesses: tuple[AgentHarness, ...] = (
             (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
             if harnesses is None
@@ -108,6 +122,17 @@ class SessionSidebar(Vertical):
         if next_snapshot == self._session_snapshot_value:
             return
 
+        activity_changes = self._activity_only_changes(
+            self._session_snapshot_value,
+            next_snapshot,
+        )
+        if activity_changes is not None:
+            self._sessions = next_sessions
+            self._session_snapshot_value = next_snapshot
+            if self.is_mounted:
+                self.call_next(self._refresh_activity_rows, activity_changes)
+            return
+
         if self.is_mounted:
             self._remember_visible_cursor()
         self._sessions = next_sessions
@@ -117,9 +142,26 @@ class SessionSidebar(Vertical):
             self.call_next(self._refresh_presentation)
 
     @staticmethod
+    def _activity_only_changes(
+        current: tuple[tuple[str, str, str, str, SessionKind, bool, AgentActivity], ...],
+        updated: tuple[tuple[str, str, str, str, SessionKind, bool, AgentActivity], ...],
+    ) -> frozenset[str] | None:
+        """Return changed IDs when activity is the only presentation difference."""
+
+        if len(current) != len(updated):
+            return None
+        changed: set[str] = set()
+        for old_row, new_row in zip(current, updated, strict=True):
+            if old_row[:-1] != new_row[:-1]:
+                return None
+            if old_row[-1] is not new_row[-1]:
+                changed.add(new_row[0])
+        return frozenset(changed)
+
+    @staticmethod
     def _session_snapshot(
         sessions: tuple[AgentSession, ...],
-    ) -> tuple[tuple[str, str, str, str, SessionKind, bool], ...]:
+    ) -> tuple[tuple[str, str, str, str, SessionKind, bool, AgentActivity], ...]:
         """Capture the session fields that affect sidebar presentation."""
 
         return tuple(
@@ -130,6 +172,7 @@ class SessionSidebar(Vertical):
                 session.harness.icon,
                 session.kind,
                 session.terminal is None,
+                session.activity,
             )
             for session in sessions
         )
@@ -161,11 +204,41 @@ class SessionSidebar(Vertical):
             if session.harness.icon
             else f"{session.harness.display_name} · "
         )
+        if session.kind is SessionKind.AGENT and session.terminal is not None:
+            activity_indicator, activity_label, activity_style = (
+                self._activity_presentation(session.activity)
+            )
+            activity_indent = " " * Content(badge).cell_length
+            indicator_part: str | tuple[str, str] = (
+                (f"{indicator} ", "$secondary") if is_active else f"{indicator} "
+            )
+            activity_indicator_part: str | tuple[str, str] = (
+                (f"\n{indicator} ", "$secondary") if is_active else f"\n{indicator} "
+            )
+            return Content.assemble(
+                indicator_part,
+                (badge, "$foreground"),
+                (session.name, "bold $foreground" if is_active else "$foreground"),
+                activity_indicator_part,
+                activity_indent,
+                (f"{activity_indicator} {activity_label}", activity_style),
+            )
         prompt = Content(f"{indicator} {badge}{session.name}")
         prompt = prompt.stylize("$foreground", 2)
         if is_active:
             prompt = prompt.stylize("$secondary", 0, 1)
         return prompt.stylize("bold", 2) if is_active else prompt
+
+    def _activity_presentation(self, activity: AgentActivity) -> tuple[str, str, str]:
+        """Render provider-neutral activity using the shared animation phase."""
+
+        if activity is AgentActivity.WORKING:
+            frame = _SPINNER_FRAMES[
+                (self._animation_tick // _WORKING_TICKS_PER_FRAME)
+                % len(_SPINNER_FRAMES)
+            ]
+            return frame, "Working...", "$primary"
+        return _STATIC_ACTIVITY_PRESENTATION[activity]
 
     def _options_for_selected_tab(self) -> tuple[Option, ...]:
         """Build selectable options for only the current category."""
@@ -212,6 +285,12 @@ class SessionSidebar(Vertical):
     def on_mount(self) -> None:
         """Synchronize empty-state and legend visibility after composition."""
 
+        self._activity_animation_timer = self.set_interval(
+            _ANIMATION_TICK_SECONDS,
+            self._advance_activity_animation,
+            name="sidebar-activity-animation",
+            pause=True,
+        )
         self.call_after_refresh(self._refresh_presentation)
 
     def _refresh_presentation(self, *, restore_focus: bool | None = None) -> None:
@@ -244,6 +323,51 @@ class SessionSidebar(Vertical):
             self._restore_selected_cursor(focus=had_focus)
         else:
             session_list.highlighted = None
+        self._sync_activity_animation()
+
+    def _visible_animated_sessions(self) -> tuple[AgentSession, ...]:
+        """Return visible Loaded Agents whose activity has animated frames."""
+
+        if self._selected_tab is not SidebarTab.LOADED:
+            return ()
+        return tuple(
+            session
+            for session in self._sessions_for_tab(SidebarTab.LOADED)
+            if session.activity is AgentActivity.WORKING
+        )
+
+    def _sync_activity_animation(self) -> None:
+        """Run the single shared timer only while an animated row is visible."""
+
+        timer = self._activity_animation_timer
+        if timer is None:
+            return
+        if self._visible_animated_sessions():
+            timer.resume()
+        else:
+            timer.pause()
+
+    def _advance_activity_animation(self) -> None:
+        """Advance shared spinner phases and refresh only frames that changed."""
+
+        previous_tick = self._animation_tick
+        self._animation_tick = (self._animation_tick + 1) % _ANIMATION_CYCLE_TICKS
+        if (
+            previous_tick // _WORKING_TICKS_PER_FRAME
+            != self._animation_tick // _WORKING_TICKS_PER_FRAME
+        ):
+            self._refresh_option_prompts(
+                frozenset(
+                    session.id
+                    for session in self._visible_animated_sessions()
+                )
+            )
+
+    def _refresh_activity_rows(self, session_ids: frozenset[str]) -> None:
+        """Refresh only sessions whose activity state changed."""
+
+        self._refresh_option_prompts(session_ids)
+        self._sync_activity_animation()
 
     def _remember_visible_cursor(self) -> None:
         """Remember the selected tab's highlighted session identity."""
@@ -341,13 +465,18 @@ class SessionSidebar(Vertical):
         self._active_session_id = None
         self._refresh_option_prompts()
 
-    def _refresh_option_prompts(self) -> None:
+    def _refresh_option_prompts(
+        self,
+        session_ids: frozenset[str] | None = None,
+    ) -> None:
         """Refresh row styles after the active session changes."""
 
         if not self.is_mounted:
             return
         session_list = self.query_one("#sidebar-session-list", OptionList)
         for session in self._sessions_for_tab(self._selected_tab):
+            if session_ids is not None and session.id not in session_ids:
+                continue
             try:
                 session_list.replace_option_prompt(session.id, self._option_prompt(session))
             except OptionDoesNotExist:

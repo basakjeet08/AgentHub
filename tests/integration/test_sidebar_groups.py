@@ -2,10 +2,13 @@
 
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 
 from textual.app import App, ComposeResult
+from textual.content import Content
 from textual.widgets import OptionList, Static
 
+from agenthub.activity import AgentActivity
 from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, FISH, OPENCODE, AgentHarness
 from agenthub.native_sessions import NativeSession
 from agenthub.sessions import AgentSession, SessionKind, SessionManager
@@ -261,8 +264,177 @@ async def test_active_style_remains_independent_from_cursor(
         await pilot.press("down")
 
         assert sidebar.selected_session_id == sessions[1].id
-        assert str(session_list.get_option(sessions[0].id).prompt).startswith("▌")
-        assert not str(session_list.get_option(sessions[1].id).prompt).startswith("▌")
+        active_lines = str(session_list.get_option(sessions[0].id).prompt).splitlines()
+        inactive_lines = str(session_list.get_option(sessions[1].id).prompt).splitlines()
+        assert all(line.startswith("▌") for line in active_lines)
+        assert all(not line.startswith("▌") for line in inactive_lines)
+
+
+async def test_loaded_agent_activity_updates_and_unloaded_agent_hides_it(
+    sleeping_harness: AgentHarness,
+) -> None:
+    manager = SessionManager()
+    loaded = manager.create(
+        name="Loaded",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    unloaded = _unloaded_session(manager, sleeping_harness, "native", "Unloaded")
+    shell = manager.create(
+        name="Shell",
+        kind=SessionKind.SHELL,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    app = SidebarTestApp(manager.sessions)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        session_list = sidebar.query_one("#sidebar-session-list", OptionList)
+
+        expected_labels = {
+            AgentActivity.UNKNOWN: "· Unknown",
+            AgentActivity.IDLE: "· Idle",
+            AgentActivity.WORKING: "⠋ Working...",
+            AgentActivity.NEEDS_INPUT: "! Needs Input",
+            AgentActivity.DONE: "✓ Done",
+        }
+        for activity, label in expected_labels.items():
+            loaded.activity = activity
+            sidebar._animation_tick = 0
+            sidebar.update_sessions(manager.sessions)
+            await pilot.pause()
+            lines = str(session_list.get_option(loaded.id).prompt).splitlines()
+            assert lines == [
+                "  Test Sleeper · Loaded",
+                f"  {' ' * Content('Test Sleeper · ').cell_length}{label}",
+            ]
+
+        sidebar.select_tab(SidebarTab.UNLOADED)
+        unloaded_prompt = str(session_list.get_option(unloaded.id).prompt)
+        assert "Unknown" not in unloaded_prompt
+        sidebar.select_tab(SidebarTab.SHELLS)
+        shell_prompt = str(session_list.get_option(shell.id).prompt)
+        assert "Unknown" not in shell_prompt
+
+
+async def test_activity_text_aligns_with_title_after_wide_provider_icon() -> None:
+    manager = SessionManager()
+    session = manager.create(
+        name="Aligned title",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=CODEX,
+    )
+    session.activity = AgentActivity.WORKING
+    app = SidebarTestApp(manager.sessions)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        option = app.query_one("#sidebar-session-list", OptionList).get_option(session.id)
+        title_line, activity_line = str(option.prompt).splitlines()
+
+        title_prefix = title_line[: title_line.index("Aligned title")]
+        activity_prefix = activity_line[: activity_line.index("⠋")]
+        assert Content(title_prefix).cell_length == Content(activity_prefix).cell_length
+
+
+async def test_active_sessions_share_one_sidebar_animation_timer(
+    sleeping_harness: AgentHarness,
+) -> None:
+    first, second = _sessions(
+        sleeping_harness,
+        SessionKind.AGENT,
+        "First Active Agent",
+        "Second Active Agent",
+    )
+    first.activity = AgentActivity.WORKING
+    second.activity = AgentActivity.WORKING
+    app = SidebarTestApp((first, second))
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        session_list = sidebar.query_one("#sidebar-session-list", OptionList)
+        timer = sidebar._activity_animation_timer
+        assert timer is not None
+        timer.pause()
+        matching_timers = [
+            candidate
+            for candidate in sidebar._timers
+            if candidate.name == "sidebar-activity-animation"
+        ]
+        assert matching_timers == [timer]
+
+        sidebar._animation_tick = 0
+        sidebar._refresh_option_prompts()
+        assert "⠋ Working..." in str(session_list.get_option(first.id).prompt)
+        assert "⠋ Working..." in str(session_list.get_option(second.id).prompt)
+
+        sidebar._advance_activity_animation()
+        sidebar._advance_activity_animation()
+        assert "⠙ Working..." in str(session_list.get_option(first.id).prompt)
+        assert "⠙ Working..." in str(session_list.get_option(second.id).prompt)
+
+
+async def test_static_activity_does_not_animate(
+    sleeping_harness: AgentHarness,
+) -> None:
+    needs_input, done = _sessions(
+        sleeping_harness,
+        SessionKind.AGENT,
+        "Needs Input Agent",
+        "Done Agent",
+    )
+    needs_input.activity = AgentActivity.NEEDS_INPUT
+    done.activity = AgentActivity.DONE
+    app = SidebarTestApp((needs_input, done))
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        session_list = sidebar.query_one("#sidebar-session-list", OptionList)
+        before = tuple(str(option.prompt) for option in session_list.options)
+
+        for _ in range(10):
+            sidebar._advance_activity_animation()
+
+        assert tuple(str(option.prompt) for option in session_list.options) == before
+        assert "! Needs Input" in before[0]
+        assert "✓ Done" in before[1]
+
+
+async def test_activity_change_refreshes_only_the_changed_session(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    first, second = _sessions(
+        sleeping_harness,
+        SessionKind.AGENT,
+        "First",
+        "Second",
+    )
+    first.activity = AgentActivity.IDLE
+    second.activity = AgentActivity.IDLE
+    app = SidebarTestApp((first, second))
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sidebar = app.query_one(SessionSidebar)
+        session_list = sidebar.query_one("#sidebar-session-list", OptionList)
+        replace_prompt = Mock(wraps=session_list.replace_option_prompt)
+        monkeypatch.setattr(session_list, "replace_option_prompt", replace_prompt)
+
+        second.activity = AgentActivity.DONE
+        sidebar.update_sessions((first, second))
+        await pilot.pause()
+
+        assert replace_prompt.call_count == 1
+        assert replace_prompt.call_args.args[0] == second.id
+        assert "· Idle" in str(session_list.get_option(first.id).prompt)
+        assert "✓ Done" in str(session_list.get_option(second.id).prompt)
 
 
 async def test_empty_tabs_keep_focus_and_show_category_copy(
@@ -321,7 +493,9 @@ async def test_sidebar_displays_icon_and_ellipsizes_long_session_names(
     async with app.run_test(size=(60, 20)) as pilot:
         await pilot.pause()
         session_list = app.query_one("#sidebar-session-list", OptionList)
-        assert str(session_list.get_option(session.id).prompt).startswith("  🌀")
+        prompt_lines = str(session_list.get_option(session.id).prompt).splitlines()
+        assert prompt_lines[0].startswith("  🌀")
+        assert prompt_lines[1] == "     · Unknown"
         assert str(session_list.styles.text_overflow) == "ellipsis"
         assert session_list.get_option(session.id).prompt.cell_length > session_list.size.width
 

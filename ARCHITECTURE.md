@@ -76,7 +76,10 @@ bittty / PTY → coding agent`.
   native-backed Agent with only its provider, removes disposable unidentified
   agents and shells, and shows Home after an active exit;
 - exposes contextual Delete for the active native-backed Agent while delegating
-  native deletion to the selected session's provider adapter.
+  native deletion to the selected session's provider adapter;
+- starts an authenticated loopback activity receiver only when a Codex runtime
+  needs one, applies normalized events to the exact logical session, and
+  refreshes the sidebar when activity changes.
 
 `SessionManager` currently:
 
@@ -92,12 +95,16 @@ bittty / PTY → coding agent`.
 - attaches and detaches disposable terminal runtimes;
 - coordinates native-deletion state and removes a logical row only after the
   provider operation succeeds and absence is verified.
+- applies normalized activity events only to their exact loaded Agent session,
+  without changing lifecycle state, and resets activity when a runtime is
+  detached or enters deletion.
 
 `AgentSession` currently connects an ephemeral AgentHub ID and name with its
 native session ID, optional working directory, explicit agent-or-shell kind,
-hosted CLI definition, lifecycle state, and optional terminal runtime. The same
-model is used for coding-agent and Fish sessions; Fish has no native ID and is
-not discovered.
+hosted CLI definition, lifecycle state, provider-neutral activity state, and
+optional terminal runtime. The same model is used for coding-agent and Fish
+sessions; Fish has no native ID, is not discovered, and does not receive Agent
+activity updates.
 
 `AgentHarness` is immutable semantic data containing a stable ID, display name,
 tuple command, and an optional terminal-independent scrolling policy. It does
@@ -109,6 +116,8 @@ not create widgets or import Bitty.
 - consumes an `AgentHarness`;
 - launches the harness in its session working directory through a shell-free
   child helper that replaces itself with the harness process;
+- can apply validated child-only environment overrides through a mode-0600
+  one-shot file without mutating AgentHub's global environment;
 - converts semantic key modifiers into Bitty constants;
 - converts mouse-wheel movement into agent-specific transcript navigation;
 - retains bounded styled normal-screen scrollback for harnesses without their
@@ -120,6 +129,49 @@ not create widgets or import Bitty.
 - associates process-exit messages with the terminal that emitted them;
 - delegates terminal emulation and process interaction to
   `textual-tty`/`bittty`.
+
+Agent activity is modeled independently from `SessionState` through
+`AgentActivity`, normalized `AgentActivityEvent` values, and a pure reducer.
+Every session defaults to `UNKNOWN`; only loaded Agent sessions accept events,
+and detaching or deleting a runtime resets its activity to `UNKNOWN`. Codex
+launches receive a static passive hook definition plus per-runtime
+`AGENTHUB_SESSION_ID`, `AGENTHUB_ACTIVITY_ENDPOINT`, and
+`AGENTHUB_ACTIVITY_TOKEN` values in the child environment. The hook helper
+forwards the raw event to an ephemeral loopback receiver, which authenticates
+and normalizes it before `SessionManager` applies the reducer. No provider
+payload content enters the core model.
+
+Loaded Agent rows render the activity as secondary status text. `NEEDS_INPUT`
+has the strongest emphasis. `DONE` is an attention state and becomes `IDLE`
+when the user opens or focuses that session. Unloaded Agents do not show an
+activity value. Receiver or tracking-configuration failure leaves activity
+`UNKNOWN` and does not prevent Codex from starting. A successfully mounted
+tracked runtime is initialized to `IDLE`; because AgentHub cannot detect Codex
+hook trust, an untrusted hook leaves that initial state unchanged. AgentHub
+never bypasses Codex hook trust, answers permissions, changes tool output, or
+blocks a provider hook.
+
+Prompt processing and tool execution intentionally share the single `WORKING`
+state. Its sidebar indicator is animated by one shared timer. Since passive
+Codex hooks run asynchronously, the reducer also prevents a late tool-start or
+tool-finish observation from overwriting `NEEDS_INPUT` or `DONE`.
+
+The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
+sequences were:
+
+```text
+normal turn:       SessionStart → UserPromptSubmit → Stop → SessionEnd
+tool turn:         SessionStart → UserPromptSubmit → PreToolUse → PostToolUse → Stop → SessionEnd
+cancelled approval: SessionStart → UserPromptSubmit → PreToolUse → PermissionRequest → Interrupt → SessionEnd
+```
+
+`PermissionRequest` arrived after `PreToolUse` and did not include a
+`tool_use_id`; `Interrupt` therefore clears the waiting state without relying
+on a later tool or stop event. The dangerous trust-bypass option changed the
+observed permission mode and is not used in production. AgentHub relies on the
+normal Codex `/hooks` review flow. `SessionStart` and `SessionEnd` are not
+forwarded: mounting initializes `IDLE`, and runtime cleanup already follows
+process exit.
 
 Four coding-agent harnesses are registered:
 
@@ -979,9 +1031,15 @@ boundaries remain stable as more harnesses and session behavior are added:
 src/agenthub/
 ├── __init__.py
 ├── _terminal_launcher.py # child-side cwd setup and exec
-├── main.py              # entry point
+├── main.py              # TUI and provider-hook command entry point
 ├── app.py               # Textual application and DOM ownership
 ├── clipboard.py         # system-clipboard backend resolution and reads
+├── activity/
+│   ├── __init__.py      # public activity API
+│   ├── codex.py         # Codex hook bridge and event normalizer
+│   ├── model.py         # activity state and normalized events
+│   ├── receiver.py      # authenticated loopback event receiver
+│   └── reducer.py       # provider-neutral activity transitions
 ├── harnesses/
 │   ├── __init__.py      # public harness API
 │   ├── antigravity.py   # Antigravity definition
@@ -1039,6 +1097,8 @@ src/agenthub/
 tests/
 ├── conftest.py          # shared harmless process fixture
 ├── unit/
+│   ├── test_agent_activity.py
+│   ├── test_codex_activity.py
 │   ├── test_app.py
 │   ├── test_clipboard.py
 │   ├── test_harnesses.py
@@ -1120,12 +1180,23 @@ The architectural foundation is implemented:
     an attached runtime first, verifies provider absence, and preserves the
     logical row and native ID on failure. Unsupported providers show guidance
     without touching the runtime.
+17. Real Codex 0.155.1 traces validate normal, tool-use, permission,
+    completion, and interruption ordering.
+18. Provider-neutral activity state, normalized activity events, and a pure
+    reducer are separate from `SessionState`. `SessionManager` routes them only
+    to an exact loaded Agent and clears activity when its runtime detaches.
+19. Codex runtimes receive child-only correlation credentials and static native
+    lifecycle hooks. An authenticated loopback receiver normalizes those events
+    and Loaded Agent rows display activity, including attention acknowledgement
+    from `DONE` to `IDLE`.
 
 The remaining sequence is:
 
-1. Create and title native conversations through the provider adapters if a
+1. Add Devin, OpenCode V2, and Antigravity activity bridges in that order,
+   without inventing unsupported provider states.
+2. Create and title native conversations through the provider adapters if a
    reliable provider-native mechanism becomes available.
-2. Add a supported non-interactive Antigravity deletion entry point when its
+3. Add a supported non-interactive Antigravity deletion entry point when its
    provider exposes one; other adapters use their native deletion commands.
 
 ## Validation Tasks
@@ -1181,6 +1252,16 @@ The tiers can be run independently with `python -m pytest tests/unit` and
 
 The architectural foundation now has automated coverage for:
 
+- provider-neutral activity transitions, attention acknowledgement, and
+  forward-compatible handling of unknown events;
+- exact loaded-Agent activity routing without shell, unloaded-session,
+  cross-session, or lifecycle-state interference;
+- activity reset when a runtime detaches or enters native deletion;
+- Codex event normalization, static hook configuration, authenticated exact-ID
+  correlation, credential rejection, and neutral receiver failure;
+- child-only correlation environment injection without parent mutation;
+- Loaded sidebar activity rendering, unloaded activity suppression, and
+  `DONE` acknowledgement when a session is shown;
 - immutable harness configuration and stable registry identity;
 - provider-native discovery normalization and exact-ID resume launch specs;
 - unloaded sidebar sessions, lazy terminal creation, and running-runtime reuse;
@@ -1395,7 +1476,9 @@ active exits return to Home, and hidden exits do not interrupt the current
 terminal. Contextual Delete operates only on the active native-backed Agent,
 and Ctrl+D reaches a focused terminal unchanged.
 Locked hub shortcuts have been proven to fall through at the PTY-write
-boundary. Next: create native conversations through the adapters and add a
-supported non-interactive Antigravity deletion entry point. AgentHub persistence
-remains deferred.
+boundary. Codex lifecycle hooks now feed authenticated per-runtime activity to
+the Loaded sidebar; other providers remain `UNKNOWN`. Next: add Devin, OpenCode
+V2, and Antigravity activity bridges, then create native conversations through
+the adapters and add a supported non-interactive Antigravity deletion entry
+point. AgentHub persistence remains deferred.
 ```

@@ -15,6 +15,14 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher
 
+from agenthub.activity import (
+    ActivityReceiver,
+    ActivityRegistration,
+    AgentActivity,
+    AgentActivityEvent,
+    AgentActivityEventKind,
+    codex_command_with_activity_hooks,
+)
 from agenthub.harnesses import FISH, HARNESSES, AgentHarness
 from agenthub.native_sessions import (
     NATIVE_SESSION_ADAPTERS,
@@ -105,6 +113,8 @@ class AgentHubApp(App):
         self._discovery_in_progress = False
         self._provider_locks: dict[str, asyncio.Lock] = {}
         self._command_palette_target_id: str | None = None
+        self._activity_receiver: ActivityReceiver | None = None
+        self._activity_registrations: dict[str, ActivityRegistration] = {}
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -154,11 +164,16 @@ class AgentHubApp(App):
         self.call_after_refresh(self._refresh_status)
         self._start_native_session_discovery()
 
-    def on_unmount(self) -> None:
+    async def on_unmount(self) -> None:
         """Stop accepting discovery work when the application is unmounted."""
 
         for executor in tuple(self._discovery_executors):
             self._shutdown_discovery_executor(executor)
+        receiver = self._activity_receiver
+        self._activity_receiver = None
+        self._activity_registrations.clear()
+        if receiver is not None:
+            await receiver.close()
 
     @staticmethod
     def _terminal_dom_id(session_id: str) -> str:
@@ -181,6 +196,13 @@ class AgentHubApp(App):
         sidebar.move_cursor_to_session(session.id)
         self.call_after_refresh(self._highlight_active_sidebar)
         self.set_focus(session.terminal)
+        if self.session_manager.apply_activity_event(
+            AgentActivityEvent(
+                session_id=session.id,
+                kind=AgentActivityEventKind.ATTENTION_ACKNOWLEDGED,
+            )
+        ):
+            self._refresh_sidebar()
         return session
 
     async def activate_session(self, session_id: str) -> AgentSession:
@@ -220,8 +242,12 @@ class AgentHubApp(App):
             )
             terminal.id = self._terminal_dom_id(session.id)
             self.session_manager.attach_terminal(session.id, terminal)
+            activity_tracking_ready = await self._prepare_activity_tracking(session, terminal)
             await self.query_one("#session-content", ContentSwitcher).mount(terminal)
+            if activity_tracking_ready:
+                self._initialize_mounted_activity(session)
         except Exception as error:  # noqa: BLE001 - isolate provider/runtime boundary
+            self._revoke_activity_tracking(session.id)
             if session.terminal is terminal:
                 self.session_manager.detach_terminal(session.id)
             else:
@@ -859,6 +885,7 @@ class AgentHubApp(App):
         except ValueError as error:
             self.notify(f"Could not delete {session.name}: {error}", severity="error")
             return
+        self._revoke_activity_tracking(session.id)
 
         if was_active:
             self._show_home()
@@ -1025,8 +1052,15 @@ class AgentHubApp(App):
             raise RuntimeError("new runtime session did not create a terminal")
         session.terminal.id = self._terminal_dom_id(session.id)
         try:
+            activity_tracking_ready = await self._prepare_activity_tracking(
+                session,
+                session.terminal,
+            )
             await self.query_one("#session-content", ContentSwitcher).mount(session.terminal)
+            if activity_tracking_ready:
+                self._initialize_mounted_activity(session)
         except Exception:
+            self._revoke_activity_tracking(session.id)
             if session in self.session_manager.sessions:
                 self.session_manager.remove(session.id)
                 if previous_session in self.session_manager.sessions:
@@ -1034,6 +1068,61 @@ class AgentHubApp(App):
             raise
         self.call_after_refresh(self._refresh_status)
         return session
+
+    async def _prepare_activity_tracking(
+        self,
+        session: AgentSession,
+        terminal: AgentTerminal,
+    ) -> bool:
+        """Best-effort configure provider observation before its child starts."""
+
+        if (
+            session.kind is not SessionKind.AGENT
+            or session.harness.id != "codex"
+            or Path(terminal.child_command[0]).name != "codex"
+        ):
+            return False
+        try:
+            receiver = self._activity_receiver
+            if receiver is None:
+                receiver = ActivityReceiver(self._on_activity_event)
+                await receiver.start()
+                self._activity_receiver = receiver
+            self._revoke_activity_tracking(session.id)
+            registration = receiver.register(session.id, session.harness.id)
+            self._activity_registrations[session.id] = registration
+            terminal.configure_launch(
+                command=codex_command_with_activity_hooks(terminal.child_command),
+                environment_overrides=dict(registration.environment),
+            )
+            return True
+        except Exception:  # noqa: BLE001 - activity must never prevent a launch
+            self._revoke_activity_tracking(session.id)
+            return False
+
+    def _initialize_mounted_activity(self, session: AgentSession) -> None:
+        """Mark a tracked mounted runtime Idle unless a newer hook already arrived."""
+
+        if session.activity is not AgentActivity.UNKNOWN:
+            return
+        if self.session_manager.apply_activity_event(
+            AgentActivityEvent(session.id, AgentActivityEventKind.SESSION_STARTED)
+        ):
+            self._refresh_sidebar()
+
+    def _revoke_activity_tracking(self, session_id: str) -> None:
+        """Invalidate one runtime's activity credential if it exists."""
+
+        registration = self._activity_registrations.pop(session_id, None)
+        receiver = self._activity_receiver
+        if registration is not None and receiver is not None:
+            receiver.revoke(registration)
+
+    def _on_activity_event(self, event: AgentActivityEvent) -> None:
+        """Apply one authenticated event and refresh only presentation state."""
+
+        if self.session_manager.apply_activity_event(event):
+            self._refresh_sidebar()
 
     def _agent_sessions(self) -> tuple[AgentSession, ...]:
         """Return managed coding-agent sessions in creation order."""
@@ -1128,6 +1217,7 @@ class AgentHubApp(App):
             return
 
         was_active = self.session_manager.active_session is session
+        self._revoke_activity_tracking(session.id)
         terminal = self.session_manager.detach_terminal(session.id)
         if was_active:
             self.session_manager.clear_selection()
@@ -1158,6 +1248,7 @@ class AgentHubApp(App):
 
         was_active = self.session_manager.active_session is session
         terminal = session.terminal
+        self._revoke_activity_tracking(session.id)
         self.session_manager.remove(session.id)
         if was_active:
             self._show_home()

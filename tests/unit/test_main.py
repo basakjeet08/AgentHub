@@ -12,6 +12,22 @@ def test_main_runs_the_application(monkeypatch) -> None:
 
     monkeypatch.setattr("agenthub.main.AgentHubApp.run", fake_run)
 
-    main()
+    main([])
 
+    assert calls == 1
+
+
+def test_main_routes_codex_activity_hook(monkeypatch) -> None:
+    calls = 0
+
+    def fake_hook() -> int:
+        nonlocal calls
+        calls += 1
+        return 0
+
+    monkeypatch.setattr("agenthub.main.run_codex_activity_hook", fake_hook)
+
+    exit_code = main(["activity-hook", "codex"])
+
+    assert exit_code == 0
     assert calls == 1

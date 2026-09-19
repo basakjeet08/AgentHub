@@ -1,5 +1,6 @@
 """Unit tests for the AgentTerminal-to-Bitty translation boundary."""
 
+import os
 from collections.abc import Coroutine
 from pathlib import Path
 from unittest.mock import Mock
@@ -12,7 +13,7 @@ from textual import events
 from textual.strip import Strip
 from textual_tty import Terminal as TtyTerminal
 
-from agenthub._terminal_launcher import build_launch_command
+from agenthub._terminal_launcher import build_launch_command, launch
 from agenthub.harnesses import AgentHarness, KeyStroke
 from agenthub.terminal import AgentTerminal
 from agenthub.terminal.widget import _bittty_modifier
@@ -325,6 +326,40 @@ def test_launch_command_uses_python_module_without_a_shell(tmp_path: Path) -> No
 
     assert command[1:4] == ("-m", "agenthub._terminal_launcher", str(tmp_path))
     assert command[4:] == ("agent", "--flag", "value with spaces")
+
+
+def test_terminal_launcher_applies_child_only_environment_file(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    environment_file = tmp_path / "environment.json"
+    environment_file.write_text('{"AGENTHUB_SESSION_ID":"logical-session"}')
+    executed: dict[str, object] = {}
+
+    def fake_execvpe(program, command, environment) -> None:
+        executed.update(program=program, command=command, environment=environment)
+        raise SystemExit(0)
+
+    monkeypatch.setattr("agenthub._terminal_launcher.os.chdir", lambda _path: None)
+    monkeypatch.setattr("agenthub._terminal_launcher.os.execvpe", fake_execvpe)
+    monkeypatch.delenv("AGENTHUB_SESSION_ID", raising=False)
+
+    with pytest.raises(SystemExit, match="0"):
+        launch(
+            (
+                "--environment-file",
+                str(environment_file),
+                str(tmp_path),
+                "agent",
+                "--flag",
+            )
+        )
+
+    assert executed["program"] == "agent"
+    assert executed["command"] == ["agent", "--flag"]
+    assert executed["environment"]["AGENTHUB_SESSION_ID"] == "logical-session"
+    assert "AGENTHUB_SESSION_ID" not in os.environ
+    assert not environment_file.exists()
 
 
 def test_live_terminal_rows_replace_unstyled_padding_before_textual_filters(
