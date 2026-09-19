@@ -173,6 +173,56 @@ def test_supported_modifier_keys_still_delegate_to_textual_tty(
     parent_on_key.assert_called_once_with(event)
 
 
+def test_forwarded_key_observer_does_not_change_terminal_passthrough(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    parent_on_key = Mock()
+    observer = Mock()
+    monkeypatch.setattr(TtyTerminal, "on_key", parent_on_key)
+    terminal.set_forwarded_key_observer(observer)
+    event = events.Key("escape", None)
+
+    terminal.on_key(event)
+
+    parent_on_key.assert_called_once_with(event)
+    observer.assert_called_once_with("escape")
+
+
+def test_copy_shortcut_is_not_reported_as_forwarded_interrupt(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    screen = Mock()
+    screen.get_selected_text.return_value = "selected text"
+    observer = Mock()
+    monkeypatch.setattr(AgentTerminal, "screen", property(lambda _self: screen))
+    terminal.set_forwarded_key_observer(observer)
+
+    terminal.on_key(events.Key("ctrl+c", None))
+
+    observer.assert_not_called()
+
+
+def test_forwarded_key_observer_failure_does_not_break_passthrough(
+    sleeping_harness: AgentHarness,
+    monkeypatch,
+) -> None:
+    terminal = AgentTerminal(sleeping_harness)
+    parent_on_key = Mock()
+    observer = Mock(side_effect=RuntimeError("observer failed"))
+    monkeypatch.setattr(TtyTerminal, "on_key", parent_on_key)
+    terminal.set_forwarded_key_observer(observer)
+    event = events.Key("escape", None)
+
+    terminal.on_key(event)
+
+    parent_on_key.assert_called_once_with(event)
+    observer.assert_called_once_with("escape")
+
+
 def test_super_c_still_copies_when_text_is_selected(
     sleeping_harness: AgentHarness,
     monkeypatch,

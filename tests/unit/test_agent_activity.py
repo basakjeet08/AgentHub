@@ -25,6 +25,7 @@ from agenthub.sessions import SessionKind, SessionManager, SessionState
         (AgentActivityEventKind.PERMISSION_REQUESTED, AgentActivity.NEEDS_INPUT),
         (AgentActivityEventKind.INPUT_REQUESTED, AgentActivity.NEEDS_INPUT),
         (AgentActivityEventKind.TOOL_FINISHED, AgentActivity.WORKING),
+        (AgentActivityEventKind.TURN_STOP_REQUESTED, AgentActivity.DONE),
         (AgentActivityEventKind.TURN_COMPLETED, AgentActivity.DONE),
         (AgentActivityEventKind.INTERRUPTED, AgentActivity.IDLE),
     ],
@@ -174,6 +175,96 @@ def test_completion_that_arrives_before_its_prompt_remains_terminal() -> None:
     )
 
     assert state.activity is AgentActivity.DONE
+
+
+def test_provisional_stop_allows_same_scope_to_resume_working() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        ),
+    )
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TURN_STOP_REQUESTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TOOL_STARTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is AgentActivity.WORKING
+    assert state.active_scope_id == "turn-a"
+    assert "turn-a" not in state.closed_scope_ids
+
+
+def test_superseded_provisional_stop_scope_rejects_late_work() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TURN_STOP_REQUESTED,
+            scope_id="turn-a",
+        ),
+    )
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-b",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TOOL_STARTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is AgentActivity.WORKING
+    assert state.active_scope_id == "turn-b"
+
+
+def test_unscoped_observed_interruption_closes_the_active_scope() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent("session-1", AgentActivityEventKind.INTERRUPTED),
+    )
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TOOL_FINISHED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is AgentActivity.IDLE
+    assert "turn-a" in state.closed_scope_ids
 
 
 def test_permission_that_arrives_before_its_prompt_remains_needs_input() -> None:

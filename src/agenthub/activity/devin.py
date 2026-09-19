@@ -25,7 +25,7 @@ _NORMALIZED_EVENTS = {
     "PreToolUse": AgentActivityEventKind.TOOL_STARTED,
     "PermissionRequest": AgentActivityEventKind.PERMISSION_REQUESTED,
     "PostToolUse": AgentActivityEventKind.TOOL_FINISHED,
-    "Stop": AgentActivityEventKind.TURN_COMPLETED,
+    "Stop": AgentActivityEventKind.TURN_STOP_REQUESTED,
 }
 
 

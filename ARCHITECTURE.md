@@ -146,7 +146,10 @@ Codex supplies its `turn_id` and Devin supplies its `prompt_id`; the reducer
 keeps a bounded history of completed or superseded scopes so delayed events
 from an older turn cannot overwrite the current turn. Terminal events also
 close their own scope, so a late permission or tool event cannot replace
-`DONE` or interrupted `IDLE`.
+`DONE` or interrupted `IDLE`. Devin's `Stop` is intentionally provisional:
+another configured Stop hook may block it, so it displays `DONE` without
+closing the prompt scope and later work in that same scope can resume
+`WORKING`.
 
 Loaded Agent rows render the activity as secondary status text. `NEEDS_INPUT`
 has the strongest emphasis. `DONE` is an attention state and becomes `IDLE`
@@ -168,13 +171,18 @@ AgentHub copies the user's normal Devin configuration, preserves existing
 hooks, appends its passive observers, and removes the temporary overlay when
 tracking is revoked. Devin's documented `SessionStart`, `UserPromptSubmit`,
 `PreToolUse`, `PermissionRequest`, `PostToolUse`, and `Stop` events map to
-`IDLE`, `WORKING`, `WORKING`, `NEEDS_INPUT`, `WORKING`, and `DONE`. Its command
-hooks are synchronous, so AgentHub bounds each observer to one second; the
-helper itself only sends one authenticated loopback message and always returns
-a neutral success response. Devin's structured `ask_user_question` tool is a
-specialized `PreToolUse` signal: the provider normalizer emits the
-provider-neutral `INPUT_REQUESTED` event so the sidebar shows `NEEDS_INPUT`
-while the question selector is awaiting an answer.
+`IDLE`, `WORKING`, `WORKING`, `NEEDS_INPUT`, `WORKING`, and provisional `DONE`.
+Its command hooks are synchronous, so AgentHub bounds each observer to one
+second; the helper itself only sends one authenticated loopback message and
+always returns a neutral success response. Devin's structured
+`ask_user_question` tool is a specialized `PreToolUse` signal: the provider
+normalizer emits the provider-neutral `INPUT_REQUESTED` event so the sidebar
+shows `NEEDS_INPUT` while the question selector is awaiting an answer. Devin
+3000.10.31 emits no lifecycle hook when the user interrupts either active work
+or that selector. AgentHub therefore observes only the interrupt keys it already
+forwards to the Devin child (`Ctrl+C`, double `Esc`, or one `Esc` at
+`NEEDS_INPUT`) and closes the active prompt scope without changing terminal key
+passthrough. It never infers interruption from terminal output.
 
 The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
 sequences were:
@@ -1217,10 +1225,16 @@ The architectural foundation is implemented:
     events and Loaded Agent rows display activity, including attention
     acknowledgement from `DONE` to `IDLE`. Devin uses a secure temporary config
     overlay that preserves user settings and existing hooks.
-20. Devin CLI 3000.10.31 accepts the generated config overlay. A live launch
-    confirmed `SessionStart` and `UserPromptSubmit` delivery, including the
-    documented per-turn `prompt_id`; the complete documented mapping is covered
-    by receiver and state-transition tests.
+20. Devin CLI 3000.10.31 accepts the generated config overlay. Live traces
+    confirmed `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
+    `PermissionRequest`, `PostToolUse`, and `Stop`, with one stable `prompt_id`
+    throughout each turn. They also confirmed
+    `PreToolUse.tool_name = ask_user_question`. Cancelling a permission prompt,
+    question selector, or active model turn emits no completion/interruption
+    hook; the terminal-key observation fallback covers this provider gap without
+    scraping output. Provisional Stop continuation is covered by reducer and
+    receiver tests because it requires another user-configured Stop hook to
+    block Devin's request.
 
 The remaining sequence is:
 

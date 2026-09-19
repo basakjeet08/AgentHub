@@ -11,6 +11,7 @@ _SCOPED_EVENT_KINDS = {
     AgentActivityEventKind.PERMISSION_REQUESTED,
     AgentActivityEventKind.INPUT_REQUESTED,
     AgentActivityEventKind.TOOL_FINISHED,
+    AgentActivityEventKind.TURN_STOP_REQUESTED,
     AgentActivityEventKind.TURN_COMPLETED,
     AgentActivityEventKind.INTERRUPTED,
 }
@@ -26,6 +27,7 @@ _ACTIVITY_BY_EVENT = {
     AgentActivityEventKind.PERMISSION_REQUESTED: AgentActivity.NEEDS_INPUT,
     AgentActivityEventKind.INPUT_REQUESTED: AgentActivity.NEEDS_INPUT,
     AgentActivityEventKind.TOOL_FINISHED: AgentActivity.WORKING,
+    AgentActivityEventKind.TURN_STOP_REQUESTED: AgentActivity.DONE,
     AgentActivityEventKind.TURN_COMPLETED: AgentActivity.DONE,
     AgentActivityEventKind.INTERRUPTED: AgentActivity.IDLE,
 }
@@ -76,6 +78,13 @@ def reduce_activity_state(
 
     scope_id = event.scope_id
     if (
+        event.kind == AgentActivityEventKind.INTERRUPTED
+        and (not isinstance(scope_id, str) or not scope_id)
+        and state.active_scope_id is not None
+    ):
+        scope_id = state.active_scope_id
+        event = replace(event, scope_id=scope_id)
+    if (
         not isinstance(scope_id, str)
         or not scope_id
         or event.kind not in _SCOPED_EVENT_KINDS
@@ -99,7 +108,14 @@ def reduce_activity_state(
     ):
         return state
 
-    state = replace(state, activity=reduce_activity(state.activity, event))
+    # A provider may report that it wants to stop before another hook decides
+    # whether the turn may actually finish. Unlike a terminal event, that leaves
+    # the active scope open, so later work in the same scope must resume it.
+    if state.activity is AgentActivity.DONE and scope_id == state.active_scope_id:
+        activity = _ACTIVITY_BY_EVENT.get(event.kind, state.activity)
+    else:
+        activity = reduce_activity(state.activity, event)
+    state = replace(state, activity=activity)
     if event.kind in _TERMINAL_EVENT_KINDS:
         state = _close_scope(state, scope_id)
     return state

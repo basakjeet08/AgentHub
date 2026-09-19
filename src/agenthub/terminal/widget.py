@@ -5,7 +5,7 @@ import json
 import os
 import subprocess
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from time import monotonic
 from typing import cast
@@ -144,6 +144,7 @@ class AgentTerminal(TtyTerminal):
         self._child_command = harness.command if command is None else tuple(command)
         self._environment_overrides: dict[str, str] = {}
         self._environment_file: Path | None = None
+        self._forwarded_key_observer: Callable[[str], None] | None = None
         super().__init__(
             command=list(build_launch_command(launch_directory, self._child_command)),
             name=name,
@@ -206,6 +207,14 @@ class AgentTerminal(TtyTerminal):
         self.board.command = list(
             build_launch_command(self.working_directory, self._child_command)
         )
+
+    def set_forwarded_key_observer(
+        self,
+        observer: Callable[[str], None] | None,
+    ) -> None:
+        """Observe keys delivered to the child without changing passthrough."""
+
+        self._forwarded_key_observer = observer
 
     @property
     def text_selection(self) -> Selection | None:
@@ -391,6 +400,12 @@ class AgentTerminal(TtyTerminal):
 
         event.prevent_default()
         super().on_key(event)
+        observer = self._forwarded_key_observer
+        if observer is not None:
+            try:
+                observer(event.key)
+            except Exception:  # noqa: BLE001, S110 - keep terminal input reliable
+                pass
 
     def on_paste(self, event: events.Paste) -> None:
         """Deliver outer-terminal paste through the reliable PTY writer."""

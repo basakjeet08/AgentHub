@@ -14,7 +14,9 @@ from agenthub.activity import (
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
     ActivityReceiver,
+    ActivityRegistration,
     AgentActivity,
+    AgentActivityEvent,
     AgentActivityEventKind,
     normalize_devin_activity,
     prepare_devin_activity_launch,
@@ -22,7 +24,7 @@ from agenthub.activity import (
 )
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.sessions import SessionKind
+from agenthub.sessions import AgentSession, SessionKind
 
 
 @pytest.mark.parametrize(
@@ -32,7 +34,7 @@ from agenthub.sessions import SessionKind
         ("PreToolUse", AgentActivityEventKind.TOOL_STARTED),
         ("PermissionRequest", AgentActivityEventKind.PERMISSION_REQUESTED),
         ("PostToolUse", AgentActivityEventKind.TOOL_FINISHED),
-        ("Stop", AgentActivityEventKind.TURN_COMPLETED),
+        ("Stop", AgentActivityEventKind.TURN_STOP_REQUESTED),
     ],
 )
 def test_devin_normalizer_maps_turn_events(
@@ -241,6 +243,102 @@ def test_devin_hook_receiver_failure_is_neutral() -> None:
     assert output.getvalue() == "{}\n"
 
 
+def _app_with_observed_devin(tmp_path: Path) -> tuple[AgentHubApp, AgentSession]:
+    harness = AgentHarness(
+        id="devin",
+        display_name="Devin",
+        command=("devin",),
+        scroll=None,
+    )
+    app = AgentHubApp(agent_harnesses={harness.id: harness})
+    session = app.session_manager.create(
+        name="Devin",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=harness,
+    )
+    app._activity_registrations[session.id] = ActivityRegistration(
+        session_id=session.id,
+        provider="devin",
+        token="test-token",
+        endpoint="tcp://127.0.0.1:1",
+    )
+    return app, session
+
+
+def test_devin_ctrl_c_observation_clears_active_prompt(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    app, session = _app_with_observed_devin(tmp_path)
+    monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
+    app.session_manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="prompt-a",
+        )
+    )
+
+    app._on_devin_terminal_key(session.id, "ctrl+c")
+
+    assert session.activity is AgentActivity.IDLE
+
+
+def test_devin_double_escape_observation_clears_working_prompt(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    app, session = _app_with_observed_devin(tmp_path)
+    monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
+    app.session_manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="prompt-a",
+        )
+    )
+
+    app._on_devin_terminal_key(session.id, "escape")
+    assert session.activity is AgentActivity.WORKING
+
+    app._on_devin_terminal_key(session.id, "escape")
+    assert session.activity is AgentActivity.IDLE
+
+
+@pytest.mark.parametrize(
+    "request_kind",
+    [
+        AgentActivityEventKind.PERMISSION_REQUESTED,
+        AgentActivityEventKind.INPUT_REQUESTED,
+    ],
+)
+def test_devin_single_escape_observation_clears_waiting_prompt(
+    tmp_path: Path,
+    monkeypatch,
+    request_kind: AgentActivityEventKind,
+) -> None:
+    app, session = _app_with_observed_devin(tmp_path)
+    monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
+    app.session_manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="prompt-a",
+        )
+    )
+    app.session_manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            request_kind,
+            scope_id="prompt-a",
+        )
+    )
+
+    app._on_devin_terminal_key(session.id, "escape")
+    assert session.activity is AgentActivity.IDLE
+
+
 async def test_invalid_devin_config_does_not_change_provider_launch(
     tmp_path: Path,
     monkeypatch,
@@ -347,6 +445,22 @@ async def test_devin_hooks_update_sidebar_activity_end_to_end(
             "prompt-a",
             tool_name="ask_user_question",
         )
+        for _ in range(20):
+            if session.activity is AgentActivity.WORKING:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.WORKING
+
+        await _forward_event(registration.environment, "Stop", "prompt-a")
+        for _ in range(20):
+            if session.activity is AgentActivity.DONE:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.DONE
+
+        # Another Stop hook may block Devin's stop request. Work continuing in
+        # the same prompt must move the sidebar out of the provisional Done state.
+        await _forward_event(registration.environment, "PreToolUse", "prompt-a")
         for _ in range(20):
             if session.activity is AgentActivity.WORKING:
                 break
