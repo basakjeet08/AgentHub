@@ -685,9 +685,9 @@ SessionManager updates session/runtime coordination
 
 The app resolves the Textual message sender to its owning session, coordinates
 manager mutation with DOM removal, and keeps AgentHub running even when no
-sessions remain. Home keeps its static beginner guide available regardless of
-session count. The terminal reports process exit but does not know about the
-manager, selection, Home, or application quit policy.
+sessions remain. Home keeps the same static orientation and quick-reference
+content regardless of session count. The terminal reports process exit but does
+not know about the manager, selection, Home, or application quit policy.
 
 Exit reconciliation uses the same manager reconciliation as startup and
 Ctrl+Shift+R, but is scoped to the exiting session's harness. A provider failure
@@ -839,8 +839,8 @@ Normal empty startup uses a persistent application shell:
 ┌──────────────────────┬────────────────────────────────────┐
 │ AgentHub sidebar     │ HomeScreen                         │
 │                      │                                    │
-│                      │ Tabbed beginner guide              │
-│                      │ Persistent shortcut reference      │
+│                      │ Lightweight orientation            │
+│                      │ Essential shortcut reference       │
 ├──────────────────────┴────────────────────────────────────┤
 │ Sessions 0   Running 0            ○ Unlocked  Ctrl+G Lock │
 └───────────────────────────────────────────────────────────┘
@@ -850,12 +850,12 @@ The status bar keeps session and running-agent metrics on the left while the
 keyboard-ownership state and Ctrl+G action remain grouped on the right.
 The Home screen is a content view inside the application shell rather than a
 separate Textual screen stack entry. This keeps shared navigation and status
-chrome mounted while future content changes inside the `ContentSwitcher`. Its
-mouse-selected Textual tabs group Getting Started, Navigation, Session
-Management, and Controls guidance without adding global application bindings
-or keyboard navigation. The active panel participates in Home's page-level
-scrolling; individual guide cards do not scroll independently. Agent creation
-begins as a palette action and is configured through two small modal screens:
+chrome mounted while future content changes inside the `ContentSwitcher`. Home
+contains only static orientation, a compact essential-shortcut reference, and a
+pointer to the README usage guide. It adds no focusable controls or application
+bindings and uses only page-level scrolling when a short viewport requires it.
+Agent creation begins as a palette action and is configured through two small
+modal screens:
 
 ```text
 Ctrl+P → New Agent
@@ -1027,8 +1027,8 @@ src/agenthub/
     │   └── working_directory.tcss # directory-picker presentation
     ├── screens/
     │   ├── __init__.py
-    │   ├── home.py      # tabbed beginner guide and Home presentation
-    │   └── home.tcss    # responsive Home guide presentation
+    │   ├── home.py      # static landing orientation and shortcut reference
+    │   └── home.tcss    # responsive Home landing presentation
     └── panels/
         ├── __init__.py
         ├── sidebar.py   # session navigation panel
@@ -1095,8 +1095,8 @@ The architectural foundation is implemented:
    to the active terminal, exit events map to the correct session, and app
    shutdown terminates both processes.
 8. A persistent application shell, Textual's built-in Tokyo Night theme,
-   responsive tabbed Home guide, clean zero-session sidebar, and real status bar
-   establish the shared UI foundation.
+   responsive static Home landing view, clean zero-session sidebar, and real
+   status bar establish the shared UI foundation.
 9. Sidebar presentation classifies one manager-owned session collection into
    counted Loaded, Unloaded, and Shells tabs backed by the same selection flow.
 10. New Agent opens a registry-driven harness picker followed by a

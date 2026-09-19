@@ -1,15 +1,7 @@
 """Integration tests for AgentHub's empty startup shell and Home UI."""
 
 from textual.color import Color
-from textual.widgets import (
-    Button,
-    OptionList,
-    Static,
-    Tab,
-    TabbedContent,
-    TabPane,
-    Tabs,
-)
+from textual.widgets import Button, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.terminal import AgentTerminal
@@ -17,31 +9,21 @@ from agenthub.ui import AgentHubStatusBar, HomeScreen, SessionSidebar, SidebarTa
 from agenthub.ui.bindings import APPLICATION_BINDINGS
 from agenthub.ui.panels.status_bar import UNLOCKED_ICON
 
-_HOME_CARD_IDS = [
-    "home-card-getting-started",
-    "home-card-navigation-basics",
-    "home-card-session-management",
-    "home-card-controls-shortcuts",
+_GLOBAL_REFERENCE = [
+    ("Ctrl+P", "Command palette"),
+    ("Ctrl+S", "Focus sidebar"),
+    ("Ctrl+G", "Lock / unlock"),
+    ("Ctrl+Shift+R", "Refresh native sessions"),
 ]
 
-_HOME_CARD_TITLES = [
-    "GETTING STARTED",
-    "NAVIGATION BASICS",
-    "SESSION MANAGEMENT",
-    "CONTROLS & SHORTCUTS",
+_SIDEBAR_REFERENCE = [
+    ("← / →", "Change sidebar tab"),
+    ("↑ / ↓", "Navigate sessions"),
+    ("Enter", "Open / resume"),
 ]
 
-_HOME_PANE_IDS = [
-    "home-pane-getting-started",
-    "home-pane-navigation-basics",
-    "home-pane-session-management",
-    "home-pane-controls-shortcuts",
-]
 
-_HOME_TAB_LABELS = ["Start Here", "Navigation", "Sessions", "Shortcuts"]
-
-
-async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
+async def test_empty_startup_shows_static_home_sidebar_and_real_status() -> None:
     app = AgentHubApp()
 
     async with app.run_test(size=(100, 36)) as pilot:
@@ -53,7 +35,21 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
         assert home.display
         assert home.has_focus
         assert not home.query(Button).nodes
-        assert not home.query("#home-empty-copy").nodes
+        assert str(home.query_one("#home-title", Static).content) == "AgentHub"
+        assert str(home.query_one("#home-tagline", Static).content) == ("Your agents live here.")
+        assert "Ctrl+P" in str(home.query_one("#home-orientation", Static).content)
+        readme_hint = home.query_one("#home-readme-hint", Static)
+        assert readme_hint.content == ("See [$secondary]README.md[/] for the full usage guide.")
+        assert readme_hint.render().plain == "See README.md for the full usage guide."
+
+        shortcut_keys = [str(widget.content) for widget in home.query(".home-shortcut-key")]
+        shortcut_descriptions = [
+            str(widget.content) for widget in home.query(".home-shortcut-description")
+        ]
+        expected_reference = [*_GLOBAL_REFERENCE, *_SIDEBAR_REFERENCE]
+        assert shortcut_keys == [key for key, _description in expected_reference]
+        assert shortcut_descriptions == [description for _key, description in expected_reference]
+        assert all(not descendant.can_focus for descendant in home.query("*"))
 
         sidebar = app.query_one(SessionSidebar)
         assert sidebar.query_one("#sidebar-brand", Static).content == ">_  AGENTHUB"
@@ -83,42 +79,6 @@ async def test_empty_startup_shows_home_sidebar_and_real_status() -> None:
             < status.query_one("#mode-indicator", Static).region.x
         )
 
-        cards = list(home.query(".home-card"))
-        panes = list(home.query(TabPane))
-        tabs = home.query_one(Tabs)
-        tabbed_content = home.query_one(TabbedContent)
-        assert [card.id for card in cards] == _HOME_CARD_IDS
-        assert [pane.id for pane in panes] == _HOME_PANE_IDS
-        assert [str(tab.label) for tab in tabs.query(Tab)] == _HOME_TAB_LABELS
-        assert not tabs.can_focus
-        assert tabbed_content.active == _HOME_PANE_IDS[0]
-        assert [pane.display for pane in panes] == [True, False, False, False]
-        assert [
-            str(card.query_one(".home-card-title", Static).content) for card in cards
-        ] == _HOME_CARD_TITLES
-        assert all(not card.can_focus for card in cards)
-        assert all(not descendant.can_focus for card in cards for descendant in card.query("*"))
-
-        home_copy = "\n".join(str(widget.content) for widget in home.query(Static))
-        for expected in (
-            "What is AgentHub?",
-            "Loaded",
-            "New Agent",
-            "Command Palette",
-            "Sidebar Navigation",
-            "Resume an Existing Agent",
-            "Link an Agent",
-            "Refresh Sessions",
-            "Delete an Agent",
-            "Keyboard Control",
-            "Global Shortcuts",
-            "Ctrl+P → Quit AgentHub",
-        ):
-            assert expected in home_copy
-        assert home.query_one("#home-quick-reference", Static).content == (
-            "Ctrl+P Commands  •  Ctrl+S Sidebar  •  Ctrl+G Lock/Unlock  •  Ctrl+Shift+R Refresh"
-        )
-
         assert AgentHubApp.BINDINGS == list(APPLICATION_BINDINGS)
         assert [(binding.key, binding.action) for binding in APPLICATION_BINDINGS] == [
             ("ctrl+g", "toggle_hub_lock"),
@@ -138,62 +98,21 @@ async def test_home_navigation_moves_focus_without_creating_a_session() -> None:
         await pilot.press("ctrl+a")
         assert not app.query_one(SessionSidebar).has_focus
 
-        tabs = app.query_one(HomeScreen).query_one(Tabs)
-        await pilot.press("right")
-        assert not tabs.has_focus
-        assert app.query_one(TabbedContent).active == _HOME_PANE_IDS[0]
-
-        await pilot.click("#--content-tab-home-pane-navigation-basics")
-        assert app.query_one(TabbedContent).active == _HOME_PANE_IDS[1]
-        assert not tabs.has_focus
-
         await pilot.press("ctrl+s")
         assert app.query_one(SessionSidebar).has_focus
         assert app.session_manager.sessions == ()
 
 
-async def test_home_tabs_switch_visible_static_card_at_wide_sizes() -> None:
+async def test_home_quick_reference_has_no_horizontal_overflow_when_narrow() -> None:
     app = AgentHubApp(native_session_adapters={})
 
-    async with app.run_test(size=(150, 90)) as pilot:
+    async with app.run_test(size=(70, 30)) as pilot:
         await pilot.pause()
 
         home = app.query_one(HomeScreen)
-        cards = list(home.query(".home-card"))
-        panes = list(home.query(TabPane))
+        reference = home.query_one("#home-quick-reference")
 
-        assert not home.has_class("narrow")
-        assert panes[0].display
-        assert cards[0].region.width > 0
-        assert all(card.region.width == 0 for card in cards[1:])
         assert home.max_scroll_x == 0
-
-        await pilot.click("#--content-tab-home-pane-controls-shortcuts")
-        await pilot.pause()
-
-        assert home.query_one(TabbedContent).active == _HOME_PANE_IDS[3]
-        assert [pane.display for pane in panes] == [False, False, False, True]
-        assert cards[3].region.width > 0
-        assert cards[3].max_scroll_y == 0
-
-
-async def test_home_session_tab_uses_page_scroll_at_narrow_sizes() -> None:
-    app = AgentHubApp(native_session_adapters={})
-
-    async with app.run_test(size=(90, 40)) as pilot:
-        await pilot.pause()
-
-        home = app.query_one(HomeScreen)
-        cards = list(home.query(".home-card"))
-
-        assert home.has_class("narrow")
-        assert home.max_scroll_x == 0
-
-        await pilot.click("#--content-tab-home-pane-session-management")
-        await pilot.pause()
-
-        assert home.query_one(TabbedContent).active == _HOME_PANE_IDS[2]
-        assert cards[2].region.width > 0 and cards[2].region.height > 0
-        assert cards[2].max_scroll_y == 0
-        assert home.max_scroll_y > 0
-        assert home.max_scroll_x == 0
+        assert reference.region.width > 0
+        assert reference.region.right <= home.content_region.right
+        assert reference.max_scroll_y == 0

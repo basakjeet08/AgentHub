@@ -18,7 +18,7 @@ making structural changes.
 AgentHub currently has a Home-first application shell backed by the accepted
 multi-session runtime architecture:
 
-- It starts on a neutral Home screen with a tabbed beginner guide, discovers
+- It starts on a lightweight Home screen with essential shortcuts, discovers
   native conversations in the background, and does not launch a coding-agent
   process until one is selected.
 - It provides a persistent session sidebar, Home content area, and application
@@ -97,59 +97,144 @@ the chosen native identity and title onto the fresh row, and removes the
 duplicate discovered row. Shell sessions continue to use AgentHub's current
 working directory and do not participate in native discovery or linking.
 
-## Keyboard Ownership
+## Getting Started
 
-AgentHub starts Unlocked. Ctrl+G explicitly transfers keyboard ownership:
+AgentHub is a terminal workspace for managing coding-agent conversations and
+shell sessions from one place. It embeds each supported coding agent's native
+terminal interface rather than replacing it.
+
+### Session categories
+
+- **Loaded** — Agent sessions currently running and ready to use.
+- **Unloaded** — Existing agent conversations available to resume.
+- **Shells** — Regular Fish shell terminals running inside AgentHub.
+
+### Quick start
 
 ```text
-○ Unlocked  AgentHub navigation bindings are active (default)
+New Agent  Ctrl+P → New Agent → Choose Coding Agent → Choose Directory
+New Shell  Ctrl+P → New Shell → Optionally Enter a Name
+```
+
+To create an Agent, open the Command Palette with `Ctrl+P`, choose **New
+Agent**, select the coding agent, and select its working directory. The new
+runtime uses the temporary label `New session` until it is explicitly linked
+to a discovered provider conversation.
+
+To create a shell, open the Command Palette, choose **New Shell**, and enter an
+optional name. Shell sessions use Fish and AgentHub's current working directory.
+
+## Navigation Basics
+
+### Command Palette
+
+- `Ctrl+P` opens the Command Palette.
+- Start typing to filter the available actions.
+- Use `↑` and `↓` to move through results.
+- Press `Enter` to run the highlighted action.
+
+Common actions include New Agent, New Shell, Open Session, Refresh Native
+Sessions, and Quit AgentHub. Link and Delete appear only when they apply to the
+Agent currently open in the main terminal. **Open Session** presents loaded
+Agents, unloaded Agents, and Shells in one searchable picker; its search matches
+coding-agent names and session titles.
+
+### Sidebar navigation
+
+- `Ctrl+S` focuses the sidebar without changing its selected tab or cursor.
+- `←` and `→` switch between Loaded, Unloaded, and Shells.
+- `↑` and `↓` move through sessions in the selected tab.
+- `Enter` opens the selected session or resumes an unloaded Agent.
+
+## Session Management
+
+### Create a session
+
+Use `Ctrl+P` and select **New Agent** or **New Shell**. See the Quick Start
+flows under [Getting Started](#getting-started).
+
+### Resume an existing Agent
+
+Resume an unloaded Agent and continue its existing conversation:
+
+```text
+Ctrl+S → Unloaded → Choose Session → Enter
+```
+
+You can also choose **Open Session** from the Command Palette and search for the
+conversation.
+
+### Link a fresh Agent
+
+Link connects a newly created AgentHub session to its matching saved provider
+conversation without restarting its terminal. The fresh Agent must be open in
+the main terminal, and only unloaded conversations from the same coding agent
+and working directory are offered.
+
+```text
+Open Fresh Agent → Ctrl+P → Link → Choose Conversation
+```
+
+### Refresh sessions
+
+Press `Ctrl+Shift+R` to scan supported coding agents for new, changed, or
+removed conversations. Running terminals remain attached while unloaded rows
+are reconciled with provider state.
+
+### Delete an Agent
+
+Delete permanently removes the currently open provider conversation where the
+provider supports non-interactive deletion. The Agent must be open in the main
+terminal.
+
+```text
+Open Agent → Ctrl+P → Delete
+```
+
+Providers without deletion support, such as Antigravity, show guidance instead
+of stopping the runtime or opening a confirmation.
+
+> **Important:** Link and Delete apply to the Agent currently open in the main
+> terminal, not the session merely highlighted in the sidebar. Press `Enter` to
+> open a highlighted Agent before invoking either action.
+
+## Controls & Shortcuts
+
+### Keyboard ownership
+
+AgentHub starts Unlocked. `Ctrl+G` explicitly transfers keyboard ownership:
+
+```text
+○ Unlocked  AgentHub navigation shortcuts are active (default)
 ● Locked    Ctrl+G unlocks AgentHub; every other key reaches the terminal
 ```
 
-Unlocked bindings are:
+Home has no terminal to protect, so AgentHub shortcuts work there without
+requiring an unlock. With a terminal active, locking AgentHub sends every key
+except `Ctrl+G` to the native terminal. `Ctrl+G` remains AgentHub's ownership
+toggle even when a hosted CLI also uses that key.
+
+### Global shortcuts
 
 ```text
-Ctrl+G                Lock AgentHub
-Ctrl+Shift+R          Re-sync native sessions
 Ctrl+P                Command Palette
 Ctrl+S                Focus Sidebar
-
-Sidebar:
-← / →                 Previous / next section
-↑ / ↓                 Navigate
-Enter                 Open
+Ctrl+G                Lock / unlock AgentHub
+Ctrl+Shift+R          Refresh native sessions
 ```
 
-Ctrl+P opens a searchable command palette for New Agent, New Shell, Refresh
-Native Sessions, Open Session, Quit AgentHub, and Shortcuts. Open Session
-presents running Agents, unloaded native Agents, and running Shells in one
-picker. Its search matches harness names and session titles, while each result
-shows only the harness icon and title with an icon legend below the list. The
-other entries invoke their existing application actions directly.
+### Sidebar controls
 
-The palette also captures the session currently open in the main terminal area,
-even when the sidebar has keyboard focus. Depending on that active Agent's state,
-the palette can offer `Link "…"` or `Delete "…"`. Providers without native
-deletion support, such as Antigravity, show provider-specific guidance when
-Delete is selected instead of opening a confirmation. Merely highlighting
-another sidebar row does not retarget these commands: open that session with
-`Enter` first. Home and active Shell sessions do not add lifecycle commands.
-Resume an unloaded Agent directly with `Enter` in the sidebar, or find it through
-the searchable Open Session picker.
+```text
+← / →                 Change sidebar tab
+↑ / ↓                 Navigate sessions
+Enter                 Open / resume
+```
 
-Home has no terminal to protect, so these application shortcuts work there
-without requiring an unlock. `Ctrl+S` focuses the sidebar while preserving its
-selected tab and cursor. Inside the sidebar, left and right move between Loaded,
-Unloaded, and Shells; up and down move the highlight cursor, and `Enter` switches
-to the highlighted session. `Ctrl+A` and `Tab` remain native terminal input.
-
-New Agent, New Shell, Link, Delete, and Quit are palette-only operations.
-Their former shortcuts are no longer intercepted by AgentHub and reach a
-focused terminal unchanged. Antigravity's Delete command shows native-picker
-guidance without opening confirmation or changing its current runtime.
-
-Ctrl+G remains AgentHub's ownership toggle even when a hosted CLI also assigns
-that key. AgentHub does not rewrite the native CLI's other bindings.
+New Agent, New Shell, Link, Delete, and Quit are palette-only operations. Their
+former shortcuts are not intercepted by AgentHub and reach a focused terminal
+unchanged. `Ctrl+A` and `Tab` likewise remain native terminal input. AgentHub
+does not rewrite a native CLI's other bindings.
 
 ## Architecture
 
