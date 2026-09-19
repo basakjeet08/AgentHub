@@ -9,17 +9,22 @@ import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from .codex import (
+from ._forwarder import (
     AGENTHUB_ACTIVITY_ENDPOINT,
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
-    normalize_codex_activity,
 )
+from .codex import normalize_codex_activity
+from .devin import normalize_devin_activity
 from .model import AgentActivityEvent
 
 _HOST = "127.0.0.1"
 _MAX_MESSAGE_BYTES = 1_048_576
 _PROTOCOL_VERSION = 1
+_NORMALIZERS = {
+    "codex": normalize_codex_activity,
+    "devin": normalize_devin_activity,
+}
 
 
 @dataclass(frozen=True)
@@ -143,9 +148,10 @@ class ActivityReceiver:
             or envelope.get("provider") != registration.provider
         ):
             return None
-        if registration.provider == "codex":
-            return normalize_codex_activity(registration.session_id, envelope.get("event"))
-        return None
+        normalizer = _NORMALIZERS.get(registration.provider)
+        if normalizer is None:
+            return None
+        return normalizer(registration.session_id, envelope.get("event"))
 
 
 __all__ = ["ActivityReceiver", "ActivityRegistration"]

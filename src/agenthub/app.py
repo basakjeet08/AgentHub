@@ -22,6 +22,7 @@ from agenthub.activity import (
     AgentActivityEvent,
     AgentActivityEventKind,
     codex_command_with_activity_hooks,
+    prepare_devin_activity_launch,
 )
 from agenthub.harnesses import FISH, HARNESSES, AgentHarness
 from agenthub.native_sessions import (
@@ -115,6 +116,7 @@ class AgentHubApp(App):
         self._command_palette_target_id: str | None = None
         self._activity_receiver: ActivityReceiver | None = None
         self._activity_registrations: dict[str, ActivityRegistration] = {}
+        self._activity_artifacts: dict[str, tuple[Path, ...]] = {}
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -170,8 +172,11 @@ class AgentHubApp(App):
         for executor in tuple(self._discovery_executors):
             self._shutdown_discovery_executor(executor)
         receiver = self._activity_receiver
+        for session_id in tuple(
+            self._activity_registrations.keys() | self._activity_artifacts.keys()
+        ):
+            self._revoke_activity_tracking(session_id)
         self._activity_receiver = None
-        self._activity_registrations.clear()
         if receiver is not None:
             await receiver.close()
 
@@ -1076,11 +1081,12 @@ class AgentHubApp(App):
     ) -> bool:
         """Best-effort configure provider observation before its child starts."""
 
-        if (
-            session.kind is not SessionKind.AGENT
-            or session.harness.id != "codex"
-            or Path(terminal.child_command[0]).name != "codex"
-        ):
+        if session.kind is not SessionKind.AGENT:
+            return False
+        provider = session.harness.id
+        if provider not in {"codex", "devin"}:
+            return False
+        if Path(terminal.child_command[0]).name != provider:
             return False
         try:
             receiver = self._activity_receiver
@@ -1089,10 +1095,17 @@ class AgentHubApp(App):
                 await receiver.start()
                 self._activity_receiver = receiver
             self._revoke_activity_tracking(session.id)
-            registration = receiver.register(session.id, session.harness.id)
+            registration = receiver.register(session.id, provider)
             self._activity_registrations[session.id] = registration
+            command = terminal.child_command
+            if provider == "codex":
+                command = codex_command_with_activity_hooks(command)
+            else:
+                launch = prepare_devin_activity_launch(command)
+                command = launch.command
+                self._activity_artifacts[session.id] = (launch.config_path,)
             terminal.configure_launch(
-                command=codex_command_with_activity_hooks(terminal.child_command),
+                command=command,
                 environment_overrides=dict(registration.environment),
             )
             return True
@@ -1117,6 +1130,11 @@ class AgentHubApp(App):
         receiver = self._activity_receiver
         if registration is not None and receiver is not None:
             receiver.revoke(registration)
+        for path in self._activity_artifacts.pop(session_id, ()):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _on_activity_event(self, event: AgentActivityEvent) -> None:
         """Apply one authenticated event and refresh only presentation state."""

@@ -9,6 +9,7 @@ _SCOPED_EVENT_KINDS = {
     AgentActivityEventKind.PROMPT_SUBMITTED,
     AgentActivityEventKind.TOOL_STARTED,
     AgentActivityEventKind.PERMISSION_REQUESTED,
+    AgentActivityEventKind.INPUT_REQUESTED,
     AgentActivityEventKind.TOOL_FINISHED,
     AgentActivityEventKind.TURN_COMPLETED,
     AgentActivityEventKind.INTERRUPTED,
@@ -23,6 +24,7 @@ _ACTIVITY_BY_EVENT = {
     AgentActivityEventKind.PROMPT_SUBMITTED: AgentActivity.WORKING,
     AgentActivityEventKind.TOOL_STARTED: AgentActivity.WORKING,
     AgentActivityEventKind.PERMISSION_REQUESTED: AgentActivity.NEEDS_INPUT,
+    AgentActivityEventKind.INPUT_REQUESTED: AgentActivity.NEEDS_INPUT,
     AgentActivityEventKind.TOOL_FINISHED: AgentActivity.WORKING,
     AgentActivityEventKind.TURN_COMPLETED: AgentActivity.DONE,
     AgentActivityEventKind.INTERRUPTED: AgentActivity.IDLE,
@@ -51,6 +53,7 @@ def reduce_activity(
     if current is AgentActivity.DONE and event.kind in {
         AgentActivityEventKind.TOOL_STARTED,
         AgentActivityEventKind.PERMISSION_REQUESTED,
+        AgentActivityEventKind.INPUT_REQUESTED,
         AgentActivityEventKind.TOOL_FINISHED,
     }:
         return current

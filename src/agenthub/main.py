@@ -4,7 +4,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from agenthub.activity import run_codex_activity_hook
+from agenthub.activity import run_codex_activity_hook, run_devin_activity_hook
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -16,7 +16,7 @@ def _argument_parser() -> argparse.ArgumentParser:
         "activity-hook",
         help="Run a provider activity hook helper.",
     )
-    activity_hook.add_argument("provider", choices=("codex",))
+    activity_hook.add_argument("provider", choices=("codex", "devin"))
     return parser
 
 
@@ -33,6 +33,8 @@ def main(argv: Sequence[str] | None = None) -> int | None:
     options = _argument_parser().parse_args(arguments)
     if options.command == "activity-hook" and options.provider == "codex":
         return run_codex_activity_hook()
+    if options.command == "activity-hook" and options.provider == "devin":
+        return run_devin_activity_hook()
 
     raise AssertionError("argparse accepted an unsupported AgentHub command")
 

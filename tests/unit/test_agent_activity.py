@@ -23,6 +23,7 @@ from agenthub.sessions import SessionKind, SessionManager, SessionState
         (AgentActivityEventKind.PROMPT_SUBMITTED, AgentActivity.WORKING),
         (AgentActivityEventKind.TOOL_STARTED, AgentActivity.WORKING),
         (AgentActivityEventKind.PERMISSION_REQUESTED, AgentActivity.NEEDS_INPUT),
+        (AgentActivityEventKind.INPUT_REQUESTED, AgentActivity.NEEDS_INPUT),
         (AgentActivityEventKind.TOOL_FINISHED, AgentActivity.WORKING),
         (AgentActivityEventKind.TURN_COMPLETED, AgentActivity.DONE),
         (AgentActivityEventKind.INTERRUPTED, AgentActivity.IDLE),
@@ -62,10 +63,15 @@ def test_late_tool_events_do_not_overwrite_attention_states() -> None:
         "session-1",
         AgentActivityEventKind.TOOL_FINISHED,
     )
+    input_requested = AgentActivityEvent(
+        "session-1",
+        AgentActivityEventKind.INPUT_REQUESTED,
+    )
 
     assert reduce_activity(AgentActivity.NEEDS_INPUT, tool_started) is AgentActivity.NEEDS_INPUT
     assert reduce_activity(AgentActivity.DONE, tool_started) is AgentActivity.DONE
     assert reduce_activity(AgentActivity.DONE, tool_finished) is AgentActivity.DONE
+    assert reduce_activity(AgentActivity.DONE, input_requested) is AgentActivity.DONE
 
 
 @pytest.mark.parametrize(
@@ -75,9 +81,17 @@ def test_late_tool_events_do_not_overwrite_attention_states() -> None:
         (AgentActivityEventKind.INTERRUPTED, AgentActivity.IDLE),
     ],
 )
-def test_closed_scope_rejects_late_permission_event(
+@pytest.mark.parametrize(
+    "request_kind",
+    [
+        AgentActivityEventKind.PERMISSION_REQUESTED,
+        AgentActivityEventKind.INPUT_REQUESTED,
+    ],
+)
+def test_closed_scope_rejects_late_input_event(
     terminal_kind: AgentActivityEventKind,
     expected: AgentActivity,
+    request_kind: AgentActivityEventKind,
 ) -> None:
     state = ActivityReducerState()
     state = reduce_activity_state(
@@ -101,7 +115,7 @@ def test_closed_scope_rejects_late_permission_event(
         state,
         AgentActivityEvent(
             "session-1",
-            AgentActivityEventKind.PERMISSION_REQUESTED,
+            request_kind,
             scope_id="turn-a",
         ),
     )

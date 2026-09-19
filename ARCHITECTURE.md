@@ -77,9 +77,9 @@ bittty / PTY → coding agent`.
   agents and shells, and shows Home after an active exit;
 - exposes contextual Delete for the active native-backed Agent while delegating
   native deletion to the selected session's provider adapter;
-- starts an authenticated loopback activity receiver only when a Codex runtime
-  needs one, applies normalized events to the exact logical session, and
-  refreshes the sidebar when activity changes.
+- starts an authenticated loopback activity receiver only when a supported
+  provider runtime needs one, applies normalized events to the exact logical
+  session, and refreshes the sidebar when activity changes.
 
 `SessionManager` currently:
 
@@ -133,8 +133,8 @@ not create widgets or import Bitty.
 Agent activity is modeled independently from `SessionState` through
 `AgentActivity`, normalized `AgentActivityEvent` values, and a pure reducer.
 Every session defaults to `UNKNOWN`; only loaded Agent sessions accept events,
-and detaching or deleting a runtime resets its activity to `UNKNOWN`. Codex
-launches receive a static passive hook definition plus per-runtime
+and detaching or deleting a runtime resets its activity to `UNKNOWN`. Codex and
+Devin launches receive passive hook definitions plus per-runtime
 `AGENTHUB_SESSION_ID`, `AGENTHUB_ACTIVITY_ENDPOINT`, and
 `AGENTHUB_ACTIVITY_TOKEN` values in the child environment. The hook helper
 forwards the raw event to an ephemeral loopback receiver, which authenticates
@@ -142,25 +142,39 @@ and normalizes it before `SessionManager` applies the reducer. No provider
 payload object enters the core model.
 
 Turn-scoped provider events carry an optional provider-neutral `scope_id`.
-Codex supplies its `turn_id`; the reducer keeps a bounded history of completed
-or superseded scopes so asynchronously delivered events from an older turn
-cannot overwrite the current turn. Terminal events also close their own scope,
-so a late permission or tool event cannot replace `DONE` or interrupted `IDLE`.
+Codex supplies its `turn_id` and Devin supplies its `prompt_id`; the reducer
+keeps a bounded history of completed or superseded scopes so delayed events
+from an older turn cannot overwrite the current turn. Terminal events also
+close their own scope, so a late permission or tool event cannot replace
+`DONE` or interrupted `IDLE`.
 
 Loaded Agent rows render the activity as secondary status text. `NEEDS_INPUT`
 has the strongest emphasis. `DONE` is an attention state and becomes `IDLE`
 when the user opens or focuses that session. Unloaded Agents do not show an
 activity value. Receiver or tracking-configuration failure leaves activity
-`UNKNOWN` and does not prevent Codex from starting. A successfully mounted
-tracked runtime is initialized to `IDLE`; because AgentHub cannot detect Codex
-hook trust, an untrusted hook leaves that initial state unchanged. AgentHub
-never bypasses Codex hook trust, answers permissions, changes tool output, or
-blocks a provider hook.
+`UNKNOWN` and does not prevent the provider from starting. A successfully
+mounted tracked runtime is initialized to `IDLE`; because AgentHub cannot
+detect Codex hook trust, an untrusted Codex hook leaves that initial state
+unchanged. AgentHub never bypasses Codex hook trust, answers permissions,
+changes tool output, or blocks a provider hook.
 
 Prompt processing and tool execution intentionally share the single `WORKING`
 state. Its sidebar indicator is animated by one shared timer. Passive Codex
 hooks run asynchronously and may be delivered out of order, so reducer scope
 tracking rejects late events from completed or superseded turns.
+
+Devin hooks are supplied through a mode-0600 per-runtime `--config` overlay.
+AgentHub copies the user's normal Devin configuration, preserves existing
+hooks, appends its passive observers, and removes the temporary overlay when
+tracking is revoked. Devin's documented `SessionStart`, `UserPromptSubmit`,
+`PreToolUse`, `PermissionRequest`, `PostToolUse`, and `Stop` events map to
+`IDLE`, `WORKING`, `WORKING`, `NEEDS_INPUT`, `WORKING`, and `DONE`. Its command
+hooks are synchronous, so AgentHub bounds each observer to one second; the
+helper itself only sends one authenticated loopback message and always returns
+a neutral success response. Devin's structured `ask_user_question` tool is a
+specialized `PreToolUse` signal: the provider normalizer emits the
+provider-neutral `INPUT_REQUESTED` event so the sidebar shows `NEEDS_INPUT`
+while the question selector is awaiting an answer.
 
 The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
 sequences were:
@@ -1045,8 +1059,10 @@ src/agenthub/
 ├── app.py               # Textual application and DOM ownership
 ├── clipboard.py         # system-clipboard backend resolution and reads
 ├── activity/
+│   ├── _forwarder.py    # shared neutral local hook forwarding
 │   ├── __init__.py      # public activity API
 │   ├── codex.py         # Codex hook bridge and event normalizer
+│   ├── devin.py         # Devin hook bridge, config overlay, and normalizer
 │   ├── model.py         # activity state and normalized events
 │   ├── receiver.py      # authenticated loopback event receiver
 │   └── reducer.py       # provider-neutral activity transitions
@@ -1109,6 +1125,7 @@ tests/
 ├── unit/
 │   ├── test_agent_activity.py
 │   ├── test_codex_activity.py
+│   ├── test_devin_activity.py
 │   ├── test_app.py
 │   ├── test_clipboard.py
 │   ├── test_harnesses.py
@@ -1195,15 +1212,20 @@ The architectural foundation is implemented:
 18. Provider-neutral activity state, normalized activity events, and a pure
     reducer are separate from `SessionState`. `SessionManager` routes them only
     to an exact loaded Agent and clears activity when its runtime detaches.
-19. Codex runtimes receive child-only correlation credentials and static native
-    lifecycle hooks. An authenticated loopback receiver normalizes those events
-    and Loaded Agent rows display activity, including attention acknowledgement
-    from `DONE` to `IDLE`.
+19. Codex and Devin runtimes receive child-only correlation credentials and
+    native lifecycle hooks. An authenticated loopback receiver normalizes those
+    events and Loaded Agent rows display activity, including attention
+    acknowledgement from `DONE` to `IDLE`. Devin uses a secure temporary config
+    overlay that preserves user settings and existing hooks.
+20. Devin CLI 3000.10.31 accepts the generated config overlay. A live launch
+    confirmed `SessionStart` and `UserPromptSubmit` delivery, including the
+    documented per-turn `prompt_id`; the complete documented mapping is covered
+    by receiver and state-transition tests.
 
 The remaining sequence is:
 
-1. Add Devin, OpenCode V2, and Antigravity activity bridges in that order,
-   without inventing unsupported provider states.
+1. Add OpenCode V2 and Antigravity activity bridges in that order, without
+   inventing unsupported provider states.
 2. Create and title native conversations through the provider adapters if a
    reliable provider-native mechanism becomes available.
 3. Add a supported non-interactive Antigravity deletion entry point when its
@@ -1486,9 +1508,9 @@ active exits return to Home, and hidden exits do not interrupt the current
 terminal. Contextual Delete operates only on the active native-backed Agent,
 and Ctrl+D reaches a focused terminal unchanged.
 Locked hub shortcuts have been proven to fall through at the PTY-write
-boundary. Codex lifecycle hooks now feed authenticated per-runtime activity to
-the Loaded sidebar; other providers remain `UNKNOWN`. Next: add Devin, OpenCode
-V2, and Antigravity activity bridges, then create native conversations through
-the adapters and add a supported non-interactive Antigravity deletion entry
-point. AgentHub persistence remains deferred.
+boundary. Codex and Devin lifecycle hooks now feed authenticated per-runtime
+activity to the Loaded sidebar; OpenCode and Antigravity remain `UNKNOWN`.
+Next: add OpenCode V2 and Antigravity activity bridges, then create native
+conversations through the adapters and add a supported non-interactive
+Antigravity deletion entry point. AgentHub persistence remains deferred.
 ```
