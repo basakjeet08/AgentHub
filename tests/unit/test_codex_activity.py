@@ -37,11 +37,15 @@ def test_codex_normalizer_maps_observed_events(
     provider_event: str,
     expected: AgentActivityEventKind,
 ) -> None:
-    event = normalize_codex_activity("logical-session", {"hook_event_name": provider_event})
+    event = normalize_codex_activity(
+        "logical-session",
+        {"hook_event_name": provider_event, "turn_id": "turn-1"},
+    )
 
     assert event is not None
     assert event.session_id == "logical-session"
     assert event.kind is expected
+    assert event.scope_id == "turn-1"
 
 
 @pytest.mark.parametrize(
@@ -50,6 +54,8 @@ def test_codex_normalizer_maps_observed_events(
         {"hook_event_name": "SessionStart"},
         {"hook_event_name": "SessionEnd"},
         {"hook_event_name": "FutureEvent"},
+        {"hook_event_name": "Stop"},
+        {"hook_event_name": "Stop", "turn_id": ""},
         {},
         [],
     ],
@@ -75,17 +81,22 @@ def test_codex_hook_configuration_is_static_and_precedes_resume() -> None:
         assert f"hooks.{event_name}=" in serialized
     assert "hooks.SessionStart=" not in serialized
     assert "hooks.SessionEnd=" not in serialized
+    assert serialized.count("timeout=3,async=true") == 6
     assert AGENTHUB_SESSION_ID not in serialized
     assert AGENTHUB_ACTIVITY_ENDPOINT not in serialized
     assert AGENTHUB_ACTIVITY_TOKEN not in serialized
 
 
-async def _forward_event(environment: Mapping[str, str], event_name: str) -> str:
+async def _forward_event(
+    environment: Mapping[str, str],
+    event_name: str,
+    turn_id: str = "turn-1",
+) -> str:
     output = io.StringIO()
     exit_code = await asyncio.to_thread(
         run_codex_activity_hook,
         input_stream=io.BytesIO(
-            f'{{"hook_event_name":"{event_name}"}}'.encode()
+            f'{{"hook_event_name":"{event_name}","turn_id":"{turn_id}"}}'.encode()
         ),
         output_stream=output,
         environment=environment,
@@ -116,9 +127,13 @@ async def test_receiver_routes_two_sessions_without_cross_updates() -> None:
                 break
             await asyncio.sleep(0.01)
 
-        assert [(event.session_id, event.kind) for event in received] == [
-            ("first-session", AgentActivityEventKind.TOOL_STARTED),
-            ("second-session", AgentActivityEventKind.PERMISSION_REQUESTED),
+        assert [(event.session_id, event.kind, event.scope_id) for event in received] == [
+            ("first-session", AgentActivityEventKind.TOOL_STARTED, "turn-1"),
+            (
+                "second-session",
+                AgentActivityEventKind.PERMISSION_REQUESTED,
+                "turn-1",
+            ),
         ]
     finally:
         await receiver.close()
@@ -218,13 +233,42 @@ async def test_codex_hook_updates_its_agenthub_session_end_to_end(
     assert session.activity is AgentActivity.IDLE
     registration = app._activity_registrations[session.id]
     try:
-        await _forward_event(registration.environment, "UserPromptSubmit")
+        await _forward_event(registration.environment, "UserPromptSubmit", "turn-a")
         for _ in range(20):
             if session.activity is AgentActivity.WORKING:
                 break
             await asyncio.sleep(0.01)
 
         assert session.activity is AgentActivity.WORKING
+
+        await _forward_event(registration.environment, "Stop", "turn-a")
+        for _ in range(20):
+            if session.activity is AgentActivity.DONE:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.DONE
+
+        await _forward_event(registration.environment, "PermissionRequest", "turn-a")
+        await asyncio.sleep(0.02)
+        assert session.activity is AgentActivity.DONE
+
+        await _forward_event(registration.environment, "UserPromptSubmit", "turn-b")
+        for _ in range(20):
+            if session.activity is AgentActivity.WORKING:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.WORKING
+
+        await _forward_event(registration.environment, "Stop", "turn-a")
+        await asyncio.sleep(0.02)
+        assert session.activity is AgentActivity.WORKING
+
+        await _forward_event(registration.environment, "Stop", "turn-b")
+        for _ in range(20):
+            if session.activity is AgentActivity.DONE:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.DONE
     finally:
         receiver = app._activity_receiver
         assert receiver is not None

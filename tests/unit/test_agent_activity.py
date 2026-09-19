@@ -5,10 +5,12 @@ from pathlib import Path
 import pytest
 
 from agenthub.activity import (
+    ActivityReducerState,
     AgentActivity,
     AgentActivityEvent,
     AgentActivityEventKind,
     reduce_activity,
+    reduce_activity_state,
 )
 from agenthub.native_sessions import NativeSession
 from agenthub.sessions import SessionKind, SessionManager, SessionState
@@ -66,6 +68,141 @@ def test_late_tool_events_do_not_overwrite_attention_states() -> None:
     assert reduce_activity(AgentActivity.DONE, tool_finished) is AgentActivity.DONE
 
 
+@pytest.mark.parametrize(
+    ("terminal_kind", "expected"),
+    [
+        (AgentActivityEventKind.TURN_COMPLETED, AgentActivity.DONE),
+        (AgentActivityEventKind.INTERRUPTED, AgentActivity.IDLE),
+    ],
+)
+def test_closed_scope_rejects_late_permission_event(
+    terminal_kind: AgentActivityEventKind,
+    expected: AgentActivity,
+) -> None:
+    state = ActivityReducerState()
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        ),
+    )
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            terminal_kind,
+            scope_id="turn-a",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PERMISSION_REQUESTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is expected
+
+
+def test_new_scope_rejects_late_completion_from_previous_scope() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        ),
+    )
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-b",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TURN_COMPLETED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is AgentActivity.WORKING
+    assert state.active_scope_id == "turn-b"
+
+
+def test_completion_that_arrives_before_its_prompt_remains_terminal() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TURN_COMPLETED,
+            scope_id="turn-a",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is AgentActivity.DONE
+
+
+def test_permission_that_arrives_before_its_prompt_remains_needs_input() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(activity=AgentActivity.DONE),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PERMISSION_REQUESTED,
+            scope_id="turn-b",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-b",
+        ),
+    )
+
+    assert state.activity is AgentActivity.NEEDS_INPUT
+
+
+def test_unknown_scoped_event_does_not_replace_the_active_scope() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent("session-1", "future_event", scope_id="turn-b"),
+    )
+
+    assert state.activity is AgentActivity.WORKING
+    assert state.active_scope_id == "turn-a"
+
+
 def test_manager_routes_activity_to_exact_loaded_agent(
     sleeping_harness,
 ) -> None:
@@ -92,6 +229,47 @@ def test_manager_routes_activity_to_exact_loaded_agent(
     assert first.activity is AgentActivity.WORKING
     assert second.activity is AgentActivity.UNKNOWN
     assert (first.state, second.state) == lifecycle_states
+
+
+def test_manager_retains_scope_change_when_visible_activity_is_unchanged(
+    sleeping_harness,
+) -> None:
+    manager = SessionManager()
+    session = manager.create(
+        name="Agent",
+        kind=SessionKind.AGENT,
+        cwd=Path.cwd(),
+        harness=sleeping_harness,
+    )
+    manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        )
+    )
+
+    assert (
+        manager.apply_activity_event(
+            AgentActivityEvent(
+                session.id,
+                AgentActivityEventKind.PROMPT_SUBMITTED,
+                scope_id="turn-b",
+            )
+        )
+        is False
+    )
+    assert (
+        manager.apply_activity_event(
+            AgentActivityEvent(
+                session.id,
+                AgentActivityEventKind.TURN_COMPLETED,
+                scope_id="turn-a",
+            )
+        )
+        is False
+    )
+    assert session.activity is AgentActivity.WORKING
 
 
 def test_manager_reports_unchanged_and_unknown_events_without_raising(
@@ -155,12 +333,27 @@ def test_detaching_runtime_resets_activity_to_unknown(sleeping_harness) -> None:
     )
     terminal = session.terminal
     manager.apply_activity_event(
-        AgentActivityEvent(session.id, AgentActivityEventKind.TURN_COMPLETED)
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.TURN_COMPLETED,
+            scope_id="turn-a",
+        )
     )
 
     assert manager.detach_terminal(session.id) is terminal
     assert session.activity is AgentActivity.UNKNOWN
     assert session.state is SessionState.UNLOADED
+
+    assert terminal is not None
+    manager.attach_terminal(session.id, terminal)
+    assert manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        )
+    )
+    assert session.activity is AgentActivity.WORKING
 
 
 def test_native_deletion_resets_activity_to_unknown(sleeping_harness) -> None:

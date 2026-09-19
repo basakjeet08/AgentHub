@@ -80,10 +80,10 @@ The picker lists harnesses supported by AgentHub even when their executables are
 not installed. Each native CLI owns its authentication and first-run setup.
 
 Codex activity hooks require the normal Codex trust review. On the first Codex
-launch after this feature is installed, open `/hooks`, inspect the static
-AgentHub hook command, and trust it. Until trusted, Codex continues normally and
-the sidebar remains at its initial `Idle` state instead of receiving live
-updates. AgentHub does not bypass hook trust.
+launch after this feature is installed, open `/hooks`, inspect and trust the
+AgentHub activity hooks. Until trusted, Codex continues normally and the sidebar
+remains at its initial `Idle` state instead of receiving live updates. AgentHub
+does not bypass hook trust.
 
 ## Current Limitations
 
@@ -94,6 +94,9 @@ AgentHub does not yet provide:
 - persisted session metadata;
 - live activity reporting for Devin, OpenCode, or Antigravity (their loaded
   rows remain `Unknown`);
+- an approval-resolved Codex signal; after approval, `Needs Input` can remain
+  visible until the tool finishes, and another approval hook may resolve a
+  request without AgentHub observing that resolution;
 - creation or renaming of native harness conversations;
 - non-interactive Antigravity conversation deletion (the native CLI currently
   exposes deletion only through its interactive conversation picker).

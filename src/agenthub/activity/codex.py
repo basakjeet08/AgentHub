@@ -53,7 +53,10 @@ def normalize_codex_activity(
     kind = _NORMALIZED_EVENTS.get(event_name)
     if kind is None:
         return None
-    return AgentActivityEvent(session_id=session_id, kind=kind)
+    turn_id = payload.get("turn_id")
+    if not isinstance(turn_id, str) or not turn_id:
+        return None
+    return AgentActivityEvent(session_id=session_id, kind=kind, scope_id=turn_id)
 
 
 def codex_command_with_activity_hooks(command: Sequence[str]) -> tuple[str, ...]:
@@ -70,7 +73,7 @@ def codex_command_with_activity_hooks(command: Sequence[str]) -> tuple[str, ...]
         config = (
             f"hooks.{event_name}="
             f"[{{hooks=[{{type=\"command\",command={encoded_command},"
-            "timeout=1,async=true}]}]"
+            "timeout=3,async=true}]}]"
         )
         overrides.extend(("-c", config))
     return (command[0], *overrides, *command[1:])

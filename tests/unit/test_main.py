@@ -10,7 +10,7 @@ def test_main_runs_the_application(monkeypatch) -> None:
         nonlocal calls
         calls += 1
 
-    monkeypatch.setattr("agenthub.main.AgentHubApp.run", fake_run)
+    monkeypatch.setattr("agenthub.app.AgentHubApp.run", fake_run)
 
     main([])
 

@@ -3,7 +3,12 @@
 from pathlib import Path
 from uuid import uuid4
 
-from agenthub.activity import AgentActivity, AgentActivityEvent, reduce_activity
+from agenthub.activity import (
+    ActivityReducerState,
+    AgentActivity,
+    AgentActivityEvent,
+    reduce_activity_state,
+)
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import NativeSession
 from agenthub.terminal import AgentTerminal
@@ -17,6 +22,7 @@ class SessionManager:
     def __init__(self) -> None:
         self._sessions: dict[str, AgentSession] = {}
         self._active_session_id: str | None = None
+        self._activity_reducer_states: dict[str, ActivityReducerState] = {}
 
     @property
     def sessions(self) -> tuple[AgentSession, ...]:
@@ -49,10 +55,21 @@ class SessionManager:
         ):
             return False
 
-        activity = reduce_activity(session.activity, event)
-        if activity is session.activity:
+        state = self._activity_reducer_states.get(
+            session.id,
+            ActivityReducerState(activity=session.activity),
+        )
+        if state.activity is not session.activity:
+            state = ActivityReducerState(
+                activity=session.activity,
+                active_scope_id=state.active_scope_id,
+                closed_scope_ids=state.closed_scope_ids,
+            )
+        next_state = reduce_activity_state(state, event)
+        self._activity_reducer_states[session.id] = next_state
+        if next_state.activity is session.activity:
             return False
-        session.activity = activity
+        session.activity = next_state.activity
         return True
 
     def create(
@@ -264,6 +281,7 @@ class SessionManager:
         session.terminal = terminal
         session.state = SessionState.RUNNING
         session.activity = AgentActivity.UNKNOWN
+        self._activity_reducer_states.pop(session_id, None)
         return session
 
     def detach_terminal(self, session_id: str) -> AgentTerminal | None:
@@ -274,6 +292,7 @@ class SessionManager:
         session.terminal = None
         session.state = SessionState.UNLOADED
         session.activity = AgentActivity.UNKNOWN
+        self._activity_reducer_states.pop(session_id, None)
         return terminal
 
     def begin_native_deletion(self, session_id: str) -> AgentTerminal | None:
@@ -289,6 +308,7 @@ class SessionManager:
         session.terminal = None
         session.state = SessionState.DELETING
         session.activity = AgentActivity.UNKNOWN
+        self._activity_reducer_states.pop(session_id, None)
         if self._active_session_id == session_id:
             self._active_session_id = None
         return terminal
@@ -337,6 +357,7 @@ class SessionManager:
         """
 
         session = self._sessions.pop(session_id)
+        self._activity_reducer_states.pop(session_id, None)
         if self._active_session_id == session_id:
             self._active_session_id = None
         return session

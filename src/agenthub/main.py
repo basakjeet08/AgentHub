@@ -5,7 +5,6 @@ import sys
 from collections.abc import Sequence
 
 from agenthub.activity import run_codex_activity_hook
-from agenthub.app import AgentHubApp
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -26,6 +25,8 @@ def main(argv: Sequence[str] | None = None) -> int | None:
 
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments:
+        from agenthub.app import AgentHubApp
+
         AgentHubApp().run()
         return None
 

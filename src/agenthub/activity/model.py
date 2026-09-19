@@ -33,3 +33,4 @@ class AgentActivityEvent:
 
     session_id: str
     kind: AgentActivityEventKind | str
+    scope_id: str | None = None

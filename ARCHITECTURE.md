@@ -139,7 +139,13 @@ launches receive a static passive hook definition plus per-runtime
 `AGENTHUB_ACTIVITY_TOKEN` values in the child environment. The hook helper
 forwards the raw event to an ephemeral loopback receiver, which authenticates
 and normalizes it before `SessionManager` applies the reducer. No provider
-payload content enters the core model.
+payload object enters the core model.
+
+Turn-scoped provider events carry an optional provider-neutral `scope_id`.
+Codex supplies its `turn_id`; the reducer keeps a bounded history of completed
+or superseded scopes so asynchronously delivered events from an older turn
+cannot overwrite the current turn. Terminal events also close their own scope,
+so a late permission or tool event cannot replace `DONE` or interrupted `IDLE`.
 
 Loaded Agent rows render the activity as secondary status text. `NEEDS_INPUT`
 has the strongest emphasis. `DONE` is an attention state and becomes `IDLE`
@@ -152,9 +158,9 @@ never bypasses Codex hook trust, answers permissions, changes tool output, or
 blocks a provider hook.
 
 Prompt processing and tool execution intentionally share the single `WORKING`
-state. Its sidebar indicator is animated by one shared timer. Since passive
-Codex hooks run asynchronously, the reducer also prevents a late tool-start or
-tool-finish observation from overwriting `NEEDS_INPUT` or `DONE`.
+state. Its sidebar indicator is animated by one shared timer. Passive Codex
+hooks run asynchronously and may be delivered out of order, so reducer scope
+tracking rejects late events from completed or superseded turns.
 
 The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
 sequences were:
@@ -167,11 +173,15 @@ cancelled approval: SessionStart → UserPromptSubmit → PreToolUse → Permiss
 
 `PermissionRequest` arrived after `PreToolUse` and did not include a
 `tool_use_id`; `Interrupt` therefore clears the waiting state without relying
-on a later tool or stop event. The dangerous trust-bypass option changed the
-observed permission mode and is not used in production. AgentHub relies on the
-normal Codex `/hooks` review flow. `SessionStart` and `SessionEnd` are not
-forwarded: mounting initializes `IDLE`, and runtime cleanup already follows
-process exit.
+on a later tool or stop event. Codex does not currently emit a passive
+approval-resolved event, so after the user approves, `NEEDS_INPUT` may remain
+visible until `PostToolUse` reports that the tool finished. Another approval
+hook can also resolve a request without AgentHub observing that resolution;
+AgentHub does not infer it from terminal text. The dangerous trust-bypass option
+changed the observed permission mode and is not used in production. AgentHub
+relies on the normal Codex `/hooks` review flow. `SessionStart` and `SessionEnd`
+are not forwarded: mounting initializes `IDLE`, and runtime cleanup already
+follows process exit.
 
 Four coding-agent harnesses are registered:
 
