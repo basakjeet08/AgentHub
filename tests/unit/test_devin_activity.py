@@ -285,7 +285,7 @@ def test_devin_ctrl_c_observation_clears_active_prompt(
     assert session.activity is AgentActivity.IDLE
 
 
-def test_devin_double_escape_observation_clears_working_prompt(
+def test_devin_single_escape_observation_clears_working_prompt(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -298,9 +298,6 @@ def test_devin_double_escape_observation_clears_working_prompt(
             scope_id="prompt-a",
         )
     )
-
-    app._on_devin_terminal_key(session.id, "escape")
-    assert session.activity is AgentActivity.WORKING
 
     app._on_devin_terminal_key(session.id, "escape")
     assert session.activity is AgentActivity.IDLE

@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from time import monotonic
 from typing import ClassVar
 
 from textual.app import App, ComposeResult, SystemCommand
@@ -60,7 +59,6 @@ _SESSION_WORKFLOW_MODALS = (
 )
 
 _FRESH_AGENT_NAME = "New session"
-_DEVIN_ESCAPE_SEQUENCE_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -119,7 +117,6 @@ class AgentHubApp(App):
         self._activity_receiver: ActivityReceiver | None = None
         self._activity_registrations: dict[str, ActivityRegistration] = {}
         self._activity_artifacts: dict[str, tuple[Path, ...]] = {}
-        self._devin_last_escape_at: dict[str, float] = {}
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -1133,7 +1130,6 @@ class AgentHubApp(App):
     def _revoke_activity_tracking(self, session_id: str) -> None:
         """Invalidate one runtime's activity credential if it exists."""
 
-        self._devin_last_escape_at.pop(session_id, None)
         try:
             terminal = self.session_manager.get(session_id).terminal
         except KeyError:
@@ -1168,29 +1164,14 @@ class AgentHubApp(App):
             or session_id not in self._activity_registrations
             or session.activity not in {AgentActivity.WORKING, AgentActivity.NEEDS_INPUT}
         ):
-            self._devin_last_escape_at.pop(session_id, None)
             return
 
-        interrupted = key == "ctrl+c"
-        if key == "escape":
-            now = monotonic()
-            previous = self._devin_last_escape_at.get(session_id)
-            interrupted = session.activity is AgentActivity.NEEDS_INPUT or (
-                previous is not None
-                and now - previous <= _DEVIN_ESCAPE_SEQUENCE_SECONDS
-            )
-            if not interrupted:
-                self._devin_last_escape_at[session_id] = now
-                return
-        else:
-            self._devin_last_escape_at.pop(session_id, None)
-
-        if interrupted:
-            self._devin_last_escape_at.pop(session_id, None)
-            if self.session_manager.apply_activity_event(
-                AgentActivityEvent(session_id, AgentActivityEventKind.INTERRUPTED)
-            ):
-                self._refresh_sidebar()
+        if key not in {"ctrl+c", "escape"}:
+            return
+        if self.session_manager.apply_activity_event(
+            AgentActivityEvent(session_id, AgentActivityEventKind.INTERRUPTED)
+        ):
+            self._refresh_sidebar()
 
     def _agent_sessions(self) -> tuple[AgentSession, ...]:
         """Return managed coding-agent sessions in creation order."""

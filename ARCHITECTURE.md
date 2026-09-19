@@ -180,9 +180,10 @@ normalizer emits the provider-neutral `INPUT_REQUESTED` event so the sidebar
 shows `NEEDS_INPUT` while the question selector is awaiting an answer. Devin
 3000.10.31 emits no lifecycle hook when the user interrupts either active work
 or that selector. AgentHub therefore observes only the interrupt keys it already
-forwards to the Devin child (`Ctrl+C`, double `Esc`, or one `Esc` at
-`NEEDS_INPUT`) and closes the active prompt scope without changing terminal key
-passthrough. It never infers interruption from terminal output.
+forwards to the Devin child (`Ctrl+C` or `Esc`) and closes the active prompt
+scope without changing terminal key passthrough. `Esc` follows Devin's default
+cancel binding, while `Ctrl+C` is the provider's non-rebindable cancel key.
+AgentHub never infers interruption from terminal output.
 
 The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
 sequences were:
