@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-from textual.widgets import ContentSwitcher, OptionList, Static
+from textual.widgets import ContentSwitcher, OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import (
@@ -237,9 +237,6 @@ async def test_active_exit_returns_home_while_other_session_keeps_running(
         home = app.query_one(HomeScreen)
         assert home.display
         assert home.has_focus
-        assert home.query_one("#home-empty-copy", Static).content == (
-            "Select a session from the sidebar\nor start a new coding-agent session."
-        )
         assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
         assert all(
             session_list.highlighted is None for session_list in app.query(OptionList)

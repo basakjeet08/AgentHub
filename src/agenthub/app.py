@@ -287,7 +287,6 @@ class AgentHubApp(App):
             summary_lines.append(f"{harness.display_name} - {len(result.sessions)}")
         self._refresh_sidebar()
         self._refresh_status()
-        self._refresh_home()
 
         if discovery_failed:
             completion_message = "Session discovery completed with errors:"
@@ -913,13 +912,11 @@ class AgentHubApp(App):
                 self.session_manager.fail_native_deletion(session.id)
             self._refresh_sidebar()
             self._refresh_status()
-            self._refresh_home()
             self._notify_native_deletion_error(session, error)
             return
 
         self._refresh_sidebar()
         self._refresh_status()
-        self._refresh_home()
         self.notify(
             f'Deleted "{native_session.name}" permanently.',
             title="Native session deleted",
@@ -950,7 +947,6 @@ class AgentHubApp(App):
 
         self._refresh_sidebar()
         self._refresh_status()
-        self._refresh_home()
         self.notify(
             f"Linked running terminal to {linked.name}.",
             title="Native session linked",
@@ -1065,13 +1061,6 @@ class AgentHubApp(App):
             return
         sidebars[0].update_sessions(self.session_manager.sessions)
 
-    def _refresh_home(self) -> None:
-        """Synchronize Home guidance with the current logical sessions."""
-
-        homes = self.query(HomeScreen).nodes
-        if homes:
-            homes[0].update_for_sessions(bool(self.session_manager.sessions))
-
     def _highlight_active_sidebar(self) -> None:
         """Restore active highlighting after a sidebar recompose."""
 
@@ -1152,7 +1141,6 @@ class AgentHubApp(App):
         result = await self._reconcile_native_provider(session.harness.id)
         self._refresh_sidebar()
         self._refresh_status()
-        self._refresh_home()
         if result.error is not None:
             self.notify(
                 f"Could not reconcile {session.harness.display_name} after exit: "
@@ -1184,7 +1172,6 @@ class AgentHubApp(App):
         """Display and focus Home without changing keyboard-ownership mode."""
 
         home = self.query_one(HomeScreen)
-        self._refresh_home()
         self.query_one("#session-content", ContentSwitcher).current = "home-screen"
         sidebar = self.query_one(SessionSidebar)
         sidebar.clear_active()

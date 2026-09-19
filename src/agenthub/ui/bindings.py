@@ -51,25 +51,10 @@ APPLICATION_BINDINGS = (
     FOCUS_SIDEBAR_BINDING,
 )
 
-HOME_SHORTCUTS = (
-    *(
-        (binding.key_display or binding.key, binding.description)
-        for binding in (
-            TOGGLE_HUB_LOCK_BINDING,
-            COMMAND_PALETTE_BINDING,
-            RESYNC_SESSIONS_BINDING,
-        )
-    ),
-    ("Ctrl+S", "Focus sidebar"),
-    ("← / →", "Change sidebar tab"),
-    ("↑ / ↓, Enter", "Navigate / open session"),
-)
-
 __all__ = [
     "APPLICATION_BINDINGS",
     "COMMAND_PALETTE_BINDING",
     "FOCUS_SIDEBAR_BINDING",
-    "HOME_SHORTCUTS",
     "RESYNC_SESSIONS_BINDING",
     "TERMINAL_GATED_ACTIONS",
     "TOGGLE_HUB_LOCK_BINDING",

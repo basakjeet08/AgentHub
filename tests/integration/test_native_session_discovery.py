@@ -5,13 +5,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from textual.widgets import OptionList, Static
+from textual.widgets import OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
 from agenthub.sessions import SessionState
-from agenthub.ui import HomeScreen, SessionSidebar, SidebarTab
+from agenthub.ui import SessionSidebar, SidebarTab
 
 
 class FakeNativeSessionAdapter:
@@ -68,9 +68,6 @@ async def test_discovered_session_starts_unloaded_and_resumes_once(
         assert sidebar.selected_tab is SidebarTab.LOADED
         assert sidebar.visible_session_ids == ()
         assert sidebar.tab_counts[SidebarTab.UNLOADED] == 1
-        assert app.query_one(HomeScreen).query_one("#home-empty-copy", Static).content == (
-            "Select a session from the sidebar\nor start a new coding-agent session."
-        )
         assert app._discovery_executor is None
 
         await pilot.press("ctrl+s", "right")

@@ -73,9 +73,6 @@ async def test_only_child_exiting_returns_to_empty_home() -> None:
         home = app.query_one(HomeScreen)
         assert home.display
         assert home.has_focus
-        assert home.query_one("#home-empty-copy", Static).content == (
-            "No sessions yet. Start your first\ncoding-agent session."
-        )
         assert app.query_one(SessionSidebar).visible_session_ids == ()
         assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
         status = app.query_one(AgentHubStatusBar)

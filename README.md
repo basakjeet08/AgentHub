@@ -18,8 +18,9 @@ making structural changes.
 AgentHub currently has a Home-first application shell backed by the accepted
 multi-session runtime architecture:
 
-- It starts on a neutral Home screen, discovers native conversations in the
-  background, and does not launch a coding-agent process until one is selected.
+- It starts on a neutral Home screen with a tabbed beginner guide, discovers
+  native conversations in the background, and does not launch a coding-agent
+  process until one is selected.
 - It provides a persistent session sidebar, Home content area, and application
   status bar.
 - It uses Textual's built-in Tokyo Night theme with shared semantic component
