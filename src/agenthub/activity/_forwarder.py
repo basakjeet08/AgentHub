@@ -19,9 +19,12 @@ _NEUTRAL_RESPONSE = "{}\n"
 _PROTOCOL_VERSION = 1
 
 
-def _write_neutral_response(output: TextIO) -> None:
+def _write_neutral_response(output: TextIO, response: Mapping[str, object]) -> None:
     try:
-        output.write(_NEUTRAL_RESPONSE)
+        if response:
+            output.write(json.dumps(response, separators=(",", ":")) + "\n")
+        else:
+            output.write(_NEUTRAL_RESPONSE)
         output.flush()
     except Exception:  # noqa: BLE001, S110 - observation must never affect providers
         pass
@@ -52,6 +55,8 @@ def run_activity_hook(
     input_stream: BinaryIO | None = None,
     output_stream: TextIO | None = None,
     environment: Mapping[str, str] | None = None,
+    payload_updates: Mapping[str, object] | None = None,
+    neutral_response: Mapping[str, object] | None = None,
 ) -> int:
     """Forward one provider event locally and always return a neutral result."""
 
@@ -65,6 +70,8 @@ def run_activity_hook(
         decoded = json.loads(payload)
         if not isinstance(decoded, dict):
             raise TypeError("hook payload was not an object")
+        if payload_updates:
+            decoded.update(payload_updates)
 
         session_id = env.get(AGENTHUB_SESSION_ID, "")
         endpoint = _loopback_address(env.get(AGENTHUB_ACTIVITY_ENDPOINT, ""))
@@ -88,7 +95,7 @@ def run_activity_hook(
     except Exception:  # noqa: BLE001, S110 - activity is strictly best effort
         pass
 
-    _write_neutral_response(output)
+    _write_neutral_response(output, neutral_response or {})
     return 0
 
 

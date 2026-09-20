@@ -47,3 +47,18 @@ def test_main_routes_devin_activity_hook(monkeypatch) -> None:
 
     assert exit_code == 0
     assert calls == 1
+
+
+def test_main_routes_antigravity_activity_hook(monkeypatch) -> None:
+    events = []
+
+    def fake_hook(event_name: str) -> int:
+        events.append(event_name)
+        return 0
+
+    monkeypatch.setattr("agenthub.main.run_antigravity_activity_hook", fake_hook)
+
+    exit_code = main(["activity-hook", "antigravity", "PreInvocation"])
+
+    assert exit_code == 0
+    assert events == ["PreInvocation"]

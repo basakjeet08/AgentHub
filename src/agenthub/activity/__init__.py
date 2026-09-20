@@ -5,6 +5,11 @@ from ._forwarder import (
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
 )
+from .antigravity import (
+    ensure_antigravity_activity_hooks,
+    normalize_antigravity_activity,
+    run_antigravity_activity_hook,
+)
 from .codex import (
     codex_command_with_activity_hooks,
     normalize_codex_activity,
@@ -40,6 +45,8 @@ __all__ = [
     "AgentActivityEventKind",
     "DevinActivityLaunch",
     "codex_command_with_activity_hooks",
+    "ensure_antigravity_activity_hooks",
+    "normalize_antigravity_activity",
     "normalize_codex_activity",
     "normalize_devin_activity",
     "normalize_opencode_activity",
@@ -47,6 +54,7 @@ __all__ = [
     "prepare_devin_activity_launch",
     "reduce_activity",
     "reduce_activity_state",
+    "run_antigravity_activity_hook",
     "run_codex_activity_hook",
     "run_devin_activity_hook",
 ]

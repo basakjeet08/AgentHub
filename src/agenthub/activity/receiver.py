@@ -14,6 +14,7 @@ from ._forwarder import (
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
 )
+from .antigravity import normalize_antigravity_activity
 from .codex import normalize_codex_activity
 from .devin import normalize_devin_activity
 from .model import AgentActivityEvent
@@ -23,6 +24,7 @@ _HOST = "127.0.0.1"
 _MAX_MESSAGE_BYTES = 1_048_576
 _PROTOCOL_VERSION = 1
 _NORMALIZERS = {
+    "antigravity": normalize_antigravity_activity,
     "codex": normalize_codex_activity,
     "devin": normalize_devin_activity,
     "opencode": normalize_opencode_activity,

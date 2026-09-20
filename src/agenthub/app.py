@@ -22,6 +22,7 @@ from agenthub.activity import (
     AgentActivityEvent,
     AgentActivityEventKind,
     codex_command_with_activity_hooks,
+    ensure_antigravity_activity_hooks,
     opencode_activity_environment,
     prepare_devin_activity_launch,
 )
@@ -1085,9 +1086,10 @@ class AgentHubApp(App):
         if session.kind is not SessionKind.AGENT:
             return False
         provider = session.harness.id
-        if provider not in {"codex", "devin", "opencode"}:
+        if provider not in {"antigravity", "codex", "devin", "opencode"}:
             return False
-        if Path(terminal.child_command[0]).name != provider:
+        executable = "agy" if provider == "antigravity" else provider
+        if Path(terminal.child_command[0]).name != executable:
             return False
         try:
             receiver = self._activity_receiver
@@ -1098,6 +1100,8 @@ class AgentHubApp(App):
             self._revoke_activity_tracking(session.id)
             registration = receiver.register(session.id, provider)
             self._activity_registrations[session.id] = registration
+            if provider == "antigravity":
+                ensure_antigravity_activity_hooks()
             command = terminal.child_command
             if provider == "codex":
                 command = codex_command_with_activity_hooks(command)

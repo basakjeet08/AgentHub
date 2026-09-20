@@ -133,8 +133,9 @@ not create widgets or import Bitty.
 Agent activity is modeled independently from `SessionState` through
 `AgentActivity`, normalized `AgentActivityEvent` values, and a pure reducer.
 Every session defaults to `UNKNOWN`; only loaded Agent sessions accept events,
-and detaching or deleting a runtime resets its activity to `UNKNOWN`. Codex,
-Devin, and OpenCode launches receive passive provider integration plus per-runtime
+and detaching or deleting a runtime resets its activity to `UNKNOWN`.
+Antigravity, Codex, Devin, and OpenCode launches receive passive provider
+integration plus per-runtime
 `AGENTHUB_SESSION_ID`, `AGENTHUB_ACTIVITY_ENDPOINT`, and
 `AGENTHUB_ACTIVITY_TOKEN` values in the child environment. Command-hook helpers
 and the OpenCode plugin forward raw events to an ephemeral loopback receiver,
@@ -207,6 +208,18 @@ local scope ID so a late event cannot overwrite a newer turn. Child/subagent
 input requests still surface as `NEEDS_INPUT`, while their terminal events are
 ignored so they cannot mark the root Agent done prematurely. The plugin only
 observes and forwards events; it never answers or modifies them.
+
+Antigravity has no per-launch hook-config flag, so AgentHub installs one
+reserved named observer in the documented shared `~/.gemini/config/hooks.json`
+file. Installation is atomic and idempotent, preserves every other named hook
+and the existing file mode, and is inert outside AgentHub because correlation
+credentials exist only in the hosted child environment. The observer uses only
+`PreInvocation` and `Stop`. AgentHub deliberately does not register
+`PreToolUse`: Antigravity requires that hook to return a permission decision,
+so using it for observation could alter provider behavior. Invocation events
+map to `WORKING`; `Stop fullyIdle=false` remains `WORKING`; and `Stop
+fullyIdle=true` maps to `DONE`. Antigravity exposes no reliable passive input
+request event, so it never fabricates `NEEDS_INPUT` from terminal output.
 
 The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
 sequences were:
@@ -1097,6 +1110,7 @@ src/agenthub/
 │   ├── _forwarder.py    # shared neutral local hook forwarding
 │   ├── __init__.py      # public activity API
 │   ├── _opencode_plugin.js # passive OpenCode V2 event bridge
+│   ├── antigravity.py   # Antigravity hook bridge and event normalizer
 │   ├── codex.py         # Codex hook bridge and event normalizer
 │   ├── devin.py         # Devin hook bridge, config overlay, and normalizer
 │   ├── model.py         # activity state and normalized events
@@ -1250,12 +1264,12 @@ The architectural foundation is implemented:
 18. Provider-neutral activity state, normalized activity events, and a pure
     reducer are separate from `SessionState`. `SessionManager` routes them only
     to an exact loaded Agent and clears activity when its runtime detaches.
-19. Codex, Devin, and OpenCode runtimes receive child-only correlation
-    credentials and passive structured-event integration. An authenticated
-    loopback receiver normalizes those events and Loaded Agent rows display
-    activity, including attention acknowledgement from `DONE` to `IDLE`. Devin
-    uses a secure temporary config overlay; OpenCode uses an inline V2 plugin
-    entry. Both preserve existing user configuration.
+19. Antigravity, Codex, Devin, and OpenCode runtimes receive child-only
+    correlation credentials and passive structured-event integration. An
+    authenticated loopback receiver normalizes those events and Loaded Agent
+    rows display activity, including attention acknowledgement from `DONE` to
+    `IDLE`. Devin uses a secure temporary config overlay; OpenCode uses an
+    inline V2 plugin entry. Both preserve existing user configuration.
 20. Devin CLI 3000.10.31 accepts the generated config overlay. Live traces
     confirmed `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
     `PermissionRequest`, `PostToolUse`, and `Stop`, with one stable `prompt_id`
@@ -1271,14 +1285,16 @@ The architectural foundation is implemented:
     interruption events use execution-scoped ordering and exact logical-session
     routing. The plugin loads under OpenCode 1.18.31's V2 runtime without
     changing existing user configuration.
+22. Antigravity receives a passive named hook observer through its shared hook
+    configuration. Existing named hooks are preserved. Invocation events and
+    the `fullyIdle` Stop field drive `WORKING` and `DONE`; no input-attention
+    state is inferred, and tool-gating hooks are intentionally not installed.
 
 The remaining sequence is:
 
-1. Add the Antigravity activity bridge without inventing unsupported provider
-   states.
-2. Create and title native conversations through the provider adapters if a
+1. Create and title native conversations through the provider adapters if a
    reliable provider-native mechanism becomes available.
-3. Add a supported non-interactive Antigravity deletion entry point when its
+2. Add a supported non-interactive Antigravity deletion entry point when its
    provider exposes one; other adapters use their native deletion commands.
 
 ## Validation Tasks
@@ -1341,6 +1357,9 @@ The architectural foundation now has automated coverage for:
 - activity reset when a runtime detaches or enters native deletion;
 - Codex event normalization, static hook configuration, authenticated exact-ID
   correlation, credential rejection, and neutral receiver failure;
+- Antigravity invocation/Stop normalization, non-gating named hook
+  installation, exact-ID correlation, `fullyIdle` handling, and neutral
+  receiver failure;
 - OpenCode V2 event normalization, inline plugin configuration preservation,
   permission/form resolution, exact root-session filtering, and terminal-state
   ordering;
@@ -1561,9 +1580,8 @@ active exits return to Home, and hidden exits do not interrupt the current
 terminal. Contextual Delete operates only on the active native-backed Agent,
 and Ctrl+D reaches a focused terminal unchanged.
 Locked hub shortcuts have been proven to fall through at the PTY-write
-boundary. Codex, Devin, and OpenCode structured events now feed authenticated
-per-runtime activity to the Loaded sidebar; Antigravity remains `UNKNOWN`.
-Next: add the Antigravity activity bridge, then create native conversations
-through the adapters and add a supported non-interactive Antigravity deletion
-entry point. AgentHub persistence remains deferred.
+boundary. Antigravity, Codex, Devin, and OpenCode structured events now feed
+authenticated per-runtime activity to the Loaded sidebar. Next: create native
+conversations through the adapters and add a supported non-interactive
+Antigravity deletion entry point. AgentHub persistence remains deferred.
 ```

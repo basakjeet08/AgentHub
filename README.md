@@ -29,8 +29,9 @@ multi-session runtime architecture:
   terminal runtime optional, and coordinates them through `SessionManager`.
 - It keeps provider activity separate from runtime lifecycle through a
   provider-neutral `AgentActivity` model and reducer. Loaded Agents show
-  Unknown, Idle, Working, Needs Input, or Done in the sidebar; Codex, Devin,
-  and OpenCode drive those states through structured provider events.
+  Unknown, Idle, Working, Needs Input, or Done in the sidebar; Antigravity,
+  Codex, Devin, and OpenCode drive the states their structured provider events
+  support.
 - It launches each terminal child in its session's normalized working directory
   without changing AgentHub's own directory or using a shell command.
 - It discovers Codex, OpenCode, Devin, and Antigravity sessions through
@@ -85,6 +86,12 @@ AgentHub activity hooks. Until trusted, Codex continues normally and the sidebar
 remains at its initial `Idle` state instead of receiving live updates. AgentHub
 does not bypass hook trust.
 
+Antigravity activity uses a named observer in its shared
+`~/.gemini/config/hooks.json`. AgentHub installs or refreshes only its own named
+entry and preserves every existing hook. The observer is correlated by the
+child-only AgentHub environment, returns Antigravity's neutral responses, and
+does not report activity when Antigravity is launched outside AgentHub.
+
 ## Current Limitations
 
 AgentHub does not yet provide:
@@ -92,7 +99,8 @@ AgentHub does not yet provide:
 - a complete shortcuts dialog;
 - generic user-initiated stopping or restarting of sessions;
 - persisted session metadata;
-- live activity reporting for Antigravity (its loaded rows remain `Unknown`);
+- a reliable Antigravity `Needs Input` signal; its passive hooks report Idle,
+  Working, and Done without inferring permission or question prompts;
 - a provider lifecycle signal for approval resolution; AgentHub observes Codex
   approval-decision keys to clear `Needs Input`, while Devin can retain it until
   the tool finishes, and another approval hook may still resolve a request

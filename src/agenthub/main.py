@@ -4,7 +4,13 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from agenthub.activity import run_codex_activity_hook, run_devin_activity_hook
+from agenthub.activity import (
+    run_antigravity_activity_hook,
+    run_codex_activity_hook,
+    run_devin_activity_hook,
+)
+
+_ANTIGRAVITY_EVENTS = ("PreInvocation", "Stop")
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -16,7 +22,8 @@ def _argument_parser() -> argparse.ArgumentParser:
         "activity-hook",
         help="Run a provider activity hook helper.",
     )
-    activity_hook.add_argument("provider", choices=("codex", "devin"))
+    activity_hook.add_argument("provider", choices=("antigravity", "codex", "devin"))
+    activity_hook.add_argument("event", nargs="?")
     return parser
 
 
@@ -30,11 +37,20 @@ def main(argv: Sequence[str] | None = None) -> int | None:
         AgentHubApp().run()
         return None
 
-    options = _argument_parser().parse_args(arguments)
+    parser = _argument_parser()
+    options = parser.parse_args(arguments)
     if options.command == "activity-hook" and options.provider == "codex":
+        if options.event is not None:
+            parser.error("Codex activity hooks do not accept an event argument")
         return run_codex_activity_hook()
     if options.command == "activity-hook" and options.provider == "devin":
+        if options.event is not None:
+            parser.error("Devin activity hooks do not accept an event argument")
         return run_devin_activity_hook()
+    if options.command == "activity-hook" and options.provider == "antigravity":
+        if options.event not in _ANTIGRAVITY_EVENTS:
+            parser.error("Antigravity activity hooks require a supported event argument")
+        return run_antigravity_activity_hook(options.event)
 
     raise AssertionError("argparse accepted an unsupported AgentHub command")
 
