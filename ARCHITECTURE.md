@@ -869,11 +869,11 @@ modules remain independent of Bitty.
 
 ## System Clipboard
 
-`agenthub.clipboard` is the only module that talks to desktop clipboard
-utilities. It resolves the first available backend (`wl-paste`, `xclip`,
-`xsel`, `pbpaste`) and exposes an async `read_clipboard()` (and backwards-compatible
-`read_clipboard_text()`) that never blocks the Textual event loop. It categorizes
-clipboard content into four semantic kinds:
+`agenthub.clipboard` is the only package that talks to desktop clipboard
+utilities. `ClipboardService` selects a platform backend through the package
+factory and exposes async `read()` and `read_text()` operations that never block
+the Textual event loop. Linux resolves `wl-paste`, `xclip`, or `xsel`; macOS
+resolves `pbpaste`. Clipboard content is categorized into four semantic kinds:
 
 - `TEXT`: Decodable UTF-8 text payload ready for terminal paste.
 - `EMPTY`: Clipboard is accessible but contains no data.
@@ -1120,7 +1120,16 @@ src/agenthub/
 ├── _terminal_launcher.py # child-side cwd setup and exec
 ├── main.py              # TUI and provider-hook command entry point
 ├── app.py               # Textual application and DOM ownership
-├── clipboard.py         # system-clipboard backend resolution and reads
+├── clipboard/
+│   ├── __init__.py      # public platform-neutral clipboard API
+│   ├── backend.py       # clipboard backend protocol
+│   ├── model.py         # clipboard content and semantic kind
+│   ├── service.py       # clipboard behavior boundary
+│   └── backends/
+│       ├── __init__.py  # platform backend exports
+│       ├── factory.py   # current-platform backend selection
+│       ├── linux.py     # Wayland and X11 command integration
+│       └── macos.py     # macOS pbpaste integration
 ├── activity/
 │   ├── _forwarder.py    # shared neutral local hook forwarding
 │   ├── __init__.py      # public activity API

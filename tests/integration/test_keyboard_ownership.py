@@ -172,11 +172,11 @@ async def test_shell_name_input_owns_ctrl_v_over_a_mounted_terminal(
 
         with (
             patch(
-                "agenthub.presentation.modals.session_name.read_clipboard_text",
+                "agenthub.presentation.modals.session_name._CLIPBOARD_SERVICE.read_text",
                 AsyncMock(return_value="Clipboard Session"),
             ),
             patch(
-                "agenthub.terminal.widget.read_clipboard",
+                "agenthub.terminal.widget._CLIPBOARD_SERVICE.read",
                 AsyncMock(return_value="must not reach terminal"),
             ) as terminal_clipboard,
             patch.object(pty, "write", wraps=pty.write) as write_spy,

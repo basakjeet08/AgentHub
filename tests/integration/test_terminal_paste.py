@@ -57,7 +57,7 @@ def _patch_clipboard(value: str | ClipboardContent | None):
         content = ClipboardContent(ClipboardKind.TEXT, value)
 
     return patch(
-        "agenthub.terminal.widget.read_clipboard",
+        "agenthub.terminal.widget._CLIPBOARD_SERVICE.read",
         AsyncMock(return_value=content),
     )
 
@@ -136,7 +136,7 @@ async def test_repeated_ctrl_v_events_submit_one_paste(
         assert pty is not None
 
         with (
-            patch("agenthub.terminal.widget.read_clipboard", clipboard_reader),
+            patch("agenthub.terminal.widget._CLIPBOARD_SERVICE.read", clipboard_reader),
             patch.object(pty, "write_bytes", wraps=pty.write_bytes) as write_spy,
         ):
             for _ in range(20):

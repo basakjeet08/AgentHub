@@ -1,106 +1,19 @@
-"""Unit coverage for the system-clipboard backend boundary."""
+"""Unit coverage for the platform-oriented system clipboard boundary."""
 
 import asyncio
+from dataclasses import FrozenInstanceError
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from agenthub import clipboard
-
-
-def test_wayland_prefers_wl_paste_text() -> None:
-    """Wayland paste must not request an image clipboard's default MIME type."""
-
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-1", "DISPLAY": ""}),
-        patch("agenthub.clipboard.shutil.which", return_value="/usr/bin/wl-paste"),
-    ):
-        assert clipboard.resolve_clipboard_command() == (
-            "wl-paste",
-            "--no-newline",
-        )
-
-
-def test_wayland_resolves_wl_paste_list_types() -> None:
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-1", "DISPLAY": ""}),
-        patch("agenthub.clipboard.shutil.which", return_value="/usr/bin/wl-paste"),
-    ):
-        assert clipboard.resolve_clipboard_targets_command() == (
-            "wl-paste",
-            "--list-types",
-        )
-
-
-def test_wayland_without_wl_paste_falls_back_to_xclip() -> None:
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-1", "DISPLAY": ":0"}),
-        patch(
-            "agenthub.clipboard.shutil.which",
-            side_effect=lambda name: "/usr/bin/xclip" if name == "xclip" else None,
-        ),
-    ):
-        assert clipboard.resolve_clipboard_command() == (
-            "xclip",
-            "-selection",
-            "clipboard",
-            "-o",
-        )
-
-
-def test_x11_resolves_xclip_targets() -> None:
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "", "DISPLAY": ":0"}),
-        patch(
-            "agenthub.clipboard.shutil.which",
-            side_effect=lambda name: "/usr/bin/xclip" if name == "xclip" else None,
-        ),
-    ):
-        assert clipboard.resolve_clipboard_targets_command() == (
-            "xclip",
-            "-selection",
-            "clipboard",
-            "-t",
-            "TARGETS",
-            "-o",
-        )
-
-
-def test_x11_without_xclip_falls_back_to_xsel() -> None:
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "", "DISPLAY": ":0"}),
-        patch(
-            "agenthub.clipboard.shutil.which",
-            side_effect=lambda name: "/usr/bin/xsel" if name == "xsel" else None,
-        ),
-    ):
-        assert clipboard.resolve_clipboard_command() == (
-            "xsel",
-            "--clipboard",
-            "--output",
-        )
-
-
-def test_macos_uses_pbpaste() -> None:
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "", "DISPLAY": ""}),
-        patch("agenthub.clipboard.sys.platform", "darwin"),
-        patch(
-            "agenthub.clipboard.shutil.which",
-            side_effect=lambda name: "/usr/bin/pbpaste" if name == "pbpaste" else None,
-        ),
-    ):
-        assert clipboard.resolve_clipboard_command() == ("pbpaste",)
-
-
-def test_no_backend_available_resolves_to_none() -> None:
-    with (
-        patch.dict("os.environ", {"WAYLAND_DISPLAY": "", "DISPLAY": ""}),
-        patch("agenthub.clipboard.sys.platform", "linux"),
-        patch("agenthub.clipboard.shutil.which", return_value=None),
-    ):
-        assert clipboard.resolve_clipboard_command() is None
-        assert clipboard.resolve_clipboard_targets_command() is None
+from agenthub.clipboard import ClipboardContent, ClipboardKind, ClipboardService
+from agenthub.clipboard.backends import (
+    LinuxClipboardBackend,
+    MacOSClipboardBackend,
+    create_clipboard_backend,
+)
+from agenthub.clipboard.backends import linux as linux_backend
+from agenthub.clipboard.backends import macos as macos_backend
 
 
 def _fake_process(stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0) -> Mock:
@@ -112,56 +25,140 @@ def _fake_process(stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0)
     return process
 
 
-async def test_read_without_a_backend_returns_none() -> None:
-    with patch("agenthub.clipboard.resolve_clipboard_command", return_value=None):
-        assert await clipboard.read_clipboard_text() is None
+def test_clipboard_content_is_immutable() -> None:
+    content = ClipboardContent(ClipboardKind.TEXT, "hello")
+
+    with pytest.raises(FrozenInstanceError):
+        content.text = "changed"  # type: ignore[misc]
 
 
-async def test_read_clipboard_without_backend_returns_unavailable() -> None:
-    with patch("agenthub.clipboard.resolve_clipboard_command", return_value=None):
-        content = await clipboard.read_clipboard()
-        assert content.kind == clipboard.ClipboardKind.UNAVAILABLE
-        assert content.text is None
+def test_factory_selects_linux_backend() -> None:
+    with patch("agenthub.clipboard.backends.factory.sys.platform", "linux"):
+        assert isinstance(create_clipboard_backend(), LinuxClipboardBackend)
 
 
-async def test_read_spawns_the_resolved_command_and_decodes_utf8() -> None:
+def test_factory_selects_macos_backend() -> None:
+    with patch("agenthub.clipboard.backends.factory.sys.platform", "darwin"):
+        assert isinstance(create_clipboard_backend(), MacOSClipboardBackend)
+
+
+def test_factory_returns_none_for_an_unsupported_platform() -> None:
+    with patch("agenthub.clipboard.backends.factory.sys.platform", "win32"):
+        assert create_clipboard_backend() is None
+
+
+def test_wayland_prefers_wl_paste_text() -> None:
+    with (
+        patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-1", "DISPLAY": ""}),
+        patch(
+            "agenthub.clipboard.backends.linux.shutil.which",
+            return_value="/usr/bin/wl-paste",
+        ),
+    ):
+        assert linux_backend._resolve_clipboard_command() == (
+            "wl-paste",
+            "--no-newline",
+        )
+
+
+def test_wayland_resolves_wl_paste_list_types() -> None:
+    assert linux_backend._resolve_clipboard_targets_command(
+        ("wl-paste", "--no-newline")
+    ) == ("wl-paste", "--list-types")
+
+
+def test_wayland_without_wl_paste_falls_back_to_xclip() -> None:
+    with (
+        patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-1", "DISPLAY": ":0"}),
+        patch(
+            "agenthub.clipboard.backends.linux.shutil.which",
+            side_effect=lambda name: "/usr/bin/xclip" if name == "xclip" else None,
+        ),
+    ):
+        assert linux_backend._resolve_clipboard_command() == (
+            "xclip",
+            "-selection",
+            "clipboard",
+            "-o",
+        )
+
+
+def test_x11_resolves_xclip_targets() -> None:
+    assert linux_backend._resolve_clipboard_targets_command(
+        ("xclip", "-selection", "clipboard", "-o")
+    ) == (
+        "xclip",
+        "-selection",
+        "clipboard",
+        "-t",
+        "TARGETS",
+        "-o",
+    )
+
+
+def test_x11_without_xclip_falls_back_to_xsel() -> None:
+    with (
+        patch.dict("os.environ", {"WAYLAND_DISPLAY": "", "DISPLAY": ":0"}),
+        patch(
+            "agenthub.clipboard.backends.linux.shutil.which",
+            side_effect=lambda name: "/usr/bin/xsel" if name == "xsel" else None,
+        ),
+    ):
+        assert linux_backend._resolve_clipboard_command() == (
+            "xsel",
+            "--clipboard",
+            "--output",
+        )
+
+
+async def test_linux_without_a_command_returns_unavailable() -> None:
+    with patch(
+        "agenthub.clipboard.backends.linux._resolve_clipboard_command",
+        return_value=None,
+    ):
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.UNAVAILABLE)
+
+
+async def test_linux_spawns_the_resolved_command_and_decodes_utf8() -> None:
     expected_text = "first line\ncafé 🐟\tCJK: 你好\n"
     targets_process = _fake_process(b"text/plain\nUTF8_STRING\n")
-    read_process = _fake_process(expected_text.encode("utf-8"))
+    read_process = _fake_process(expected_text.encode())
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("wl-paste", "--no-newline"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(side_effect=[targets_process, read_process]),
         ) as spawn,
     ):
-        text = await clipboard.read_clipboard_text()
+        content = await LinuxClipboardBackend().read()
 
-    assert text == expected_text
+    assert content == ClipboardContent(ClipboardKind.TEXT, expected_text)
     assert spawn.await_count == 2
 
 
-async def test_read_without_targets_backend_decodes_utf8() -> None:
-    expected_text = "first line\ncafé 🐟\tCJK: 你好\n"
-    read_process = _fake_process(expected_text.encode("utf-8"))
+async def test_xsel_read_skips_target_inspection() -> None:
+    expected_text = "first line\ncafé 🐟\n"
+    read_process = _fake_process(expected_text.encode())
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("xsel", "--clipboard", "--output"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(return_value=read_process),
         ) as spawn,
     ):
-        text = await clipboard.read_clipboard_text()
+        content = await LinuxClipboardBackend().read()
 
-    assert text == expected_text
+    assert content == ClipboardContent(ClipboardKind.TEXT, expected_text)
     spawn.assert_awaited_once_with(
         "xsel",
         "--clipboard",
@@ -171,149 +168,145 @@ async def test_read_without_targets_backend_decodes_utf8() -> None:
     )
 
 
-async def test_read_clipboard_detects_wayland_image_types() -> None:
-    process = _fake_process(stdout=b"image/png\n")
+@pytest.mark.parametrize(
+    "targets",
+    [b"image/png\n", b"image/png\ntext/plain\ntext/html\n"],
+)
+async def test_wayland_detects_image_types(targets: bytes) -> None:
+    process = _fake_process(stdout=targets)
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("wl-paste", "--no-newline"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(return_value=process),
         ),
     ):
-        content = await clipboard.read_clipboard()
-        assert content.kind == clipboard.ClipboardKind.NON_TEXT
-        assert content.text is None
-        assert await clipboard.read_clipboard_text() is None
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.NON_TEXT)
 
 
-async def test_read_clipboard_image_precedes_plain_text() -> None:
-    process = _fake_process(stdout=b"image/png\ntext/plain\ntext/html\n")
-
-    with (
-        patch(
-            "agenthub.clipboard.resolve_clipboard_command",
-            return_value=("wl-paste", "--no-newline"),
-        ),
-        patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
-            AsyncMock(return_value=process),
-        ),
-    ):
-        content = await clipboard.read_clipboard()
-        assert content.kind == clipboard.ClipboardKind.NON_TEXT
-        assert content.text is None
-
-
-async def test_read_clipboard_wayland_empty_nothing_copied() -> None:
+async def test_wayland_reports_nothing_copied_as_empty() -> None:
     process = _fake_process(stderr=b"Nothing is copied\n", returncode=1)
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("wl-paste", "--no-newline"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(return_value=process),
         ),
     ):
-        content = await clipboard.read_clipboard()
-        assert content.kind == clipboard.ClipboardKind.EMPTY
-        assert content.text is None
-        assert await clipboard.read_clipboard_text() == ""
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.EMPTY)
 
 
-async def test_read_clipboard_xclip_image_targets() -> None:
+async def test_xclip_detects_image_targets() -> None:
     process = _fake_process(stdout=b"TARGETS\nimage/png\n")
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("xclip", "-selection", "clipboard", "-o"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(return_value=process),
         ),
     ):
-        content = await clipboard.read_clipboard()
-        assert content.kind == clipboard.ClipboardKind.NON_TEXT
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.NON_TEXT)
 
 
-async def test_read_returns_empty_string_for_an_empty_clipboard() -> None:
+async def test_linux_empty_payload_returns_empty() -> None:
     targets_process = _fake_process(stdout=b"UTF8_STRING\nSTRING\n")
     read_process = _fake_process(stdout=b"")
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("xclip", "-selection", "clipboard", "-o"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(side_effect=[targets_process, read_process]),
         ),
     ):
-        assert await clipboard.read_clipboard_text() == ""
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.EMPTY)
 
 
-async def test_read_returns_none_when_the_command_fails() -> None:
+async def test_linux_command_failure_returns_unavailable() -> None:
     process = _fake_process(returncode=1)
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("xsel", "--clipboard", "--output"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(return_value=process),
         ),
     ):
-        assert await clipboard.read_clipboard_text() is None
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.UNAVAILABLE)
 
 
-async def test_read_returns_none_when_the_backend_cannot_spawn() -> None:
+async def test_linux_spawn_failure_returns_unavailable() -> None:
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("wl-paste", "--no-newline"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(side_effect=OSError("executable vanished")),
         ),
     ):
-        assert await clipboard.read_clipboard_text() is None
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.UNAVAILABLE)
 
 
-async def test_read_returns_none_for_non_utf8_clipboard_bytes() -> None:
+async def test_linux_invalid_utf8_is_non_text() -> None:
     process = _fake_process(stdout=b"\x89PNG\r\n\x1a\n")
 
     with (
         patch(
-            "agenthub.clipboard.resolve_clipboard_command",
+            "agenthub.clipboard.backends.linux._resolve_clipboard_command",
             return_value=("xsel", "--clipboard", "--output"),
         ),
         patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
+            "agenthub.clipboard.backends.linux.asyncio.create_subprocess_exec",
             AsyncMock(return_value=process),
         ),
     ):
-        content = await clipboard.read_clipboard()
-        assert content.kind == clipboard.ClipboardKind.NON_TEXT
-        assert await clipboard.read_clipboard_text() is None
+        content = await LinuxClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.NON_TEXT)
 
 
-async def test_read_times_out_and_kills_the_reader(monkeypatch) -> None:
-    monkeypatch.setattr(clipboard, "_READ_TIMEOUT_SECONDS", 0.01)
+@pytest.mark.parametrize("backend_module", [linux_backend, macos_backend])
+async def test_read_timeout_kills_and_reaps_the_reader(
+    monkeypatch,
+    backend_module,
+) -> None:
+    monkeypatch.setattr(backend_module, "_READ_TIMEOUT_SECONDS", 0.01)
     process = Mock()
+    process.returncode = None
     process.kill = Mock()
-    process.wait = AsyncMock(return_value=0)
+    process.wait = AsyncMock(return_value=-9)
 
     async def hang() -> tuple[bytes, bytes]:
         await asyncio.sleep(5)
@@ -321,22 +314,20 @@ async def test_read_times_out_and_kills_the_reader(monkeypatch) -> None:
 
     process.communicate = hang
 
-    with (
-        patch(
-            "agenthub.clipboard.resolve_clipboard_command",
-            return_value=("wl-paste", "--no-newline"),
-        ),
-        patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
-            AsyncMock(return_value=process),
-        ),
+    with patch.object(
+        backend_module.asyncio,
+        "create_subprocess_exec",
+        AsyncMock(return_value=process),
     ):
-        assert await clipboard.read_clipboard_text() is None
+        result = await backend_module._run_command(("clipboard-reader",))
 
+    assert result is None
     process.kill.assert_called_once_with()
+    process.wait.assert_awaited_once_with()
 
 
-async def test_cancelling_a_read_kills_and_awaits_the_reader() -> None:
+@pytest.mark.parametrize("backend_module", [linux_backend, macos_backend])
+async def test_cancelling_read_kills_and_reaps_the_reader(backend_module) -> None:
     process = Mock()
     process.returncode = None
     process.kill = Mock()
@@ -348,17 +339,14 @@ async def test_cancelling_a_read_kills_and_awaits_the_reader() -> None:
 
     process.communicate = hang
 
-    with (
-        patch(
-            "agenthub.clipboard.resolve_clipboard_command",
-            return_value=("wl-paste", "--no-newline"),
-        ),
-        patch(
-            "agenthub.clipboard.asyncio.create_subprocess_exec",
-            AsyncMock(return_value=process),
-        ),
+    with patch.object(
+        backend_module.asyncio,
+        "create_subprocess_exec",
+        AsyncMock(return_value=process),
     ):
-        read_task = asyncio.create_task(clipboard.read_clipboard_text())
+        read_task = asyncio.create_task(
+            backend_module._run_command(("clipboard-reader",))
+        )
         await asyncio.sleep(0)
         read_task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -366,3 +354,111 @@ async def test_cancelling_a_read_kills_and_awaits_the_reader() -> None:
 
     process.kill.assert_called_once_with()
     process.wait.assert_awaited_once_with()
+
+
+async def test_macos_uses_pbpaste_and_decodes_utf8() -> None:
+    process = _fake_process(stdout="café".encode())
+
+    with (
+        patch(
+            "agenthub.clipboard.backends.macos.shutil.which",
+            return_value="/usr/bin/pbpaste",
+        ),
+        patch(
+            "agenthub.clipboard.backends.macos.asyncio.create_subprocess_exec",
+            AsyncMock(return_value=process),
+        ) as spawn,
+    ):
+        content = await MacOSClipboardBackend().read()
+
+    assert content == ClipboardContent(ClipboardKind.TEXT, "café")
+    spawn.assert_awaited_once_with(
+        "pbpaste",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+
+@pytest.mark.parametrize(
+    ("stdout", "returncode", "expected_kind"),
+    [
+        (b"", 0, ClipboardKind.EMPTY),
+        (b"", 1, ClipboardKind.UNAVAILABLE),
+        (b"\x89PNG\r\n\x1a\n", 0, ClipboardKind.NON_TEXT),
+    ],
+)
+async def test_macos_classifies_command_results(
+    stdout: bytes,
+    returncode: int,
+    expected_kind: ClipboardKind,
+) -> None:
+    process = _fake_process(stdout=stdout, returncode=returncode)
+
+    with (
+        patch(
+            "agenthub.clipboard.backends.macos.shutil.which",
+            return_value="/usr/bin/pbpaste",
+        ),
+        patch(
+            "agenthub.clipboard.backends.macos.asyncio.create_subprocess_exec",
+            AsyncMock(return_value=process),
+        ),
+    ):
+        content = await MacOSClipboardBackend().read()
+
+    assert content.kind is expected_kind
+
+
+async def test_macos_missing_command_and_spawn_failure_are_unavailable() -> None:
+    with patch("agenthub.clipboard.backends.macos.shutil.which", return_value=None):
+        missing = await MacOSClipboardBackend().read()
+
+    with (
+        patch(
+            "agenthub.clipboard.backends.macos.shutil.which",
+            return_value="/usr/bin/pbpaste",
+        ),
+        patch(
+            "agenthub.clipboard.backends.macos.asyncio.create_subprocess_exec",
+            AsyncMock(side_effect=OSError("executable vanished")),
+        ),
+    ):
+        spawn_failure = await MacOSClipboardBackend().read()
+
+    assert missing == ClipboardContent(ClipboardKind.UNAVAILABLE)
+    assert spawn_failure == ClipboardContent(ClipboardKind.UNAVAILABLE)
+
+
+async def test_service_uses_an_injected_backend() -> None:
+    backend = Mock()
+    backend.read = AsyncMock(return_value=ClipboardContent(ClipboardKind.TEXT, "hello"))
+    service = ClipboardService(backend)
+
+    assert await service.read() == ClipboardContent(ClipboardKind.TEXT, "hello")
+    backend.read.assert_awaited_once_with()
+
+
+async def test_service_without_a_platform_backend_returns_unavailable() -> None:
+    with patch("agenthub.clipboard.service.create_clipboard_backend", return_value=None):
+        service = ClipboardService()
+
+    assert await service.read() == ClipboardContent(ClipboardKind.UNAVAILABLE)
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (ClipboardContent(ClipboardKind.TEXT, "hello"), "hello"),
+        (ClipboardContent(ClipboardKind.EMPTY), ""),
+        (ClipboardContent(ClipboardKind.NON_TEXT), None),
+        (ClipboardContent(ClipboardKind.UNAVAILABLE), None),
+    ],
+)
+async def test_service_text_convenience_mapping(
+    content: ClipboardContent,
+    expected: str | None,
+) -> None:
+    backend = Mock()
+    backend.read = AsyncMock(return_value=content)
+
+    assert await ClipboardService(backend).read_text() == expected

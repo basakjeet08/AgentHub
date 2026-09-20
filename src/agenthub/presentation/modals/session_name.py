@@ -8,7 +8,9 @@ from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
-from agenthub.clipboard import read_clipboard_text
+from agenthub.clipboard import ClipboardService
+
+_CLIPBOARD_SERVICE = ClipboardService()
 
 
 class SessionNameInput(Input):
@@ -27,12 +29,14 @@ class SessionNameInput(Input):
     async def _paste_system_clipboard(self) -> None:
         """Paste external clipboard text or use Textual's local fallback."""
 
-        clipboard = await read_clipboard_text()
+        clipboard = await _CLIPBOARD_SERVICE.read_text()
         if not self.is_mounted:
             return
+
         if clipboard is None:
             super().action_paste()
             return
+
         if not clipboard:
             return
 
@@ -107,6 +111,7 @@ class SessionNameModal(ModalScreen[str]):
             if self._default_name is not None:
                 self.dismiss(self._default_name)
                 return
+
             message.input.add_class("invalid-name")
             self.query_one("#session-name-error", Static).update("Enter a session name.")
             message.input.focus()

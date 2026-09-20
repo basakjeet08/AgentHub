@@ -22,7 +22,7 @@ from textual.strip import Strip
 from textual_tty import Terminal as TtyTerminal
 
 from agenthub._terminal_launcher import build_launch_command
-from agenthub.clipboard import ClipboardKind, read_clipboard
+from agenthub.clipboard import ClipboardKind, ClipboardService
 from agenthub.harnesses import AgentHarness, KeyStroke
 from agenthub.terminal.scrollback import ScrollbackVideo
 
@@ -31,6 +31,7 @@ _WHEEL_SCROLL_LINES = 3
 _WORD_ERASE = "\x17"  # Ctrl+W, the conventional terminal erase-word character.
 _PASTE_REPEAT_GAP_SECONDS = 1.0
 _UNSUPPORTED_TERMINAL_MODIFIERS = frozenset({"super", "hyper"})
+_CLIPBOARD_SERVICE = ClipboardService()
 
 _BITTTY_MODIFIERS = {
     (False, False, False): _bittty_constants.KEY_MOD_NONE,
@@ -428,7 +429,7 @@ class AgentTerminal(TtyTerminal):
         """Inspect the desktop clipboard and deliver text or forward Ctrl+V."""
 
         try:
-            content = await read_clipboard()
+            content = await _CLIPBOARD_SERVICE.read()
             if not self.is_mounted or not self.is_process_running:
                 return
 
