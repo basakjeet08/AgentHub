@@ -8,8 +8,8 @@ from agenthub.activity import AgentActivity
 from agenthub.notifications import (
     DesktopNotification,
     DesktopNotificationService,
-    LinuxDesktopNotificationBackend,
 )
+from agenthub.notifications.backends import LinuxDesktopNotificationBackend
 from agenthub.notifications.backends import factory as backend_factory_module
 from agenthub.notifications.backends import linux as linux_backend_module
 
@@ -32,7 +32,7 @@ async def test_attention_transition_builds_provider_neutral_notification(
             notifications.append(notification)
 
     service = DesktopNotificationService(RecordingBackend())
-    service.schedule_activity_transition(
+    service.handle_activity_transition(
         AgentActivity.WORKING,
         activity,
         harness_name="Codex",
@@ -71,7 +71,7 @@ async def test_non_attention_or_repeated_transition_does_not_notify(
             notifications.append(notification)
 
     service = DesktopNotificationService(RecordingBackend())
-    service.schedule_activity_transition(
+    service.handle_activity_transition(
         previous,
         current,
         harness_name="Devin",
@@ -92,7 +92,7 @@ async def test_unloaded_agent_does_not_notify() -> None:
             notifications.append(notification)
 
     service = DesktopNotificationService(RecordingBackend())
-    service.schedule_activity_transition(
+    service.handle_activity_transition(
         AgentActivity.WORKING,
         AgentActivity.DONE,
         harness_name="OpenCode",

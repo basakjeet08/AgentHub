@@ -1194,7 +1194,7 @@ class AgentHubApp(App):
             return False
 
         self._refresh_sidebar()
-        self._notification_service.schedule_activity_transition(
+        self._notification_service.handle_activity_transition(
             previous_activity,
             session.activity,
             harness_name=session.harness.display_name,

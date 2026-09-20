@@ -80,9 +80,8 @@ bittty / PTY → coding agent`.
 - starts an authenticated loopback activity receiver only when a supported
   provider runtime needs one, applies normalized events to the exact logical
   session, and refreshes the sidebar when activity changes;
-- evaluates desktop notification policy only after the reducer produces a real
-  activity transition, then dispatches Linux system notification and sound
-  delivery outside session control flow.
+- reports real reducer-produced activity transitions and platform-neutral
+  session presentation context to the desktop notification service.
 
 `SessionManager` currently:
 
@@ -165,12 +164,15 @@ detect Codex hook trust, an untrusted Codex hook leaves that initial state
 unchanged. AgentHub never bypasses Codex hook trust, answers permissions,
 changes tool output, or blocks a provider hook.
 
-Desktop activity notification policy consumes only the previous and current
-`AgentActivity` values plus logical session presentation and runtime state. A
-new transition into `NEEDS_INPUT` or `DONE` notifies for every loaded Agent,
-including the session currently visible in the focused application. Identical
-provider events therefore cannot notify twice, and `UNKNOWN`, `IDLE`, and
-`WORKING` never notify. The Linux backend invokes `notify-send` and a standard
+`DesktopNotificationService` owns desktop notification policy, asynchronous
+delivery scheduling, failure isolation, and shutdown cleanup. It consumes only
+the previous and current `AgentActivity` values plus primitive session
+presentation and eligibility inputs; it does not depend on `AgentSession` or
+terminal types. A new transition into `NEEDS_INPUT` or `DONE` notifies for every
+loaded Agent, including the session currently visible in the focused
+application. Identical provider events therefore cannot notify twice, and
+`UNKNOWN`, `IDLE`, and `WORKING` never notify. Platform selection stays behind
+the backend factory. The Linux backend invokes `notify-send` and a standard
 freedesktop sound-theme player asynchronously. Backend absence, a non-zero
 desktop command, timeout, or unexpected delivery error is contained outside
 the reducer and cannot affect the Agent session. macOS delivery is deferred.
@@ -1152,9 +1154,13 @@ src/agenthub/
 │   └── opencode.py      # OpenCode discovery/resume adapter
 ├── notifications/
 │   ├── __init__.py      # public notification API
-│   ├── backend.py       # best-effort Linux desktop and sound delivery
+│   ├── backend.py       # platform-neutral delivery protocol
 │   ├── model.py         # immutable desktop notification value
-│   └── policy.py        # provider-neutral activity transition policy
+│   ├── service.py       # notification policy, scheduling, and cleanup
+│   └── backends/
+│       ├── __init__.py  # platform backend exports
+│       ├── factory.py   # current-platform backend selection
+│       └── linux.py     # best-effort Linux desktop and sound delivery
 ├── sessions/
 │   ├── __init__.py      # public session API
 │   ├── model.py         # AgentSession runtime model

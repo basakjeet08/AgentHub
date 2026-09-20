@@ -18,7 +18,7 @@ class DesktopNotificationService:
         self._backend = create_desktop_notification_backend() if backend is None else backend
         self._tasks: set[asyncio.Task[None]] = set()
 
-    def schedule_activity_transition(
+    def handle_activity_transition(
         self,
         previous: AgentActivity,
         current: AgentActivity,
