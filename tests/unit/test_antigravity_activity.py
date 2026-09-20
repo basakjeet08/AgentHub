@@ -49,7 +49,11 @@ def test_antigravity_stop_respects_fully_idle(
 ) -> None:
     event = normalize_antigravity_activity(
         "logical-session",
-        {"hook_event_name": "Stop", "fullyIdle": fully_idle},
+        {
+            "hook_event_name": "Stop",
+            "conversationId": "native-session",
+            "fullyIdle": fully_idle,
+        },
     )
 
     assert event is not None
@@ -59,12 +63,22 @@ def test_antigravity_stop_respects_fully_idle(
 @pytest.mark.parametrize(
     "payload",
     [
-        {"hook_event_name": "Stop"},
-        {"hook_event_name": "Stop", "fullyIdle": "true"},
-        {"hook_event_name": "PostInvocation"},
-        {"hook_event_name": "PreToolUse", "toolCall": {"name": "ask_question"}},
-        {"hook_event_name": "PermissionRequest"},
-        {"hook_event_name": "FutureEvent"},
+        {"hook_event_name": "PreInvocation"},
+        {"hook_event_name": "PreInvocation", "conversationId": ""},
+        {"hook_event_name": "Stop", "conversationId": "native-session"},
+        {
+            "hook_event_name": "Stop",
+            "conversationId": "native-session",
+            "fullyIdle": "true",
+        },
+        {"hook_event_name": "PostInvocation", "conversationId": "native-session"},
+        {
+            "hook_event_name": "PreToolUse",
+            "conversationId": "native-session",
+            "toolCall": {"name": "ask_question"},
+        },
+        {"hook_event_name": "PermissionRequest", "conversationId": "native-session"},
+        {"hook_event_name": "FutureEvent", "conversationId": "native-session"},
         {},
         [],
     ],
@@ -187,29 +201,122 @@ async def test_antigravity_receiver_routes_two_sessions_without_cross_updates() 
     received = []
     receiver = ActivityReceiver(received.append)
     await receiver.start()
-    first = receiver.register("first-session", "antigravity")
-    second = receiver.register("second-session", "antigravity")
+    first = receiver.register(
+        "first-session",
+        "antigravity",
+        native_session_id="first-root",
+    )
+    second = receiver.register(
+        "second-session",
+        "antigravity",
+        native_session_id="second-root",
+    )
     try:
         crossed_environment = {
             **first.environment,
             AGENTHUB_SESSION_ID: second.session_id,
         }
-        assert await _forward_event(crossed_environment, "PreInvocation") == "{}\n"
+        assert (
+            await _forward_event(
+                crossed_environment,
+                "PreInvocation",
+                conversationId="first-root",
+            )
+            == "{}\n"
+        )
         await asyncio.sleep(0.01)
         assert received == []
 
-        await _forward_event(first.environment, "PreInvocation")
-        assert await _forward_event(second.environment, "Stop", fullyIdle=True) == (
-            '{"decision":"stop"}\n'
+        await _forward_event(
+            first.environment,
+            "PreInvocation",
+            conversationId="first-root",
+        )
+        await _forward_event(
+            second.environment,
+            "PreInvocation",
+            conversationId="first-root",
+        )
+        await _forward_event(
+            second.environment,
+            "PreInvocation",
+            conversationId="second-root",
+        )
+        await _forward_event(
+            first.environment,
+            "Stop",
+            conversationId="second-root",
+            fullyIdle=True,
+        )
+        assert (
+            await _forward_event(
+                second.environment,
+                "Stop",
+                conversationId="second-root",
+                fullyIdle=True,
+            )
+            == '{"decision":"stop"}\n'
+        )
+        for _ in range(20):
+            if len(received) == 3:
+                break
+            await asyncio.sleep(0.01)
+
+        assert [(event.session_id, event.kind) for event in received] == [
+            ("first-session", AgentActivityEventKind.PROMPT_SUBMITTED),
+            ("second-session", AgentActivityEventKind.PROMPT_SUBMITTED),
+            ("second-session", AgentActivityEventKind.TURN_COMPLETED),
+        ]
+    finally:
+        await receiver.close()
+
+
+async def test_fresh_antigravity_registration_binds_first_root_pre_invocation() -> None:
+    received = []
+    receiver = ActivityReceiver(received.append)
+    await receiver.start()
+    registration = receiver.register("logical-session", "antigravity")
+    try:
+        await _forward_event(
+            registration.environment,
+            "Stop",
+            conversationId="root-conversation",
+            fullyIdle=True,
+        )
+        await _forward_event(registration.environment, "PreInvocation")
+        await asyncio.sleep(0.01)
+        assert received == []
+
+        await _forward_event(
+            registration.environment,
+            "PreInvocation",
+            conversationId="root-conversation",
+        )
+        await _forward_event(
+            registration.environment,
+            "PreInvocation",
+            conversationId="child-conversation",
+        )
+        await _forward_event(
+            registration.environment,
+            "Stop",
+            conversationId="child-conversation",
+            fullyIdle=True,
+        )
+        await _forward_event(
+            registration.environment,
+            "Stop",
+            conversationId="root-conversation",
+            fullyIdle=True,
         )
         for _ in range(20):
             if len(received) == 2:
                 break
             await asyncio.sleep(0.01)
 
-        assert [(event.session_id, event.kind) for event in received] == [
-            ("first-session", AgentActivityEventKind.PROMPT_SUBMITTED),
-            ("second-session", AgentActivityEventKind.TURN_COMPLETED),
+        assert [event.kind for event in received] == [
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            AgentActivityEventKind.TURN_COMPLETED,
         ]
     finally:
         await receiver.close()
@@ -261,6 +368,7 @@ async def test_antigravity_hooks_update_sidebar_activity_end_to_end(
         cwd=tmp_path,
         harness=harness,
     )
+    session.native_session_id = "root-conversation"
     monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
     terminal = session.terminal
     assert terminal is not None
@@ -273,18 +381,80 @@ async def test_antigravity_hooks_update_sidebar_activity_end_to_end(
     assert session.activity is AgentActivity.IDLE
     registration = app._activity_registrations[session.id]
     try:
-        await _forward_event(registration.environment, "PreInvocation")
+        await _forward_event(
+            registration.environment,
+            "PreInvocation",
+            conversationId="child-conversation",
+        )
+        await asyncio.sleep(0.02)
+        assert session.activity is AgentActivity.IDLE
+
+        await _forward_event(
+            registration.environment,
+            "PreInvocation",
+            conversationId="root-conversation",
+        )
         for _ in range(20):
             if session.activity is AgentActivity.WORKING:
                 break
             await asyncio.sleep(0.01)
         assert session.activity is AgentActivity.WORKING
 
-        await _forward_event(registration.environment, "Stop", fullyIdle=False)
+        await _forward_event(
+            registration.environment,
+            "Stop",
+            conversationId="root-conversation",
+            fullyIdle=True,
+        )
+        for _ in range(20):
+            if session.activity is AgentActivity.DONE:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.DONE
+
+        await _forward_event(
+            registration.environment,
+            "PreInvocation",
+            conversationId="child-conversation",
+        )
+        await asyncio.sleep(0.02)
+        assert session.activity is AgentActivity.DONE
+
+        await _forward_event(
+            registration.environment,
+            "PreInvocation",
+            conversationId="root-conversation",
+        )
+        for _ in range(20):
+            if session.activity is AgentActivity.WORKING:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.WORKING
+
+        await _forward_event(
+            registration.environment,
+            "Stop",
+            conversationId="child-conversation",
+            fullyIdle=True,
+        )
         await asyncio.sleep(0.02)
         assert session.activity is AgentActivity.WORKING
 
-        await _forward_event(registration.environment, "Stop", fullyIdle=True)
+        await _forward_event(
+            registration.environment,
+            "Stop",
+            conversationId="root-conversation",
+            fullyIdle=False,
+        )
+        await asyncio.sleep(0.02)
+        assert session.activity is AgentActivity.WORKING
+
+        await _forward_event(
+            registration.environment,
+            "Stop",
+            conversationId="root-conversation",
+            fullyIdle=True,
+        )
         for _ in range(20):
             if session.activity is AgentActivity.DONE:
                 break

@@ -14,7 +14,7 @@ from ._forwarder import (
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
 )
-from .antigravity import normalize_antigravity_activity
+from .antigravity import AntigravityActivityNormalizer
 from .codex import normalize_codex_activity
 from .devin import normalize_devin_activity
 from .model import AgentActivityEvent
@@ -24,7 +24,6 @@ _HOST = "127.0.0.1"
 _MAX_MESSAGE_BYTES = 1_048_576
 _PROTOCOL_VERSION = 1
 _NORMALIZERS = {
-    "antigravity": normalize_antigravity_activity,
     "codex": normalize_codex_activity,
     "devin": normalize_devin_activity,
     "opencode": normalize_opencode_activity,
@@ -58,6 +57,10 @@ class ActivityReceiver:
         self._on_event = on_event
         self._server: asyncio.Server | None = None
         self._registrations: dict[str, ActivityRegistration] = {}
+        self._normalizers: dict[
+            str,
+            Callable[[str, object], AgentActivityEvent | None],
+        ] = {}
 
     @property
     def endpoint(self) -> str:
@@ -80,7 +83,13 @@ class ActivityReceiver:
                 limit=_MAX_MESSAGE_BYTES + 1,
             )
 
-    def register(self, session_id: str, provider: str) -> ActivityRegistration:
+    def register(
+        self,
+        session_id: str,
+        provider: str,
+        *,
+        native_session_id: str | None = None,
+    ) -> ActivityRegistration:
         """Create an unguessable route for exactly one logical session."""
 
         if self._server is None:
@@ -93,6 +102,14 @@ class ActivityReceiver:
             endpoint=self.endpoint,
         )
         self._registrations[token] = registration
+        if provider == "antigravity":
+            self._normalizers[token] = AntigravityActivityNormalizer(
+                native_session_id
+            )
+        else:
+            normalizer = _NORMALIZERS.get(provider)
+            if normalizer is not None:
+                self._normalizers[token] = normalizer
         return registration
 
     def revoke(self, registration: ActivityRegistration) -> None:
@@ -101,6 +118,7 @@ class ActivityReceiver:
         current = self._registrations.get(registration.token)
         if current == registration:
             self._registrations.pop(registration.token, None)
+            self._normalizers.pop(registration.token, None)
 
     async def close(self) -> None:
         """Stop listening and discard every session credential."""
@@ -108,6 +126,7 @@ class ActivityReceiver:
         server = self._server
         self._server = None
         self._registrations.clear()
+        self._normalizers.clear()
         if server is not None:
             server.close()
             await server.wait_closed()
@@ -152,7 +171,7 @@ class ActivityReceiver:
             or envelope.get("provider") != registration.provider
         ):
             return None
-        normalizer = _NORMALIZERS.get(registration.provider)
+        normalizer = self._normalizers.get(token)
         if normalizer is None:
             return None
         return normalizer(registration.session_id, envelope.get("event"))

@@ -30,6 +30,9 @@ def normalize_antigravity_activity(
 
     if not isinstance(payload, dict):
         return None
+    conversation_id = payload.get("conversationId")
+    if not isinstance(conversation_id, str) or not conversation_id:
+        return None
     event_name = payload.get("hook_event_name")
     if event_name == "PreInvocation":
         kind = AgentActivityEventKind.PROMPT_SUBMITTED
@@ -45,6 +48,36 @@ def normalize_antigravity_activity(
     else:
         return None
     return AgentActivityEvent(session_id=session_id, kind=kind)
+
+
+class AntigravityActivityNormalizer:
+    """Normalize activity only for one runtime's root conversation."""
+
+    def __init__(self, root_conversation_id: str | None = None) -> None:
+        self._root_conversation_id = root_conversation_id or None
+
+    def __call__(
+        self,
+        session_id: str,
+        payload: object,
+    ) -> AgentActivityEvent | None:
+        """Bind a fresh root or reject activity from another conversation."""
+
+        if not isinstance(payload, dict):
+            return None
+        conversation_id = payload.get("conversationId")
+        if not isinstance(conversation_id, str) or not conversation_id:
+            return None
+
+        event_name = payload.get("hook_event_name")
+        if self._root_conversation_id is None:
+            if event_name != "PreInvocation":
+                return None
+            self._root_conversation_id = conversation_id
+        elif conversation_id != self._root_conversation_id:
+            return None
+
+        return normalize_antigravity_activity(session_id, payload)
 
 
 def _default_hooks_path() -> Path:
@@ -179,6 +212,7 @@ def run_antigravity_activity_hook(
 
 
 __all__ = [
+    "AntigravityActivityNormalizer",
     "ensure_antigravity_activity_hooks",
     "normalize_antigravity_activity",
     "run_antigravity_activity_hook",

@@ -1098,7 +1098,11 @@ class AgentHubApp(App):
                 await receiver.start()
                 self._activity_receiver = receiver
             self._revoke_activity_tracking(session.id)
-            registration = receiver.register(session.id, provider)
+            registration = receiver.register(
+                session.id,
+                provider,
+                native_session_id=session.native_session_id,
+            )
             self._activity_registrations[session.id] = registration
             if provider == "antigravity":
                 ensure_antigravity_activity_hooks()
