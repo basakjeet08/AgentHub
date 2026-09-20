@@ -32,6 +32,10 @@ multi-session runtime architecture:
   Unknown, Idle, Working, Needs Input, or Done in the sidebar; Antigravity,
   Codex, Devin, and OpenCode drive the states their structured provider events
   support.
+- On Linux, it sends a system notification with the desktop theme sound when
+  any loaded Agent newly enters Needs Input or Done, including the Agent
+  currently open while AgentHub is focused. Repeated events in the same state
+  are ignored.
 - It launches each terminal child in its session's normalized working directory
   without changing AgentHub's own directory or using a shell command.
 - It discovers Codex, OpenCode, Devin, and Antigravity sessions through
@@ -101,6 +105,7 @@ AgentHub does not yet provide:
 - persisted session metadata;
 - a reliable Antigravity `Needs Input` signal; its passive hooks report Idle,
   Working, and Done without inferring permission or question prompts;
+- desktop activity notifications on macOS;
 - a provider lifecycle signal for approval resolution; AgentHub observes Codex
   approval-decision keys to clear `Needs Input`, while Devin can retain it until
   the tool finishes, and another approval hook may still resolve a request

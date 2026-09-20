@@ -79,7 +79,10 @@ bittty / PTY → coding agent`.
   native deletion to the selected session's provider adapter;
 - starts an authenticated loopback activity receiver only when a supported
   provider runtime needs one, applies normalized events to the exact logical
-  session, and refreshes the sidebar when activity changes.
+  session, and refreshes the sidebar when activity changes;
+- evaluates desktop notification policy only after the reducer produces a real
+  activity transition, then dispatches Linux system notification and sound
+  delivery outside session control flow.
 
 `SessionManager` currently:
 
@@ -161,6 +164,16 @@ mounted tracked runtime is initialized to `IDLE`; because AgentHub cannot
 detect Codex hook trust, an untrusted Codex hook leaves that initial state
 unchanged. AgentHub never bypasses Codex hook trust, answers permissions,
 changes tool output, or blocks a provider hook.
+
+Desktop activity notification policy consumes only the previous and current
+`AgentActivity` values plus logical session presentation and runtime state. A
+new transition into `NEEDS_INPUT` or `DONE` notifies for every loaded Agent,
+including the session currently visible in the focused application. Identical
+provider events therefore cannot notify twice, and `UNKNOWN`, `IDLE`, and
+`WORKING` never notify. The Linux backend invokes `notify-send` and a standard
+freedesktop sound-theme player asynchronously. Backend absence, a non-zero
+desktop command, timeout, or unexpected delivery error is contained outside
+the reducer and cannot affect the Agent session. macOS delivery is deferred.
 
 Prompt processing and tool execution intentionally share the single `WORKING`
 state. Its sidebar indicator is animated by one shared timer. Passive Codex
@@ -1137,6 +1150,11 @@ src/agenthub/
 │   ├── codex.py         # Codex discovery/resume adapter
 │   ├── devin.py         # Devin discovery/resume adapter
 │   └── opencode.py      # OpenCode discovery/resume adapter
+├── notifications/
+│   ├── __init__.py      # public notification API
+│   ├── backend.py       # best-effort Linux desktop and sound delivery
+│   ├── model.py         # immutable desktop notification value
+│   └── policy.py        # provider-neutral activity transition policy
 ├── sessions/
 │   ├── __init__.py      # public session API
 │   ├── model.py         # AgentSession runtime model
@@ -1183,12 +1201,14 @@ tests/
 │   ├── test_harnesses.py
 │   ├── test_main.py
 │   ├── test_native_session_adapters.py
+│   ├── test_activity_notifications.py
 │   ├── test_session_manager.py
 │   ├── test_session_name_modal.py
 │   ├── test_terminal.py
 │   └── test_working_directory_modal.py
 └── integration/
     ├── test_app_lifecycle.py
+    ├── test_desktop_activity_notifications.py
     ├── test_command_palette.py
     ├── test_home_screen.py
     ├── test_keyboard_ownership.py
@@ -1289,13 +1309,20 @@ The architectural foundation is implemented:
     configuration. Existing named hooks are preserved. Invocation events and
     the `fullyIdle` Stop field drive `WORKING` and `DONE`; no input-attention
     state is inferred, and tool-gating hooks are intentionally not installed.
+23. Linux desktop activity notifications derive from actual provider-neutral
+    activity transitions. Every loaded Agent's new `NEEDS_INPUT` and `DONE`
+    states notify even when that Agent is currently open, delivery includes the
+    harness and session title, and backend or sound failure is isolated from
+    session behavior.
 
 The remaining sequence is:
 
-1. Create and title native conversations through the provider adapters if a
-   reliable provider-native mechanism becomes available.
-2. Add a supported non-interactive Antigravity deletion entry point when its
-   provider exposes one; other adapters use their native deletion commands.
+1. Add usage and quota details to the status bar.
+2. Add macOS desktop activity notification delivery.
+3. Add packaging and distribution workflows.
+
+Provider-owned creation/title support and non-interactive Antigravity deletion
+remain deferred until reliable native mechanisms become available.
 
 ## Validation Tasks
 
@@ -1327,6 +1354,10 @@ Validated with the installed dependency versions:
 - The real `agy` and `devin` CLIs launch in a selected repository, survive
   switching and resize, render their native interfaces, and exit through normal
   session cleanup without leaving ghost sidebar or manager state.
+- A real Antigravity CLI 1.2.7 turn delegated a reasoning task to a subagent.
+  The root and child emitted distinct conversation IDs; the child reached
+  `Stop(fullyIdle=true)` first and was rejected by root-conversation filtering,
+  while the later root stop alone produced `TURN_COMPLETED`.
 - Live terminal rows remain renderable when Textual's monochrome filter is
   active, including rows padded by `textual-tty` without an explicit style.
 - App shutdown terminates all owned child processes reliably.
@@ -1355,6 +1386,9 @@ The architectural foundation now has automated coverage for:
 - exact loaded-Agent activity routing without shell, unloaded-session,
   cross-session, or lifecycle-state interference;
 - activity reset when a runtime detaches or enters native deletion;
+- provider-neutral desktop notification policy for real transitions, duplicate
+  suppression, focused active-session delivery, asynchronous Linux delivery,
+  and backend-failure containment;
 - Codex event normalization, static hook configuration, authenticated exact-ID
   correlation, credential rejection, and neutral receiver failure;
 - Antigravity invocation/Stop normalization, non-gating named hook

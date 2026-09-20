@@ -34,6 +34,12 @@ from agenthub.native_sessions import (
     NativeSessionDeletionError,
     NativeSessionDeletionUnavailableError,
 )
+from agenthub.notifications import (
+    DesktopNotification,
+    DesktopNotificationBackend,
+    create_desktop_notification_backend,
+    notification_for_activity_transition,
+)
 from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
 from agenthub.ui import (
@@ -93,6 +99,7 @@ class AgentHubApp(App):
         shell_harness: AgentHarness = FISH,
         native_session_adapters: Mapping[str, NativeSessionAdapter] | None = None,
         working_directory_root: Path | None = None,
+        desktop_notification_backend: DesktopNotificationBackend | None = None,
     ) -> None:
         """Create the AgentHub shell without launching a coding harness."""
 
@@ -119,6 +126,12 @@ class AgentHubApp(App):
         self._activity_receiver: ActivityReceiver | None = None
         self._activity_registrations: dict[str, ActivityRegistration] = {}
         self._activity_artifacts: dict[str, tuple[Path, ...]] = {}
+        self._desktop_notification_backend = (
+            create_desktop_notification_backend()
+            if desktop_notification_backend is None
+            else desktop_notification_backend
+        )
+        self._desktop_notification_tasks: set[asyncio.Task[None]] = set()
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -181,6 +194,11 @@ class AgentHubApp(App):
         self._activity_receiver = None
         if receiver is not None:
             await receiver.close()
+        notification_tasks = tuple(self._desktop_notification_tasks)
+        for task in notification_tasks:
+            task.cancel()
+        if notification_tasks:
+            await asyncio.gather(*notification_tasks, return_exceptions=True)
 
     @staticmethod
     def _terminal_dom_id(session_id: str) -> str:
@@ -203,13 +221,12 @@ class AgentHubApp(App):
         sidebar.move_cursor_to_session(session.id)
         self.call_after_refresh(self._highlight_active_sidebar)
         self.set_focus(session.terminal)
-        if self.session_manager.apply_activity_event(
+        self._apply_activity_event(
             AgentActivityEvent(
                 session_id=session.id,
                 kind=AgentActivityEventKind.ATTENTION_ACKNOWLEDGED,
             )
-        ):
-            self._refresh_sidebar()
+        )
         return session
 
     async def activate_session(self, session_id: str) -> AgentSession:
@@ -1146,10 +1163,9 @@ class AgentHubApp(App):
             return
         if session.activity is not AgentActivity.UNKNOWN:
             return
-        if self.session_manager.apply_activity_event(
+        self._apply_activity_event(
             AgentActivityEvent(session.id, AgentActivityEventKind.SESSION_STARTED)
-        ):
-            self._refresh_sidebar()
+        )
 
     def _revoke_activity_tracking(self, session_id: str) -> None:
         """Invalidate one runtime's activity credential if it exists."""
@@ -1173,8 +1189,62 @@ class AgentHubApp(App):
     def _on_activity_event(self, event: AgentActivityEvent) -> None:
         """Apply one authenticated event and refresh only presentation state."""
 
-        if self.session_manager.apply_activity_event(event):
-            self._refresh_sidebar()
+        self._apply_activity_event(event)
+
+    def _apply_activity_event(self, event: AgentActivityEvent) -> bool:
+        """Apply one event, then evaluate its actual visible transition."""
+
+        try:
+            session = self.session_manager.get(event.session_id)
+        except KeyError:
+            return False
+        previous_activity = session.activity
+        if not self.session_manager.apply_activity_event(event):
+            return False
+
+        self._refresh_sidebar()
+        notification = notification_for_activity_transition(
+            previous_activity,
+            session.activity,
+            harness_name=session.harness.display_name,
+            session_title=session.name,
+            is_loaded_agent=(
+                session.kind is SessionKind.AGENT
+                and session.terminal is not None
+                and session.state is SessionState.RUNNING
+            ),
+        )
+        if notification is not None:
+            self._schedule_desktop_notification(notification)
+        return True
+
+    def _schedule_desktop_notification(
+        self,
+        notification: DesktopNotification,
+    ) -> None:
+        """Deliver one desktop notification outside activity/session control flow."""
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(
+            self._deliver_desktop_notification(notification),
+            name="agenthub-desktop-notification",
+        )
+        self._desktop_notification_tasks.add(task)
+        task.add_done_callback(self._desktop_notification_tasks.discard)
+
+    async def _deliver_desktop_notification(
+        self,
+        notification: DesktopNotification,
+    ) -> None:
+        """Contain every backend failure at the optional desktop boundary."""
+
+        try:
+            await self._desktop_notification_backend.send(notification)
+        except Exception:  # noqa: BLE001 - notifications must never affect Agents
+            return
 
     def _on_codex_terminal_key(self, session_id: str, key: str) -> None:
         """Clear a Codex permission wait when its decision reaches the child."""
@@ -1191,10 +1261,9 @@ class AgentHubApp(App):
         ):
             return
 
-        if self.session_manager.apply_activity_event(
+        self._apply_activity_event(
             AgentActivityEvent(session_id, AgentActivityEventKind.INPUT_RESOLVED)
-        ):
-            self._refresh_sidebar()
+        )
 
     def _on_devin_terminal_key(self, session_id: str, key: str) -> None:
         """Recover Devin activity when its UI interrupts without a hook event."""
@@ -1212,10 +1281,9 @@ class AgentHubApp(App):
 
         if key not in {"ctrl+c", "escape"}:
             return
-        if self.session_manager.apply_activity_event(
+        self._apply_activity_event(
             AgentActivityEvent(session_id, AgentActivityEventKind.INTERRUPTED)
-        ):
-            self._refresh_sidebar()
+        )
 
     def _agent_sessions(self) -> tuple[AgentSession, ...]:
         """Return managed coding-agent sessions in creation order."""
