@@ -12,8 +12,8 @@ from textual.widgets import Button, Static
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.presentation.modals import NativeSessionDeleteModal
 from agenthub.sessions import SessionKind, SessionState
-from agenthub.ui.modals import NativeSessionDeleteModal
 
 
 class DeletionAdapter:

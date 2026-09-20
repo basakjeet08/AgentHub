@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
-from agenthub.ui.bindings import (
+from agenthub.presentation.key_bindings import (
     COMMAND_PALETTE_BINDING,
     FOCUS_SIDEBAR_BINDING,
     RESYNC_SESSIONS_BINDING,

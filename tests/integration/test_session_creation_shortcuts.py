@@ -9,10 +9,10 @@ from textual.widgets import ContentSwitcher, Input, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
+from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
+from agenthub.presentation.modals import SessionNameModal, WorkingDirectoryModal
 from agenthub.sessions import SessionKind
 from agenthub.terminal import AgentTerminal
-from agenthub.ui import AgentHubStatusBar, SessionSidebar, SidebarTab
-from agenthub.ui.modals import SessionNameModal, WorkingDirectoryModal
 
 
 async def _create_agent(app: AgentHubApp, pilot) -> None:
@@ -328,7 +328,7 @@ async def test_shell_creation_modal_reentry_guard(
         # During New Agent flow, New Shell is also ignored.
         app.action_new_session()
         await pilot.pause()
-        from agenthub.ui.modals import HarnessSelectionModal
+        from agenthub.presentation.modals import HarnessSelectionModal
         assert isinstance(app.screen, HarnessSelectionModal)
         harness_modal = app.screen
 

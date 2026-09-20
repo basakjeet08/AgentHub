@@ -7,9 +7,9 @@ from textual.widgets import ContentSwitcher, Label, OptionList
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import NativeSession
+from agenthub.presentation import SessionSidebar, SidebarTab
+from agenthub.presentation.modals import NativeSessionLinkModal
 from agenthub.sessions import AgentSession, SessionKind
-from agenthub.ui import SessionSidebar, SidebarTab
-from agenthub.ui.modals import NativeSessionLinkModal
 
 
 def _app_with_pending_and_native_session(

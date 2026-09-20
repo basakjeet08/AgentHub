@@ -4,10 +4,10 @@ from textual.color import Color
 from textual.widgets import Button, OptionList, Static
 
 from agenthub.app import AgentHubApp
+from agenthub.presentation import AgentHubStatusBar, HomeScreen, SessionSidebar, SidebarTab
+from agenthub.presentation.key_bindings import APPLICATION_BINDINGS
+from agenthub.presentation.panels.status_bar import UNLOCKED_ICON
 from agenthub.terminal import AgentTerminal
-from agenthub.ui import AgentHubStatusBar, HomeScreen, SessionSidebar, SidebarTab
-from agenthub.ui.bindings import APPLICATION_BINDINGS
-from agenthub.ui.panels.status_bar import UNLOCKED_ICON
 
 _GLOBAL_REFERENCE = [
     ("Ctrl+P", "Command palette"),

@@ -250,7 +250,7 @@ class FolderTree(DirectoryTree):
 class WorkingDirectoryModal(ModalScreen[Path]):
     """Collect a normalized working directory without creating a runtime."""
 
-    CSS_PATH = "working_directory.tcss"
+    CSS_PATH = "../styles/modals/working_directory.tcss"
     BINDINGS: ClassVar = [
         Binding("ctrl+h", "toggle_hidden", show=False),
         Binding("escape", "cancel", show=False),

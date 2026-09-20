@@ -11,14 +11,14 @@ from textual.widgets import OptionList, Static
 from agenthub.activity import AgentActivity
 from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, FISH, OPENCODE, AgentHarness
 from agenthub.native_sessions import NativeSession
+from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.sessions import AgentSession, SessionKind, SessionManager
-from agenthub.ui import SessionSidebar, SidebarTab
 
 
 class SidebarTestApp(App):
     """Mount a sidebar without mounting the sessions' terminal widgets."""
 
-    CSS_PATH = Path(__file__).parents[2] / "src/agenthub/ui/panels/sidebar.tcss"
+    CSS_PATH = Path(__file__).parents[2] / "src/agenthub/presentation/styles/panels/sidebar.tcss"
 
     def __init__(self, sessions: tuple[AgentSession, ...]) -> None:
         super().__init__()

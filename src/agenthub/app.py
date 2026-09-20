@@ -40,15 +40,13 @@ from agenthub.notifications import (
     create_desktop_notification_backend,
     notification_for_activity_transition,
 )
-from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
-from agenthub.terminal import AgentTerminal
-from agenthub.ui import (
+from agenthub.presentation import (
     AgentHubStatusBar,
     HomeScreen,
     SessionSidebar,
 )
-from agenthub.ui.bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
-from agenthub.ui.modals import (
+from agenthub.presentation.key_bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
+from agenthub.presentation.modals import (
     HarnessSelectionModal,
     NativeSessionDeleteModal,
     NativeSessionLinkModal,
@@ -56,6 +54,8 @@ from agenthub.ui.modals import (
     SessionSelectionModal,
     WorkingDirectoryModal,
 )
+from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
+from agenthub.terminal import AgentTerminal
 
 _SESSION_WORKFLOW_MODALS = (
     HarnessSelectionModal,
@@ -83,11 +83,11 @@ class AgentHubApp(App):
     hub_locked: reactive[bool] = reactive(False, bindings=True)
 
     CSS_PATH: ClassVar[list[str]] = [
-        "ui/theme.tcss",
-        "ui/app.tcss",
-        "ui/screens/home.tcss",
-        "ui/panels/sidebar.tcss",
-        "ui/panels/status_bar.tcss",
+        "presentation/styles/theme.tcss",
+        "presentation/styles/app.tcss",
+        "presentation/styles/screens/home.tcss",
+        "presentation/styles/panels/sidebar.tcss",
+        "presentation/styles/panels/status_bar.tcss",
     ]
 
     BINDINGS: ClassVar = list(APPLICATION_BINDINGS)

@@ -17,8 +17,8 @@ from agenthub.harnesses import (
     KeyStroke,
     ScrollKeys,
 )
+from agenthub.presentation import HomeScreen, SessionSidebar, SidebarTab
 from agenthub.sessions import AgentSession, SessionKind, SessionState
-from agenthub.ui import HomeScreen, SessionSidebar, SidebarTab
 
 
 def _exiting_harness(exit_code: int) -> AgentHarness:

@@ -23,7 +23,7 @@ def _harness_option_prompt(harness: AgentHarness) -> str:
 class HarnessSelectionModal(ModalScreen[str]):
     """Return the stable ID of a user-selected coding-agent harness."""
 
-    CSS_PATH = "harness_selection.tcss"
+    CSS_PATH = "../styles/modals/harness_selection.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
     def __init__(self, harnesses: Iterable[AgentHarness]) -> None:

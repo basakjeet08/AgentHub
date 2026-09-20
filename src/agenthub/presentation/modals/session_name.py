@@ -45,7 +45,7 @@ class SessionNameInput(Input):
 class SessionNameModal(ModalScreen[str]):
     """Capture and validate an optional AgentHub shell-session name."""
 
-    CSS_PATH = "session_name.tcss"
+    CSS_PATH = "../styles/modals/session_name.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
     def __init__(

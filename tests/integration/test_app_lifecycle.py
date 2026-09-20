@@ -8,9 +8,9 @@ from textual.widgets import ContentSwitcher, Static
 from agenthub.activity import AgentActivity, AgentActivityEvent, AgentActivityEventKind
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
+from agenthub.presentation import AgentHubStatusBar, HomeScreen, SessionSidebar
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.terminal import AgentTerminal
-from agenthub.ui import AgentHubStatusBar, HomeScreen, SessionSidebar
 
 
 def _app_with_session(harness: AgentHarness) -> tuple[AgentHubApp, AgentSession]:

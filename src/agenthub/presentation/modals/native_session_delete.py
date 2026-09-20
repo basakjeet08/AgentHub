@@ -12,7 +12,7 @@ from textual.widgets import Button, Static
 class NativeSessionDeleteModal(ModalScreen[bool]):
     """Confirm permanent deletion of one already-resolved Agent row."""
 
-    CSS_PATH = "native_session_delete.tcss"
+    CSS_PATH = "../styles/modals/native_session_delete.tcss"
     BINDINGS: ClassVar = [
         Binding("escape", "cancel", show=False),
         Binding("left,up", "focus_cancel", show=False),

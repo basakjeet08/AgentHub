@@ -4,9 +4,8 @@ from pathlib import Path
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.sessions import SessionKind
-from agenthub.ui import SessionSidebar
-from agenthub.ui.bindings import (
+from agenthub.presentation import SessionSidebar
+from agenthub.presentation.key_bindings import (
     APPLICATION_BINDINGS,
     COMMAND_PALETTE_BINDING,
     FOCUS_SIDEBAR_BINDING,
@@ -14,6 +13,7 @@ from agenthub.ui.bindings import (
     TERMINAL_GATED_ACTIONS,
     TOGGLE_HUB_LOCK_BINDING,
 )
+from agenthub.sessions import SessionKind
 
 
 def test_app_starts_empty_without_selecting_a_harness() -> None:

@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from agenthub.ui.modals.working_directory import (
+from agenthub.presentation.modals.working_directory import (
     FolderTree,
     WorkingDirectoryModal,
     _format_display_path,

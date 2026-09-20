@@ -9,8 +9,8 @@ from textual.widgets import ContentSwitcher, Input, OptionList, Static
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.presentation.modals import SessionSelectionModal
 from agenthub.sessions import SessionKind
-from agenthub.ui.modals import SessionSelectionModal
 
 
 class FakeResumeAdapter:

@@ -10,8 +10,8 @@ from textual.widgets import OptionList
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.sessions import SessionState
-from agenthub.ui import SessionSidebar, SidebarTab
 
 
 class FakeNativeSessionAdapter:

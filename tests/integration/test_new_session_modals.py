@@ -12,13 +12,13 @@ from textual.widgets import ContentSwitcher, Label, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import ANTIGRAVITY, DEVIN, AgentHarness
-from agenthub.sessions import SessionKind
-from agenthub.ui import HomeScreen, SessionSidebar
-from agenthub.ui.modals import (
+from agenthub.presentation import HomeScreen, SessionSidebar
+from agenthub.presentation.modals import (
     HarnessSelectionModal,
     WorkingDirectoryModal,
 )
-from agenthub.ui.modals.working_directory import FolderTree
+from agenthub.presentation.modals.working_directory import FolderTree
+from agenthub.sessions import SessionKind
 
 
 async def _open_working_directory_modal(

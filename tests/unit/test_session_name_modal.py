@@ -6,7 +6,7 @@ from unittest.mock import Mock
 from textual.app import App, ComposeResult
 from textual.widgets import Input
 
-from agenthub.ui.modals.session_name import SessionNameInput, SessionNameModal
+from agenthub.presentation.modals.session_name import SessionNameInput, SessionNameModal
 
 
 def test_ctrl_v_schedules_a_widget_owned_clipboard_worker(monkeypatch) -> None:

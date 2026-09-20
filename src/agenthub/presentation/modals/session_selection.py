@@ -23,7 +23,7 @@ def _session_option_prompt(session: AgentSession) -> str:
 class SessionSelectionModal(ModalScreen[str]):
     """Return the AgentHub ID of a user-selected openable session."""
 
-    CSS_PATH = "session_selection.tcss"
+    CSS_PATH = "../styles/modals/session_selection.tcss"
     BINDINGS: ClassVar = [
         Binding("escape", "cancel", show=False),
         Binding("up", "cursor_up", show=False, priority=True),

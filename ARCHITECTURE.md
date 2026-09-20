@@ -1163,31 +1163,39 @@ src/agenthub/
 │   ├── __init__.py
 │   ├── scrollback.py     # bounded styled history for plain shells
 │   └── widget.py        # textual-tty/Bitty adapter
-└── ui/
-    ├── __init__.py
-    ├── app.tcss         # persistent application-shell layout
-    ├── bindings.py      # Textual bindings and shared shortcut metadata
-    ├── theme.tcss       # shared component and Textual overlay styles
+└── presentation/
+    ├── __init__.py      # public presentation API
+    ├── key_bindings.py  # Textual bindings and shared shortcut metadata
     ├── modals/
     │   ├── __init__.py
-    │   ├── harness_selection.py   # registry-driven agent harness picker
-    │   ├── harness_selection.tcss # compact picker presentation
-    │   ├── native_session_link.py # explicit native-session reconciliation
-    │   ├── native_session_link.tcss # native-link picker presentation
-    │   ├── session_name.py        # optional Fish shell session name input
-    │   ├── session_name.tcss      # compact name-prompt presentation
-    │   ├── working_directory.py   # directory-only tree picker
-    │   └── working_directory.tcss # directory-picker presentation
+    │   ├── harness_selection.py     # registry-driven agent harness picker
+    │   ├── native_session_delete.py # irreversible native-deletion confirmation
+    │   ├── native_session_link.py   # explicit native-session reconciliation
+    │   ├── session_name.py          # optional Fish shell session name input
+    │   ├── session_selection.py     # unified Agent/Shell open picker
+    │   └── working_directory.py     # directory-only tree picker
+    ├── panels/
+    │   ├── __init__.py
+    │   ├── sidebar.py   # session navigation panel
+    │   └── status_bar.py   # real application state and counts
     ├── screens/
     │   ├── __init__.py
-    │   ├── home.py      # static landing orientation and shortcut reference
-    │   └── home.tcss    # responsive Home landing presentation
-    └── panels/
-        ├── __init__.py
-        ├── sidebar.py   # session navigation panel
-        ├── sidebar.tcss # sidebar presentation styles
-        ├── status_bar.py   # real application state and counts
-        └── status_bar.tcss # persistent status presentation
+    │   └── home.py      # static landing orientation and shortcut reference
+    └── styles/
+        ├── app.tcss         # persistent application-shell layout
+        ├── theme.tcss       # shared component and Textual overlay styles
+        ├── modals/
+        │   ├── harness_selection.tcss   # compact picker presentation
+        │   ├── native_session_delete.tcss # deletion-confirmation presentation
+        │   ├── native_session_link.tcss # native-link picker presentation
+        │   ├── session_name.tcss        # compact name-prompt presentation
+        │   ├── session_selection.tcss   # open-picker presentation
+        │   └── working_directory.tcss   # directory-picker presentation
+        ├── panels/
+        │   ├── sidebar.tcss # sidebar presentation styles
+        │   └── status_bar.tcss # persistent status presentation
+        └── screens/
+            └── home.tcss    # responsive Home landing presentation
 
 tests/
 ├── conftest.py          # shared harmless process fixture

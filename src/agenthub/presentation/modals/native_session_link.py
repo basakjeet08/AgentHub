@@ -16,7 +16,7 @@ from agenthub.sessions import AgentSession
 class NativeSessionLinkModal(ModalScreen[str]):
     """Return the AgentHub row ID of a user-selected native conversation."""
 
-    CSS_PATH = "native_session_link.tcss"
+    CSS_PATH = "../styles/modals/native_session_link.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
     def __init__(

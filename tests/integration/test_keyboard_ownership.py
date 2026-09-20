@@ -10,16 +10,16 @@ from textual.widgets import Input, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.sessions import AgentSession, SessionKind
-from agenthub.ui import AgentHubStatusBar, SessionSidebar, SidebarTab
-from agenthub.ui.modals import (
+from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
+from agenthub.presentation.modals import (
     HarnessSelectionModal,
     NativeSessionLinkModal,
     SessionNameModal,
     WorkingDirectoryModal,
 )
-from agenthub.ui.modals.working_directory import FolderTree
-from agenthub.ui.panels.status_bar import LOCKED_ICON, UNLOCKED_ICON
+from agenthub.presentation.modals.working_directory import FolderTree
+from agenthub.presentation.panels.status_bar import LOCKED_ICON, UNLOCKED_ICON
+from agenthub.sessions import AgentSession, SessionKind
 
 
 def _app_with_sessions(
@@ -172,7 +172,7 @@ async def test_shell_name_input_owns_ctrl_v_over_a_mounted_terminal(
 
         with (
             patch(
-                "agenthub.ui.modals.session_name.read_clipboard_text",
+                "agenthub.presentation.modals.session_name.read_clipboard_text",
                 AsyncMock(return_value="Clipboard Session"),
             ),
             patch(

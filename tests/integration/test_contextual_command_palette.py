@@ -10,9 +10,9 @@ from textual.widgets import Input
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.presentation import SessionSidebar
+from agenthub.presentation.modals import NativeSessionDeleteModal, NativeSessionLinkModal
 from agenthub.sessions import SessionKind
-from agenthub.ui import SessionSidebar
-from agenthub.ui.modals import NativeSessionDeleteModal, NativeSessionLinkModal
 
 
 class PaletteAdapter:
