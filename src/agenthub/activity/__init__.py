@@ -17,13 +17,21 @@ from .devin import (
     run_devin_activity_hook,
 )
 from .model import AgentActivity, AgentActivityEvent, AgentActivityEventKind
+from .opencode import (
+    AGENTHUB_OPENCODE_SESSION_ID,
+    OPENCODE_CONFIG_CONTENT,
+    normalize_opencode_activity,
+    opencode_activity_environment,
+)
 from .receiver import ActivityReceiver, ActivityRegistration
 from .reducer import ActivityReducerState, reduce_activity, reduce_activity_state
 
 __all__ = [
     "AGENTHUB_ACTIVITY_ENDPOINT",
     "AGENTHUB_ACTIVITY_TOKEN",
+    "AGENTHUB_OPENCODE_SESSION_ID",
     "AGENTHUB_SESSION_ID",
+    "OPENCODE_CONFIG_CONTENT",
     "ActivityReceiver",
     "ActivityReducerState",
     "ActivityRegistration",
@@ -34,6 +42,8 @@ __all__ = [
     "codex_command_with_activity_hooks",
     "normalize_codex_activity",
     "normalize_devin_activity",
+    "normalize_opencode_activity",
+    "opencode_activity_environment",
     "prepare_devin_activity_launch",
     "reduce_activity",
     "reduce_activity_state",

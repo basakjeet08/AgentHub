@@ -17,6 +17,7 @@ from ._forwarder import (
 from .codex import normalize_codex_activity
 from .devin import normalize_devin_activity
 from .model import AgentActivityEvent
+from .opencode import normalize_opencode_activity
 
 _HOST = "127.0.0.1"
 _MAX_MESSAGE_BYTES = 1_048_576
@@ -24,6 +25,7 @@ _PROTOCOL_VERSION = 1
 _NORMALIZERS = {
     "codex": normalize_codex_activity,
     "devin": normalize_devin_activity,
+    "opencode": normalize_opencode_activity,
 }
 
 

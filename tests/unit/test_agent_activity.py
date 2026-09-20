@@ -24,6 +24,7 @@ from agenthub.sessions import SessionKind, SessionManager, SessionState
         (AgentActivityEventKind.TOOL_STARTED, AgentActivity.WORKING),
         (AgentActivityEventKind.PERMISSION_REQUESTED, AgentActivity.NEEDS_INPUT),
         (AgentActivityEventKind.INPUT_REQUESTED, AgentActivity.NEEDS_INPUT),
+        (AgentActivityEventKind.INPUT_RESOLVED, AgentActivity.WORKING),
         (AgentActivityEventKind.TOOL_FINISHED, AgentActivity.WORKING),
         (AgentActivityEventKind.TURN_STOP_REQUESTED, AgentActivity.DONE),
         (AgentActivityEventKind.TURN_COMPLETED, AgentActivity.DONE),

@@ -22,6 +22,7 @@ from agenthub.activity import (
     AgentActivityEvent,
     AgentActivityEventKind,
     codex_command_with_activity_hooks,
+    opencode_activity_environment,
     prepare_devin_activity_launch,
 )
 from agenthub.harnesses import FISH, HARNESSES, AgentHarness
@@ -1084,7 +1085,7 @@ class AgentHubApp(App):
         if session.kind is not SessionKind.AGENT:
             return False
         provider = session.harness.id
-        if provider not in {"codex", "devin"}:
+        if provider not in {"codex", "devin", "opencode"}:
             return False
         if Path(terminal.child_command[0]).name != provider:
             return False
@@ -1100,13 +1101,20 @@ class AgentHubApp(App):
             command = terminal.child_command
             if provider == "codex":
                 command = codex_command_with_activity_hooks(command)
-            else:
+            elif provider == "devin":
                 launch = prepare_devin_activity_launch(command)
                 command = launch.command
                 self._activity_artifacts[session.id] = (launch.config_path,)
+            environment_overrides = dict(registration.environment)
+            if provider == "opencode":
+                environment_overrides.update(
+                    opencode_activity_environment(
+                        native_session_id=session.native_session_id,
+                    )
+                )
             terminal.configure_launch(
                 command=command,
-                environment_overrides=dict(registration.environment),
+                environment_overrides=environment_overrides,
             )
             if provider == "devin":
                 terminal.set_forwarded_key_observer(

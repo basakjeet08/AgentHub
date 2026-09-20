@@ -29,8 +29,8 @@ multi-session runtime architecture:
   terminal runtime optional, and coordinates them through `SessionManager`.
 - It keeps provider activity separate from runtime lifecycle through a
   provider-neutral `AgentActivity` model and reducer. Loaded Agents show
-  Unknown, Idle, Working, Needs Input, or Done in the sidebar; Codex and Devin
-  drive those states through their native lifecycle hooks.
+  Unknown, Idle, Working, Needs Input, or Done in the sidebar; Codex, Devin,
+  and OpenCode drive those states through structured provider events.
 - It launches each terminal child in its session's normalized working directory
   without changing AgentHub's own directory or using a shell command.
 - It discovers Codex, OpenCode, Devin, and Antigravity sessions through
@@ -92,8 +92,7 @@ AgentHub does not yet provide:
 - a complete shortcuts dialog;
 - generic user-initiated stopping or restarting of sessions;
 - persisted session metadata;
-- live activity reporting for OpenCode or Antigravity (their loaded rows remain
-  `Unknown`);
+- live activity reporting for Antigravity (its loaded rows remain `Unknown`);
 - an approval-resolved Codex or Devin signal; after approval, `Needs Input` can
   remain visible until the tool finishes, and another approval hook may resolve
   a request without AgentHub observing that resolution;

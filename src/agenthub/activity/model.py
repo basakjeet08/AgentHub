@@ -22,6 +22,7 @@ class AgentActivityEventKind(StrEnum):
     TOOL_STARTED = "tool_started"
     PERMISSION_REQUESTED = "permission_requested"
     INPUT_REQUESTED = "input_requested"
+    INPUT_RESOLVED = "input_resolved"
     TOOL_FINISHED = "tool_finished"
     TURN_STOP_REQUESTED = "turn_stop_requested"
     TURN_COMPLETED = "turn_completed"

@@ -133,13 +133,13 @@ not create widgets or import Bitty.
 Agent activity is modeled independently from `SessionState` through
 `AgentActivity`, normalized `AgentActivityEvent` values, and a pure reducer.
 Every session defaults to `UNKNOWN`; only loaded Agent sessions accept events,
-and detaching or deleting a runtime resets its activity to `UNKNOWN`. Codex and
-Devin launches receive passive hook definitions plus per-runtime
+and detaching or deleting a runtime resets its activity to `UNKNOWN`. Codex,
+Devin, and OpenCode launches receive passive provider integration plus per-runtime
 `AGENTHUB_SESSION_ID`, `AGENTHUB_ACTIVITY_ENDPOINT`, and
-`AGENTHUB_ACTIVITY_TOKEN` values in the child environment. The hook helper
-forwards the raw event to an ephemeral loopback receiver, which authenticates
-and normalizes it before `SessionManager` applies the reducer. No provider
-payload object enters the core model.
+`AGENTHUB_ACTIVITY_TOKEN` values in the child environment. Command-hook helpers
+and the OpenCode plugin forward raw events to an ephemeral loopback receiver,
+which authenticates and normalizes them before `SessionManager` applies the
+reducer. No provider payload object enters the core model.
 
 Turn-scoped provider events carry an optional provider-neutral `scope_id`.
 Codex supplies its `turn_id` and Devin supplies its `prompt_id`; the reducer
@@ -184,6 +184,19 @@ forwards to the Devin child (`Ctrl+C` or `Esc`) and closes the active prompt
 scope without changing terminal key passthrough. `Esc` follows Devin's default
 cancel binding, while `Ctrl+C` is the provider's non-rebindable cancel key.
 AgentHub never infers interruption from terminal output.
+
+OpenCode uses a packaged V2 server plugin supplied through child-only
+`OPENCODE_CONFIG_CONTENT`; existing inline settings and plugin entries are
+preserved, and no user configuration file is changed. The plugin subscribes to
+the V2 event stream without modifying or replying to events. Execution start
+maps to `WORKING`; permission and form requests map to `NEEDS_INPUT`; their
+resolution returns to `WORKING`; successful or failed execution maps to `DONE`;
+and interruption maps to `IDLE`. For resumed sessions, the known native session
+ID filters the stream. Fresh sessions bind to the first execution they start.
+Each execution receives a local scope ID so a late event cannot overwrite a
+newer turn. Child/subagent permission and form requests still surface as
+`NEEDS_INPUT`, while their terminal events are ignored so they cannot mark the
+root Agent done prematurely.
 
 The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
 sequences were:
@@ -1070,9 +1083,11 @@ src/agenthub/
 ├── activity/
 │   ├── _forwarder.py    # shared neutral local hook forwarding
 │   ├── __init__.py      # public activity API
+│   ├── _opencode_plugin.js # passive OpenCode V2 event bridge
 │   ├── codex.py         # Codex hook bridge and event normalizer
 │   ├── devin.py         # Devin hook bridge, config overlay, and normalizer
 │   ├── model.py         # activity state and normalized events
+│   ├── opencode.py      # OpenCode V2 launch config and event normalizer
 │   ├── receiver.py      # authenticated loopback event receiver
 │   └── reducer.py       # provider-neutral activity transitions
 ├── harnesses/
@@ -1135,6 +1150,7 @@ tests/
 │   ├── test_agent_activity.py
 │   ├── test_codex_activity.py
 │   ├── test_devin_activity.py
+│   ├── test_opencode_activity.py
 │   ├── test_app.py
 │   ├── test_clipboard.py
 │   ├── test_harnesses.py
@@ -1221,11 +1237,12 @@ The architectural foundation is implemented:
 18. Provider-neutral activity state, normalized activity events, and a pure
     reducer are separate from `SessionState`. `SessionManager` routes them only
     to an exact loaded Agent and clears activity when its runtime detaches.
-19. Codex and Devin runtimes receive child-only correlation credentials and
-    native lifecycle hooks. An authenticated loopback receiver normalizes those
-    events and Loaded Agent rows display activity, including attention
-    acknowledgement from `DONE` to `IDLE`. Devin uses a secure temporary config
-    overlay that preserves user settings and existing hooks.
+19. Codex, Devin, and OpenCode runtimes receive child-only correlation
+    credentials and passive structured-event integration. An authenticated
+    loopback receiver normalizes those events and Loaded Agent rows display
+    activity, including attention acknowledgement from `DONE` to `IDLE`. Devin
+    uses a secure temporary config overlay; OpenCode uses an inline V2 plugin
+    entry. Both preserve existing user configuration.
 20. Devin CLI 3000.10.31 accepts the generated config overlay. Live traces
     confirmed `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
     `PermissionRequest`, `PostToolUse`, and `Stop`, with one stable `prompt_id`
@@ -1236,11 +1253,16 @@ The architectural foundation is implemented:
     scraping output. Provisional Stop continuation is covered by reducer and
     receiver tests because it requires another user-configured Stop hook to
     block Devin's request.
+21. OpenCode receives a packaged V2 event plugin through child-only inline
+    configuration. Execution, permission, form, completion, failure, and
+    interruption events use execution-scoped ordering and exact logical-session
+    routing. The plugin loads under OpenCode 1.18.31's V2 runtime without
+    changing existing user configuration.
 
 The remaining sequence is:
 
-1. Add OpenCode V2 and Antigravity activity bridges in that order, without
-   inventing unsupported provider states.
+1. Add the Antigravity activity bridge without inventing unsupported provider
+   states.
 2. Create and title native conversations through the provider adapters if a
    reliable provider-native mechanism becomes available.
 3. Add a supported non-interactive Antigravity deletion entry point when its
@@ -1306,6 +1328,9 @@ The architectural foundation now has automated coverage for:
 - activity reset when a runtime detaches or enters native deletion;
 - Codex event normalization, static hook configuration, authenticated exact-ID
   correlation, credential rejection, and neutral receiver failure;
+- OpenCode V2 event normalization, inline plugin configuration preservation,
+  permission/form resolution, exact root-session filtering, and terminal-state
+  ordering;
 - child-only correlation environment injection without parent mutation;
 - Loaded sidebar activity rendering, unloaded activity suppression, and
   `DONE` acknowledgement when a session is shown;
@@ -1523,9 +1548,9 @@ active exits return to Home, and hidden exits do not interrupt the current
 terminal. Contextual Delete operates only on the active native-backed Agent,
 and Ctrl+D reaches a focused terminal unchanged.
 Locked hub shortcuts have been proven to fall through at the PTY-write
-boundary. Codex and Devin lifecycle hooks now feed authenticated per-runtime
-activity to the Loaded sidebar; OpenCode and Antigravity remain `UNKNOWN`.
-Next: add OpenCode V2 and Antigravity activity bridges, then create native
-conversations through the adapters and add a supported non-interactive
-Antigravity deletion entry point. AgentHub persistence remains deferred.
+boundary. Codex, Devin, and OpenCode structured events now feed authenticated
+per-runtime activity to the Loaded sidebar; Antigravity remains `UNKNOWN`.
+Next: add the Antigravity activity bridge, then create native conversations
+through the adapters and add a supported non-interactive Antigravity deletion
+entry point. AgentHub persistence remains deferred.
 ```
