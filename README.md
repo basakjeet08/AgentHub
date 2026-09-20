@@ -93,9 +93,10 @@ AgentHub does not yet provide:
 - generic user-initiated stopping or restarting of sessions;
 - persisted session metadata;
 - live activity reporting for Antigravity (its loaded rows remain `Unknown`);
-- an approval-resolved Codex or Devin signal; after approval, `Needs Input` can
-  remain visible until the tool finishes, and another approval hook may resolve
-  a request without AgentHub observing that resolution;
+- a provider lifecycle signal for approval resolution; AgentHub observes Codex
+  approval-decision keys to clear `Needs Input`, while Devin can retain it until
+  the tool finishes, and another approval hook may still resolve a request
+  without AgentHub observing that resolution;
 - creation or renaming of native harness conversations;
 - non-interactive Antigravity conversation deletion (the native CLI currently
   exposes deletion only through its interactive conversation picker).

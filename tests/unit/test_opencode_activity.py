@@ -1,7 +1,9 @@
-"""Tests for OpenCode V2 activity normalization and plugin integration."""
+"""Tests for OpenCode activity normalization and plugin integration."""
 
 import asyncio
 import json
+import os
+import shutil
 from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -14,7 +16,9 @@ from agenthub.activity import (
     AGENTHUB_OPENCODE_SESSION_ID,
     AGENTHUB_SESSION_ID,
     OPENCODE_CONFIG_CONTENT,
+    ActivityReceiver,
     AgentActivity,
+    AgentActivityEvent,
     AgentActivityEventKind,
     normalize_opencode_activity,
     opencode_activity_environment,
@@ -29,10 +33,18 @@ from agenthub.sessions import SessionKind
     [
         ("session.execution.started", AgentActivityEventKind.PROMPT_SUBMITTED),
         ("permission.asked", AgentActivityEventKind.PERMISSION_REQUESTED),
+        ("permission.v2.asked", AgentActivityEventKind.PERMISSION_REQUESTED),
         ("permission.replied", AgentActivityEventKind.INPUT_RESOLVED),
+        ("permission.v2.replied", AgentActivityEventKind.INPUT_RESOLVED),
         ("form.created", AgentActivityEventKind.INPUT_REQUESTED),
         ("form.replied", AgentActivityEventKind.INPUT_RESOLVED),
         ("form.cancelled", AgentActivityEventKind.INPUT_RESOLVED),
+        ("question.asked", AgentActivityEventKind.INPUT_REQUESTED),
+        ("question.replied", AgentActivityEventKind.INPUT_RESOLVED),
+        ("question.rejected", AgentActivityEventKind.INPUT_RESOLVED),
+        ("question.v2.asked", AgentActivityEventKind.INPUT_REQUESTED),
+        ("question.v2.replied", AgentActivityEventKind.INPUT_RESOLVED),
+        ("question.v2.rejected", AgentActivityEventKind.INPUT_RESOLVED),
         ("session.execution.succeeded", AgentActivityEventKind.TURN_COMPLETED),
         ("session.execution.failed", AgentActivityEventKind.TURN_COMPLETED),
         ("session.execution.interrupted", AgentActivityEventKind.INTERRUPTED),
@@ -72,11 +84,24 @@ def test_opencode_normalizer_ignores_invalid_or_unknown_events(payload: object) 
     assert normalize_opencode_activity("logical-session", payload) is None
 
 
+def test_opencode_plugin_ready_does_not_require_an_execution_scope() -> None:
+    event = normalize_opencode_activity(
+        "logical-session",
+        {"type": "agenthub.plugin.ready"},
+    )
+
+    assert event == AgentActivityEvent(
+        session_id="logical-session",
+        kind=AgentActivityEventKind.SESSION_STARTED,
+    )
+
+
 def test_opencode_environment_preserves_inline_config_and_plugins(tmp_path: Path) -> None:
     plugin = tmp_path / "activity.js"
     original = json.dumps(
         {
             "model": "test/model",
+            "plugin": ["existing-v1-plugin"],
             "plugins": ["existing-plugin", {"package": "configured-plugin"}],
         }
     )
@@ -89,6 +114,7 @@ def test_opencode_environment_preserves_inline_config_and_plugins(tmp_path: Path
 
     merged = json.loads(overrides[OPENCODE_CONFIG_CONTENT])
     assert merged["model"] == "test/model"
+    assert merged["plugin"] == ["existing-v1-plugin", str(plugin.resolve())]
     assert merged["plugins"] == [
         "existing-plugin",
         {"package": "configured-plugin"},
@@ -101,18 +127,100 @@ def test_opencode_environment_preserves_inline_config_and_plugins(tmp_path: Path
     ]
 
 
-def test_opencode_environment_uses_the_packaged_v2_plugin() -> None:
+def test_opencode_environment_uses_the_packaged_compatibility_plugin() -> None:
     overrides = opencode_activity_environment(environment={})
     config = json.loads(overrides[OPENCODE_CONFIG_CONTENT])
     plugin_path = Path(config["plugins"][-1])
     source = plugin_path.read_text(encoding="utf-8")
 
     assert plugin_path.name == "_opencode_plugin.js"
-    assert 'from "@opencode/plugin"' in source
+    assert config["plugin"][-1] == str(plugin_path)
     assert "ctx.event.subscribe" in source
+    assert "server" in source
+    assert "session.status" in source
     assert "session.execution.started" in source
-    assert "@opencode-ai/plugin" not in source
     assert "tool.execute.before" not in source
+
+
+async def test_packaged_plugin_tracks_all_concurrent_v1_input_blockers() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the packaged OpenCode plugin")
+
+    received: list[AgentActivityEvent] = []
+    receiver = ActivityReceiver(received.append)
+    await receiver.start()
+    registration = receiver.register("logical-session", "opencode")
+    plugin_path = Path(__file__).parents[2] / "src/agenthub/activity/_opencode_plugin.js"
+    events = [
+        {
+            "type": "session.status",
+            "properties": {"sessionID": "root", "status": {"type": "busy"}},
+        },
+        {
+            "type": "permission.asked",
+            "properties": {"id": "permission-1", "sessionID": "root"},
+        },
+        {
+            "type": "session.created",
+            "properties": {"info": {"id": "child", "parentID": "root"}},
+        },
+        {
+            "type": "question.asked",
+            "properties": {"id": "question-1", "sessionID": "child"},
+        },
+        {
+            "type": "permission.replied",
+            "properties": {"requestID": "permission-1", "sessionID": "root"},
+        },
+        {
+            "type": "question.replied",
+            "properties": {"requestID": "question-1", "sessionID": "child"},
+        },
+        {"type": "session.idle", "properties": {"sessionID": "root"}},
+    ]
+    script = """
+import { readFile } from "node:fs/promises"
+const source = await readFile(process.argv[1], "utf8")
+const url = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+const plugin = (await import(url)).default
+const hooks = await plugin.server()
+for (const event of JSON.parse(process.argv[2])) await hooks.event({ event })
+await new Promise((resolve) => setTimeout(resolve, 500))
+"""
+    environment = os.environ.copy()
+    environment.update(registration.environment)
+    environment[AGENTHUB_OPENCODE_SESSION_ID] = "root"
+    try:
+        process = await asyncio.create_subprocess_exec(
+            node,
+            "--input-type=module",
+            "--eval",
+            script,
+            str(plugin_path),
+            json.dumps(events),
+            env=environment,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        assert process.returncode == 0, (stdout + stderr).decode(errors="replace")
+        for _ in range(50):
+            if len(received) >= 5:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        await receiver.close()
+
+    assert [event.kind for event in received] == [
+        AgentActivityEventKind.SESSION_STARTED,
+        AgentActivityEventKind.PROMPT_SUBMITTED,
+        AgentActivityEventKind.PERMISSION_REQUESTED,
+        AgentActivityEventKind.INPUT_RESOLVED,
+        AgentActivityEventKind.TURN_COMPLETED,
+    ]
+    assert received[2].scope_id == "root:1"
+    assert received[3].scope_id == "root:1"
 
 
 async def _send_event(
@@ -154,7 +262,7 @@ async def _wait_for_activity(session, expected: AgentActivity) -> None:
     assert session.activity is expected
 
 
-async def test_opencode_v2_events_update_sidebar_activity_end_to_end(
+async def test_opencode_events_update_sidebar_activity_end_to_end(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -179,12 +287,15 @@ async def test_opencode_v2_events_update_sidebar_activity_end_to_end(
     tracking_ready = await app._prepare_activity_tracking(session, terminal)
     assert tracking_ready is True
     app._initialize_mounted_activity(session)
-    assert session.activity is AgentActivity.IDLE
+    assert session.activity is AgentActivity.UNKNOWN
     registration = app._activity_registrations[session.id]
     environment = terminal._environment_overrides
     assert environment[AGENTHUB_OPENCODE_SESSION_ID] == "native-session"
     assert OPENCODE_CONFIG_CONTENT in environment
     try:
+        await _send_event(registration.environment, "agenthub.plugin.ready", "")
+        await _wait_for_activity(session, AgentActivity.IDLE)
+
         await _send_event(registration.environment, "session.execution.started", "turn-1")
         await _wait_for_activity(session, AgentActivity.WORKING)
 

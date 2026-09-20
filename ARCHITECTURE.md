@@ -185,18 +185,28 @@ scope without changing terminal key passthrough. `Esc` follows Devin's default
 cancel binding, while `Ctrl+C` is the provider's non-rebindable cancel key.
 AgentHub never infers interruption from terminal output.
 
-OpenCode uses a packaged V2 server plugin supplied through child-only
+OpenCode uses one packaged compatibility plugin supplied through child-only
 `OPENCODE_CONFIG_CONTENT`; existing inline settings and plugin entries are
-preserved, and no user configuration file is changed. The plugin subscribes to
-the V2 event stream without modifying or replying to events. Execution start
-maps to `WORKING`; permission and form requests map to `NEEDS_INPUT`; their
-resolution returns to `WORKING`; successful or failed execution maps to `DONE`;
-and interruption maps to `IDLE`. For resumed sessions, the known native session
-ID filters the stream. Fresh sessions bind to the first execution they start.
-Each execution receives a local scope ID so a late event cannot overwrite a
-newer turn. Child/subagent permission and form requests still surface as
-`NEEDS_INPUT`, while their terminal events are ignored so they cannot mark the
-root Agent done prematurely.
+preserved, and no user configuration file is changed. The same module exposes
+OpenCode 1's `server()` event hook and OpenCode 2's `setup()` subscription API,
+while keeping their event handling separate from the provider-neutral reducer.
+The normal OpenCode 1.18.29+ TUI reads the singular `plugin` setting; OpenCode 2
+reads `plugins`, so AgentHub supplies both without changing user files. The
+plugin reports readiness before AgentHub changes `UNKNOWN` to `IDLE`, preventing
+a plugin-loading failure from looking like a successfully tracked idle session.
+
+Execution start maps to `WORKING`; permission, question, and form requests map
+to `NEEDS_INPUT`; their resolution returns to `WORKING`; successful or failed
+execution maps to `DONE`; and interruption maps to `IDLE`. The plugin tracks
+pending input blockers by request type, native session ID, and request ID. One
+resolved request cannot leave `NEEDS_INPUT` while another root or subagent
+request remains pending. The pending set is cleared at execution boundaries.
+For resumed sessions, the known native session ID filters the stream. Fresh
+sessions bind to the first execution they start. Each execution receives a
+local scope ID so a late event cannot overwrite a newer turn. Child/subagent
+input requests still surface as `NEEDS_INPUT`, while their terminal events are
+ignored so they cannot mark the root Agent done prematurely. The plugin only
+observes and forwards events; it never answers or modifies them.
 
 The hook mapping was validated against Codex CLI 0.155.1 on Linux. The observed
 sequences were:
@@ -210,9 +220,12 @@ cancelled approval: SessionStart → UserPromptSubmit → PreToolUse → Permiss
 `PermissionRequest` arrived after `PreToolUse` and did not include a
 `tool_use_id`; `Interrupt` therefore clears the waiting state without relying
 on a later tool or stop event. Codex does not currently emit a passive
-approval-resolved event, so after the user approves, `NEEDS_INPUT` may remain
-visible until `PostToolUse` reports that the tool finished. Another approval
-hook can also resolve a request without AgentHub observing that resolution;
+approval-resolved event. AgentHub therefore observes only approval-decision
+keys already forwarded to Codex (`Enter`, its terminal equivalent, or direct
+yes/no hotkeys) and returns the active scope to `WORKING`. Navigation keys do
+not clear the wait, terminal passthrough is unchanged, and later structured
+hooks remain authoritative for completion or interruption. Another approval
+hook can still resolve a request without AgentHub observing that resolution;
 AgentHub does not infer it from terminal text. The dangerous trust-bypass option
 changed the observed permission mode and is not used in production. AgentHub
 relies on the normal Codex `/hooks` review flow. `SessionStart` and `SessionEnd`

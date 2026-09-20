@@ -11,7 +11,9 @@ from agenthub.activity import (
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
     ActivityReceiver,
+    ActivityRegistration,
     AgentActivity,
+    AgentActivityEvent,
     AgentActivityEventKind,
     codex_command_with_activity_hooks,
     normalize_codex_activity,
@@ -19,7 +21,7 @@ from agenthub.activity import (
 )
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.sessions import SessionKind
+from agenthub.sessions import AgentSession, SessionKind
 
 
 @pytest.mark.parametrize(
@@ -174,6 +176,77 @@ def test_hook_receiver_failure_is_neutral() -> None:
     assert output.getvalue() == "{}\n"
 
 
+def _app_with_observed_codex(tmp_path) -> tuple[AgentHubApp, AgentSession]:
+    harness = AgentHarness(
+        id="codex",
+        display_name="Codex",
+        command=("codex",),
+        scroll=None,
+    )
+    app = AgentHubApp(agent_harnesses={harness.id: harness})
+    session = app.session_manager.create(
+        name="Codex",
+        kind=SessionKind.AGENT,
+        cwd=tmp_path,
+        harness=harness,
+    )
+    app._activity_registrations[session.id] = ActivityRegistration(
+        session_id=session.id,
+        provider="codex",
+        token="test-token",
+        endpoint="tcp://127.0.0.1:1",
+    )
+    app.session_manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.PROMPT_SUBMITTED,
+            scope_id="turn-a",
+        )
+    )
+    app.session_manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.PERMISSION_REQUESTED,
+            scope_id="turn-a",
+        )
+    )
+    return app, session
+
+
+@pytest.mark.parametrize("key", ["enter", "ctrl+m", "y", "n"])
+def test_codex_permission_decision_observation_resumes_working(
+    tmp_path,
+    monkeypatch,
+    key: str,
+) -> None:
+    app, session = _app_with_observed_codex(tmp_path)
+    monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
+
+    app._on_codex_terminal_key(session.id, key)
+
+    assert session.activity is AgentActivity.WORKING
+    app.session_manager.apply_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.TURN_COMPLETED,
+            scope_id="turn-a",
+        )
+    )
+    assert session.activity is AgentActivity.DONE
+
+
+def test_codex_permission_navigation_does_not_clear_waiting(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    app, session = _app_with_observed_codex(tmp_path)
+    monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
+
+    app._on_codex_terminal_key(session.id, "down")
+
+    assert session.activity is AgentActivity.NEEDS_INPUT
+
+
 async def test_receiver_start_failure_leaves_codex_launch_unchanged(
     tmp_path,
     monkeypatch,
@@ -229,6 +302,7 @@ async def test_codex_hook_updates_its_agenthub_session_end_to_end(
 
     tracking_ready = await app._prepare_activity_tracking(session, terminal)
     assert tracking_ready is True
+    assert terminal._forwarded_key_observer is not None
     app._initialize_mounted_activity(session)
     assert session.activity is AgentActivity.IDLE
     registration = app._activity_registrations[session.id]

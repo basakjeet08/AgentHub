@@ -1116,7 +1116,11 @@ class AgentHubApp(App):
                 command=command,
                 environment_overrides=environment_overrides,
             )
-            if provider == "devin":
+            if provider == "codex":
+                terminal.set_forwarded_key_observer(
+                    partial(self._on_codex_terminal_key, session.id)
+                )
+            elif provider == "devin":
                 terminal.set_forwarded_key_observer(
                     partial(self._on_devin_terminal_key, session.id)
                 )
@@ -1126,8 +1130,12 @@ class AgentHubApp(App):
             return False
 
     def _initialize_mounted_activity(self, session: AgentSession) -> None:
-        """Mark a tracked mounted runtime Idle unless a newer hook already arrived."""
+        """Initialize providers that do not report their own observer readiness."""
 
+        # OpenCode reports plugin readiness itself. Keeping UNKNOWN until that
+        # handshake prevents a rejected plugin from looking successfully idle.
+        if session.harness.id == "opencode":
+            return
         if session.activity is not AgentActivity.UNKNOWN:
             return
         if self.session_manager.apply_activity_event(
@@ -1158,6 +1166,26 @@ class AgentHubApp(App):
         """Apply one authenticated event and refresh only presentation state."""
 
         if self.session_manager.apply_activity_event(event):
+            self._refresh_sidebar()
+
+    def _on_codex_terminal_key(self, session_id: str, key: str) -> None:
+        """Clear a Codex permission wait when its decision reaches the child."""
+
+        try:
+            session = self.session_manager.get(session_id)
+        except KeyError:
+            return
+        if (
+            session.harness.id != "codex"
+            or session_id not in self._activity_registrations
+            or session.activity is not AgentActivity.NEEDS_INPUT
+            or key not in {"enter", "ctrl+m", "y", "n"}
+        ):
+            return
+
+        if self.session_manager.apply_activity_event(
+            AgentActivityEvent(session_id, AgentActivityEventKind.INPUT_RESOLVED)
+        ):
             self._refresh_sidebar()
 
     def _on_devin_terminal_key(self, session_id: str, key: str) -> None:
