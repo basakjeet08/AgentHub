@@ -35,10 +35,8 @@ from agenthub.native_sessions import (
     NativeSessionDeletionUnavailableError,
 )
 from agenthub.notifications import (
-    DesktopNotification,
     DesktopNotificationBackend,
-    create_desktop_notification_backend,
-    notification_for_activity_transition,
+    DesktopNotificationService,
 )
 from agenthub.presentation import (
     AgentHubStatusBar,
@@ -126,12 +124,9 @@ class AgentHubApp(App):
         self._activity_receiver: ActivityReceiver | None = None
         self._activity_registrations: dict[str, ActivityRegistration] = {}
         self._activity_artifacts: dict[str, tuple[Path, ...]] = {}
-        self._desktop_notification_backend = (
-            create_desktop_notification_backend()
-            if desktop_notification_backend is None
-            else desktop_notification_backend
+        self._notification_service = DesktopNotificationService(
+            backend=desktop_notification_backend
         )
-        self._desktop_notification_tasks: set[asyncio.Task[None]] = set()
 
     def compose(self) -> ComposeResult:
         """Compose persistent application chrome and the current main content."""
@@ -194,11 +189,7 @@ class AgentHubApp(App):
         self._activity_receiver = None
         if receiver is not None:
             await receiver.close()
-        notification_tasks = tuple(self._desktop_notification_tasks)
-        for task in notification_tasks:
-            task.cancel()
-        if notification_tasks:
-            await asyncio.gather(*notification_tasks, return_exceptions=True)
+        await self._notification_service.shutdown()
 
     @staticmethod
     def _terminal_dom_id(session_id: str) -> str:
@@ -1203,7 +1194,7 @@ class AgentHubApp(App):
             return False
 
         self._refresh_sidebar()
-        notification = notification_for_activity_transition(
+        self._notification_service.schedule_activity_transition(
             previous_activity,
             session.activity,
             harness_name=session.harness.display_name,
@@ -1214,37 +1205,7 @@ class AgentHubApp(App):
                 and session.state is SessionState.RUNNING
             ),
         )
-        if notification is not None:
-            self._schedule_desktop_notification(notification)
         return True
-
-    def _schedule_desktop_notification(
-        self,
-        notification: DesktopNotification,
-    ) -> None:
-        """Deliver one desktop notification outside activity/session control flow."""
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        task = loop.create_task(
-            self._deliver_desktop_notification(notification),
-            name="agenthub-desktop-notification",
-        )
-        self._desktop_notification_tasks.add(task)
-        task.add_done_callback(self._desktop_notification_tasks.discard)
-
-    async def _deliver_desktop_notification(
-        self,
-        notification: DesktopNotification,
-    ) -> None:
-        """Contain every backend failure at the optional desktop boundary."""
-
-        try:
-            await self._desktop_notification_backend.send(notification)
-        except Exception:  # noqa: BLE001 - notifications must never affect Agents
-            return
 
     def _on_codex_terminal_key(self, session_id: str, key: str) -> None:
         """Clear a Codex permission wait when its decision reaches the child."""

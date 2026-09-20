@@ -165,4 +165,3 @@ async def test_backend_failure_does_not_affect_activity_or_application(
 
         assert background.activity is AgentActivity.DONE
         assert backend.attempts == 1
-        assert not app._desktop_notification_tasks

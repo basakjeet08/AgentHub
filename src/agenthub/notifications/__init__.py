@@ -1,19 +1,15 @@
 """Provider-neutral desktop activity notifications."""
 
-from .backend import (
-    DesktopNotificationBackend,
-    LinuxDesktopNotificationBackend,
-    NullDesktopNotificationBackend,
-    create_desktop_notification_backend,
-)
+from .backend import DesktopNotificationBackend
+from .backends import create_desktop_notification_backend
+from .backends.linux import LinuxDesktopNotificationBackend
 from .model import DesktopNotification
-from .policy import notification_for_activity_transition
+from .service import DesktopNotificationService
 
 __all__ = [
     "DesktopNotification",
     "DesktopNotificationBackend",
+    "DesktopNotificationService",
     "LinuxDesktopNotificationBackend",
-    "NullDesktopNotificationBackend",
     "create_desktop_notification_backend",
-    "notification_for_activity_transition",
 ]
