@@ -20,6 +20,7 @@ from agenthub.activity import (
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.providers.codex.activity_adapter import (
+    CODEX_ACTIVITY_ADAPTER,
     codex_command_with_activity_hooks,
     normalize_codex_activity,
     run_codex_activity_hook,
@@ -211,12 +212,13 @@ def _app_with_observed_codex(tmp_path) -> tuple[AgentHubApp, AgentSession]:
         cwd=tmp_path,
         harness=harness,
     )
-    app._activity_registrations[session.id] = ActivityRegistration(
+    app._activity_service.registrations[session.id] = ActivityRegistration(
         session_id=session.id,
         provider="codex",
         token="test-token",
         endpoint="tcp://127.0.0.1:1",
     )
+    app._activity_service._adapters_by_session[session.id] = CODEX_ACTIVITY_ADAPTER
     app.session_manager.apply_activity_event(
         AgentActivityEvent(
             session.id,
@@ -318,7 +320,7 @@ async def test_receiver_start_failure_leaves_codex_launch_unchanged(
 
     assert tracking_ready is False
     assert terminal.child_command == harness.command
-    assert app._activity_receiver is None
+    assert app._activity_service.receiver is None
 
 
 async def test_codex_hook_updates_its_agenthub_session_end_to_end(
@@ -347,7 +349,7 @@ async def test_codex_hook_updates_its_agenthub_session_end_to_end(
     assert terminal._forwarded_key_observer is not None
     app._initialize_mounted_activity(session)
     assert session.activity is AgentActivity.IDLE
-    registration = app._activity_registrations[session.id]
+    registration = app._activity_service.registrations[session.id]
     try:
         await _forward_event(registration.environment, "UserPromptSubmit", "turn-a")
         for _ in range(20):
@@ -405,6 +407,6 @@ async def test_codex_hook_updates_its_agenthub_session_end_to_end(
             await asyncio.sleep(0.01)
         assert session.activity is AgentActivity.DONE
     finally:
-        receiver = app._activity_receiver
+        receiver = app._activity_service.receiver
         assert receiver is not None
         await receiver.close()

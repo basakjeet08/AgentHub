@@ -99,15 +99,12 @@ class ActivityService:
         session_id: str,
         key: str,
         *,
-        provider: str | None = None,
         activity: AgentActivity,
         input_wait_kind: AgentActivityEventKind | None,
     ) -> AgentActivityEvent | None:
         """Route a forwarded terminal key through the active adapter."""
 
         adapter = self._adapters_by_session.get(session_id)
-        if adapter is None and provider is not None:
-            adapter = self._adapters.get(provider)
         if adapter is None:
             return None
         return adapter.terminal_key_event(

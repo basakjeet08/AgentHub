@@ -115,9 +115,6 @@ class AgentHubApp(App):
         self._provider_locks: dict[str, asyncio.Lock] = {}
         self._command_palette_target_id: str | None = None
         self._activity_service = ActivityService(ACTIVITY_ADAPTERS, self._on_activity_event)
-        self._activity_receiver = None
-        self._activity_registrations = self._activity_service.registrations
-        self._activity_artifacts = self._activity_service.artifacts
         self._notification_service = DesktopNotificationService(
             backend=desktop_notification_backend
         )
@@ -1082,7 +1079,6 @@ class AgentHubApp(App):
             )
             if launch is None:
                 return False
-            self._activity_receiver = self._activity_service.receiver
             terminal.configure_launch(
                 command=launch.command,
                 environment_overrides=dict(launch.environment_overrides),
@@ -1090,7 +1086,6 @@ class AgentHubApp(App):
             terminal.set_forwarded_key_observer(partial(self._on_activity_terminal_key, session.id))
             return True
         except Exception:  # noqa: BLE001 - activity must never prevent a launch
-            self._activity_receiver = self._activity_service.receiver
             self._revoke_activity_tracking(session.id)
             return False
 
@@ -1153,7 +1148,6 @@ class AgentHubApp(App):
         event = self._activity_service.terminal_key_event(
             session_id,
             key,
-            provider=session.harness.id,
             activity=session.activity,
             input_wait_kind=self.session_manager.input_wait_kind(session_id),
         )

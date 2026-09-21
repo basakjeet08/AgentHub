@@ -46,35 +46,55 @@ def normalize_devin_activity(session_id: str, payload: object) -> AgentActivityE
 
 
 def _strip_comments(source: str) -> str:
-    result: list[str] = []
-    i = 0
-    quoted = escaped = False
-    while i < len(source):
-        char = source[i]
-        nxt = source[i + 1] if i + 1 < len(source) else ""
-        if quoted:
-            result.append(char)
-            escaped = False if escaped else char == "\\"
-            if char == '"' and not escaped:
-                quoted = False
-            i += 1
-        elif char == '"':
-            quoted = True
-            result.append(char)
-            i += 1
-        elif char == "/" and nxt == "/":
-            i += 2
-            while i < len(source) and source[i] not in "\r\n":
-                i += 1
-        elif char == "/" and nxt == "*":
-            i += 2
-            while i + 1 < len(source) and source[i:i + 2] != "*/":
-                i += 1
-            i += 2
-        else:
-            result.append(char)
-            i += 1
-    return "".join(result)
+    """Remove JSON comments while preserving quoted and escaped content."""
+
+    output: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(source):
+        character = source[index]
+        next_character = source[index + 1] if index + 1 < len(source) else ""
+        if in_string:
+            output.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+            output.append(character)
+            index += 1
+            continue
+        if character == "/" and next_character == "/":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(source) and source[index] not in "\r\n":
+                output.append(" ")
+                index += 1
+            continue
+        if character == "/" and next_character == "*":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(source):
+                if (
+                    source[index] == "*"
+                    and index + 1 < len(source)
+                    and source[index + 1] == "/"
+                ):
+                    output.extend((" ", " "))
+                    index += 2
+                    break
+                output.append("\n" if source[index] == "\n" else " ")
+                index += 1
+            continue
+        output.append(character)
+        index += 1
+    return "".join(output)
 
 
 def _config_path(command: Sequence[str], environment: Mapping[str, str]) -> Path:
@@ -129,17 +149,28 @@ def prepare_devin_activity_launch(command: Sequence[str], *, environment: Mappin
             raise TypeError(f"Devin {name} hooks must contain a JSON array")
         hooks[name] = [*configured, copy.deepcopy(observer)]
     merged["hooks"] = hooks
-    descriptor, raw_path = tempfile.mkstemp(prefix="agenthub-devin-", suffix=".json")
+    descriptor: int | None = None
+    raw_path: str | None = None
     try:
-        os.write(descriptor, json.dumps(merged, separators=(",", ":")).encode())
+        descriptor, raw_path = tempfile.mkstemp(prefix="agenthub-devin-", suffix=".json")
+        encoded = json.dumps(merged, separators=(",", ":")).encode("utf-8")
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(descriptor, encoded[offset:])
+            if written == 0:
+                raise OSError("could not write the Devin activity config")
+            offset += written
         os.close(descriptor)
+        descriptor = None
+        config_path = Path(raw_path)
+        base = _without_config(command)
+        return DevinActivityLaunch((base[0], "--config", str(config_path), *base[1:]), config_path)
     except Exception:
-        os.close(descriptor)
-        Path(raw_path).unlink(missing_ok=True)
+        if descriptor is not None:
+            os.close(descriptor)
+        if raw_path is not None:
+            Path(raw_path).unlink(missing_ok=True)
         raise
-    path = Path(raw_path)
-    base = _without_config(command)
-    return DevinActivityLaunch((base[0], "--config", str(path), *base[1:]), path)
 
 
 class DevinActivityAdapter:

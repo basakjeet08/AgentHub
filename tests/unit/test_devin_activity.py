@@ -22,6 +22,7 @@ from agenthub.activity import (
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.providers.devin.activity_adapter import (
+    DEVIN_ACTIVITY_ADAPTER,
     normalize_devin_activity,
     prepare_devin_activity_launch,
     run_devin_activity_hook,
@@ -171,6 +172,28 @@ def test_devin_launch_preserves_an_explicit_config_option(tmp_path: Path) -> Non
         launch.config_path.unlink(missing_ok=True)
 
 
+def test_devin_launch_preserves_escaped_quotes_inside_json_comments_config(
+    tmp_path: Path,
+) -> None:
+    config_home = tmp_path / "config"
+    config_path = config_home / "devin" / "config.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        '{"message": "say \\\"hello\\\"", // trailing comment\n'
+        '"hooks": {}}',
+        encoding="utf-8",
+    )
+
+    launch = prepare_devin_activity_launch(
+        ("devin",), environment={"XDG_CONFIG_HOME": str(config_home)}
+    )
+    try:
+        merged = json.loads(launch.config_path.read_text(encoding="utf-8"))
+        assert merged["message"] == 'say "hello"'
+    finally:
+        launch.config_path.unlink(missing_ok=True)
+
+
 async def _forward_event(
     environment: Mapping[str, str],
     event_name: str,
@@ -259,12 +282,13 @@ def _app_with_observed_devin(tmp_path: Path) -> tuple[AgentHubApp, AgentSession]
         cwd=tmp_path,
         harness=harness,
     )
-    app._activity_registrations[session.id] = ActivityRegistration(
+    app._activity_service.registrations[session.id] = ActivityRegistration(
         session_id=session.id,
         provider="devin",
         token="test-token",
         endpoint="tcp://127.0.0.1:1",
     )
+    app._activity_service._adapters_by_session[session.id] = DEVIN_ACTIVITY_ADAPTER
     return app, session
 
 
@@ -367,9 +391,9 @@ async def test_invalid_devin_config_does_not_change_provider_launch(
 
     assert tracking_ready is False
     assert terminal.child_command == harness.command
-    assert session.id not in app._activity_registrations
-    assert session.id not in app._activity_artifacts
-    receiver = app._activity_receiver
+    assert session.id not in app._activity_service.registrations
+    assert session.id not in app._activity_service.artifacts
+    receiver = app._activity_service.receiver
     assert receiver is not None
     await receiver.close()
 
@@ -401,8 +425,8 @@ async def test_devin_hooks_update_sidebar_activity_end_to_end(
     assert tracking_ready is True
     app._initialize_mounted_activity(session)
     assert session.activity is AgentActivity.IDLE
-    registration = app._activity_registrations[session.id]
-    config_path = app._activity_artifacts[session.id][0]
+    registration = app._activity_service.registrations[session.id]
+    config_path = app._activity_service.artifacts[session.id][0]
     assert config_path.exists()
     try:
         await _forward_event(registration.environment, "UserPromptSubmit", "prompt-a")
@@ -475,6 +499,6 @@ async def test_devin_hooks_update_sidebar_activity_end_to_end(
     finally:
         app._revoke_activity_tracking(session.id)
         assert not config_path.exists()
-        receiver = app._activity_receiver
+        receiver = app._activity_service.receiver
         assert receiver is not None
         await receiver.close()

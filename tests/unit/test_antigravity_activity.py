@@ -384,7 +384,7 @@ async def test_antigravity_hooks_update_sidebar_activity_end_to_end(
     assert hooks_path.exists()
     app._initialize_mounted_activity(session)
     assert session.activity is AgentActivity.IDLE
-    registration = app._activity_registrations[session.id]
+    registration = app._activity_service.registrations[session.id]
     try:
         await _forward_event(
             registration.environment,
@@ -467,7 +467,7 @@ async def test_antigravity_hooks_update_sidebar_activity_end_to_end(
         assert session.activity is AgentActivity.DONE
         assert session.activity is not AgentActivity.NEEDS_INPUT
     finally:
-        receiver = app._activity_receiver
+        receiver = app._activity_service.receiver
         assert receiver is not None
         await receiver.close()
 
@@ -503,7 +503,7 @@ async def test_antigravity_hook_install_failure_does_not_change_launch(
 
     assert tracking_ready is False
     assert terminal.child_command == harness.command
-    assert session.id not in app._activity_registrations
-    receiver = app._activity_receiver
+    assert session.id not in app._activity_service.registrations
+    receiver = app._activity_service.receiver
     assert receiver is not None
     await receiver.close()

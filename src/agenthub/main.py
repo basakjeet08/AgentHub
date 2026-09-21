@@ -7,23 +7,6 @@ from collections.abc import Sequence
 from agenthub.providers import ACTIVITY_ADAPTERS
 
 
-def run_codex_activity_hook() -> int:
-    """Compatibility entrypoint backed by the registry adapter."""
-
-    return ACTIVITY_ADAPTERS["codex"].run_hook()
-
-
-def run_devin_activity_hook() -> int:
-    """Compatibility entrypoint backed by the registry adapter."""
-
-    return ACTIVITY_ADAPTERS["devin"].run_hook()
-
-
-def run_antigravity_activity_hook(event_name: str) -> int:
-    """Compatibility entrypoint backed by the registry adapter."""
-
-    return ACTIVITY_ADAPTERS["antigravity"].run_hook(event_name)
-
 def _argument_parser() -> argparse.ArgumentParser:
     """Build the command parser without affecting the no-argument TUI path."""
 
@@ -51,12 +34,9 @@ def main(argv: Sequence[str] | None = None) -> int | None:
     parser = _argument_parser()
     options = parser.parse_args(arguments)
     if options.command == "activity-hook":
-        compatibility_runner = globals().get(f"run_{options.provider}_activity_hook")
-        if callable(compatibility_runner):
-            return compatibility_runner() if options.event is None else compatibility_runner(options.event)
         try:
             return ACTIVITY_ADAPTERS[options.provider].run_hook(options.event)
-        except ValueError as error:
+        except (TypeError, ValueError) as error:
             parser.error(str(error))
 
     raise AssertionError("argparse accepted an unsupported AgentHub command")

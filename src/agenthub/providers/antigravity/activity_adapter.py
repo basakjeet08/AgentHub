@@ -81,15 +81,29 @@ def ensure_antigravity_activity_hooks(*, hooks_path: Path | None = None) -> Path
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
     merged = {**decoded, _HOOK_NAME: observer}
-    descriptor, raw_path = tempfile.mkstemp(prefix=".agenthub-hooks-", suffix=".json", dir=path.parent)
+    descriptor: int | None = None
+    raw_path: str | None = None
     try:
+        descriptor, raw_path = tempfile.mkstemp(
+            prefix=".agenthub-hooks-", suffix=".json", dir=path.parent
+        )
         os.fchmod(descriptor, mode)
-        os.write(descriptor, (json.dumps(merged, indent=2) + "\n").encode())
+        encoded = (json.dumps(merged, indent=2) + "\n").encode("utf-8")
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(descriptor, encoded[offset:])
+            if written == 0:
+                raise OSError("could not write the Antigravity hook config")
+            offset += written
         os.close(descriptor)
+        descriptor = None
         os.replace(raw_path, path)
+        raw_path = None
     except Exception:
-        os.close(descriptor)
-        Path(raw_path).unlink(missing_ok=True)
+        if descriptor is not None:
+            os.close(descriptor)
+        if raw_path is not None:
+            Path(raw_path).unlink(missing_ok=True)
         raise
     return path
 
