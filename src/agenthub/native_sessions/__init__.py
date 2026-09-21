@@ -1,4 +1,4 @@
-"""Provider-specific discovery and exact native conversation resumption."""
+"""Provider-neutral native-session contracts and service."""
 
 from .adapter import (
     NativeSessionAdapter,
@@ -9,10 +9,9 @@ from .adapter import (
     NativeSessionResumeError,
 )
 from .model import LaunchSpec, NativeSession
-from .registry import NATIVE_SESSION_ADAPTERS
+from .service import NativeSessionService
 
 __all__ = [
-    "NATIVE_SESSION_ADAPTERS",
     "LaunchSpec",
     "NativeSession",
     "NativeSessionAdapter",
@@ -21,4 +20,5 @@ __all__ = [
     "NativeSessionDiscoveryError",
     "NativeSessionError",
     "NativeSessionResumeError",
+    "NativeSessionService",
 ]

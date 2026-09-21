@@ -9,7 +9,7 @@ from textual.widgets import OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.native_sessions import LaunchSpec, NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.sessions import SessionState
 
@@ -115,15 +115,17 @@ async def test_provider_discovery_does_not_block_the_event_loop(
             time.sleep(0.2)
             return ()
 
+    adapter = SlowAdapter(sleeping_harness, tmp_path)
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
-    adapter = SlowAdapter(sleeping_harness, tmp_path)
     executor = ThreadPoolExecutor(max_workers=1)
     started_at = time.monotonic()
     try:
-        discovery = asyncio.create_task(app._discover_from_adapter(adapter, executor))
+        discovery = asyncio.create_task(
+            app._discover_from_service(sleeping_harness.id, executor)
+        )
         await asyncio.sleep(0.02)
 
         assert time.monotonic() - started_at < 0.1

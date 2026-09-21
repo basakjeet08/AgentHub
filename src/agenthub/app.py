@@ -28,11 +28,11 @@ from agenthub.activity import (
 )
 from agenthub.harnesses import FISH, AgentHarness
 from agenthub.native_sessions import (
-    NATIVE_SESSION_ADAPTERS,
     NativeSession,
     NativeSessionAdapter,
     NativeSessionDeletionError,
     NativeSessionDeletionUnavailableError,
+    NativeSessionService,
 )
 from agenthub.notifications import (
     DesktopNotificationBackend,
@@ -52,7 +52,7 @@ from agenthub.presentation.modals import (
     SessionSelectionModal,
     WorkingDirectoryModal,
 )
-from agenthub.providers import HARNESSES
+from agenthub.providers import HARNESSES, NATIVE_SESSION_ADAPTERS
 from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
 
@@ -96,6 +96,7 @@ class AgentHubApp(App):
         *,
         agent_harnesses: Mapping[str, AgentHarness] | None = None,
         shell_harness: AgentHarness = FISH,
+        native_session_service: NativeSessionService | None = None,
         native_session_adapters: Mapping[str, NativeSessionAdapter] | None = None,
         working_directory_root: Path | None = None,
         desktop_notification_backend: DesktopNotificationBackend | None = None,
@@ -109,7 +110,11 @@ class AgentHubApp(App):
             HARNESSES if agent_harnesses is None else agent_harnesses
         )
         self._shell_harness = shell_harness
-        self._native_session_adapters = dict(
+        if native_session_service is not None and native_session_adapters is not None:
+            raise ValueError(
+                "provide native_session_service or native_session_adapters, not both"
+            )
+        self._native_session_service = native_session_service or NativeSessionService(
             NATIVE_SESSION_ADAPTERS
             if native_session_adapters is None
             else native_session_adapters
@@ -233,14 +238,6 @@ class AgentHubApp(App):
         if session.kind is not SessionKind.AGENT or session.native_session_id is None:
             raise ValueError(f"session {session_id!r} cannot be resumed")
 
-        adapter = self._native_session_adapters.get(session.harness.id)
-        if adapter is None:
-            self.notify(
-                f"No native-session adapter is available for {session.harness.display_name}.",
-                severity="error",
-            )
-            return session
-
         session.state = SessionState.STARTING
         self._refresh_sidebar()
         native_session = NativeSession(
@@ -251,7 +248,7 @@ class AgentHubApp(App):
         )
         terminal: AgentTerminal | None = None
         try:
-            launch = await adapter.resume(native_session)
+            launch = await self._native_session_service.resume(native_session)
             terminal = AgentTerminal(
                 session.harness,
                 command=launch.command,
@@ -293,8 +290,8 @@ class AgentHubApp(App):
         """Discover each provider independently without blocking app startup."""
 
         providers = tuple(
-            (harness, adapter)
-            for harness_id, adapter in self._native_session_adapters.items()
+            (harness_id, harness)
+            for harness_id in self._native_session_service.harness_ids
             if (harness := self._agent_harnesses.get(harness_id)) is not None
         )
         if not providers:
@@ -309,15 +306,15 @@ class AgentHubApp(App):
         try:
             discoveries = await asyncio.gather(
                 *(
-                    self._discover_and_reconcile_provider(harness, adapter, executor)
-                    for harness, adapter in providers
+                    self._discover_and_reconcile_provider(harness_id, harness, executor)
+                    for harness_id, harness in providers
                 )
             )
         finally:
             self._shutdown_discovery_executor(executor)
         summary_lines: list[str] = []
         discovery_failed = False
-        for (harness, _adapter), result in zip(
+        for (_harness_id, harness), result in zip(
             providers,
             discoveries,
             strict=True,
@@ -347,7 +344,7 @@ class AgentHubApp(App):
     def _start_native_session_discovery(self) -> None:
         """Schedule one discovery cycle unless another is already running."""
 
-        if not self._native_session_adapters or self._discovery_in_progress:
+        if not self._native_session_service.harness_ids or self._discovery_in_progress:
             return
         self._discovery_in_progress = True
         self.run_worker(
@@ -355,16 +352,16 @@ class AgentHubApp(App):
             group="native-session-discovery",
         )
 
-    async def _discover_from_adapter(
+    async def _discover_from_service(
         self,
-        adapter: NativeSessionAdapter,
+        harness_id: str,
         executor: ThreadPoolExecutor,
     ) -> _DiscoveryResult:
         """Normalize one provider's discoveries while containing its failures."""
 
         future = None
         try:
-            future = executor.submit(adapter.discover)
+            future = executor.submit(self._native_session_service.discover, harness_id)
             async with asyncio.timeout(10):
                 while not future.done():
                     await asyncio.sleep(0.01)
@@ -379,14 +376,14 @@ class AgentHubApp(App):
 
     async def _discover_and_reconcile_provider(
         self,
+        harness_id: str,
         harness: AgentHarness,
-        adapter: NativeSessionAdapter,
         executor: ThreadPoolExecutor,
     ) -> _DiscoveryResult:
         """Discover and normally reconcile exactly one serialized provider."""
 
         async with self._provider_lock(harness.id):
-            result = await self._discover_from_adapter(adapter, executor)
+            result = await self._discover_from_service(harness_id, executor)
             if result.error is not None:
                 return result
             native_sessions = tuple(
@@ -404,13 +401,12 @@ class AgentHubApp(App):
         """Run normal reconciliation for one harness and no unrelated providers."""
 
         harness = self._agent_harnesses.get(harness_id)
-        adapter = self._native_session_adapters.get(harness_id)
-        if harness is None or adapter is None:
+        if harness is None:
             return _DiscoveryResult(error="native-session adapter is unavailable")
 
         executor = self._create_discovery_executor(max_workers=1)
         try:
-            return await self._discover_and_reconcile_provider(harness, adapter, executor)
+            return await self._discover_and_reconcile_provider(harness_id, harness, executor)
         finally:
             self._shutdown_discovery_executor(executor)
 
@@ -628,12 +624,11 @@ class AgentHubApp(App):
     def _can_offer_native_session_delete(self, session: AgentSession) -> bool:
         """Return whether Delete can act or provide provider-specific guidance."""
 
-        adapter = self._native_session_adapters.get(session.harness.id)
         return (
             session.kind is SessionKind.AGENT
             and session.native_session_id is not None
             and session.state in {SessionState.RUNNING, SessionState.UNLOADED}
-            and adapter is not None
+            and self._native_session_service.delete_capability(session.harness.id) is not None
         )
 
     def action_new_session(self) -> None:
@@ -796,14 +791,14 @@ class AgentHubApp(App):
                 markup=False,
             )
             return
-        adapter = self._native_session_adapters.get(session.harness.id)
-        if adapter is None:
+        deletion_capability = self._native_session_service.delete_capability(session.harness.id)
+        if deletion_capability is None:
             self.notify(
                 f"No native-session adapter is available for {session.harness.display_name}.",
                 severity="error",
             )
             return
-        if not adapter.supports_delete:
+        if not deletion_capability:
             self._notify_native_deletion_error(
                 session,
                 NativeSessionDeletionUnavailableError.for_provider(
@@ -869,18 +864,20 @@ class AgentHubApp(App):
             )
             return
 
-        adapter = self._native_session_adapters.get(session.harness.id)
-        if (
-            session.kind is not SessionKind.AGENT
-            or session.native_session_id is None
-            or adapter is None
-        ):
+        if session.kind is not SessionKind.AGENT or session.native_session_id is None:
             self.notify(
                 "The selected Agent is not eligible for native deletion.",
                 severity="error",
             )
             return
-        if not adapter.supports_delete:
+        deletion_capability = self._native_session_service.delete_capability(session.harness.id)
+        if deletion_capability is None:
+            self.notify(
+                "The selected Agent is not eligible for native deletion.",
+                severity="error",
+            )
+            return
+        if not deletion_capability:
             self._notify_native_deletion_error(
                 session,
                 NativeSessionDeletionUnavailableError.for_provider(
@@ -920,8 +917,8 @@ class AgentHubApp(App):
             executor = self._create_discovery_executor(max_workers=1)
             try:
                 async with self._provider_lock(harness.id):
-                    await adapter.delete(native_session)
-                    discovery = await self._discover_from_adapter(adapter, executor)
+                    await self._native_session_service.delete(native_session)
+                    discovery = await self._discover_from_service(harness.id, executor)
                     if discovery.error is not None:
                         raise NativeSessionDeletionError(
                             f"could not verify deletion: {discovery.error}"

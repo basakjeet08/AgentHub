@@ -4,21 +4,18 @@ import os
 import sqlite3
 from pathlib import Path
 
-from ._command import run_delete_command
-from ._normalize import normalize_session, unique_sessions
-from ._sqlite import read_rows
-from .adapter import NativeSessionDiscoveryError
-from .model import LaunchSpec, NativeSession
+from agenthub.native_sessions import NativeSessionAdapter
+from agenthub.native_sessions._utils import (
+    normalize_session,
+    read_rows,
+    run_delete_command,
+    unique_sessions,
+)
+from agenthub.native_sessions.adapter import NativeSessionDiscoveryError
+from agenthub.native_sessions.model import LaunchSpec, NativeSession
 
 _REQUIRED_SESSION_COLUMNS = frozenset(
-    {
-        "id",
-        "title",
-        "directory",
-        "parent_id",
-        "time_archived",
-        "time_updated",
-    }
+    {"id", "title", "directory", "parent_id", "time_archived", "time_updated"}
 )
 
 
@@ -94,6 +91,7 @@ class OpenCodeSessionAdapter:
     async def delete(self, session: NativeSession) -> None:
         """Permanently delete an OpenCode session by its exact native ID."""
 
-        await run_delete_command(
-            ("opencode", "session", "delete", session.native_session_id)
-        )
+        await run_delete_command(("opencode", "session", "delete", session.native_session_id))
+
+
+_OPENCODE_SESSION_ADAPTER_TYPE_CHECK: NativeSessionAdapter = OpenCodeSessionAdapter()

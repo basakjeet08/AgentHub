@@ -37,7 +37,7 @@ AgentHubApp
    ├── SessionSidebar
    ├── HomeScreen
    ├── AgentHubStatusBar
-   └── native-session adapters → unloaded AgentSession entries
+   └── NativeSessionService → native-session adapters → unloaded AgentSession entries
 ```
 
 No `AgentTerminal`, PTY, or coding-agent process is created just to display
@@ -76,7 +76,7 @@ bittty / PTY → coding agent`.
   native-backed Agent with only its provider, removes disposable unidentified
   agents and shells, and shows Home after an active exit;
 - exposes contextual Delete for the active native-backed Agent while delegating
-  native deletion to the selected session's provider adapter;
+  native deletion to `NativeSessionService`;
 - starts an authenticated loopback activity receiver only when a supported
   provider runtime needs one, applies normalized events to the exact logical
   session, and refreshes the sidebar when activity changes;
@@ -725,7 +725,7 @@ Permanent deletion follows this ownership sequence:
 
 ```text
 active native-backed Agent → Ctrl+P → Delete
-        ↓ adapter capability check
+        ↓ NativeSessionService capability check
         ├── unsupported → guidance toast; no modal or runtime change
         └── supported
                 ↓ confirmation
@@ -733,7 +733,7 @@ SessionManager enters DELETING and detaches runtime
         ↓
 AgentHubApp unmounts/stops the terminal
         ↓
-NativeSessionAdapter.delete(exact native ID)
+NativeSessionService.delete(exact native ID)
         ↓
 same-provider discovery verifies absence
         ├── absent        → SessionManager removes logical row
@@ -741,7 +741,9 @@ same-provider discovery verifies absence
 ```
 
 Provider-specific commands, capabilities, and failures remain inside
-native-session adapters; the app contains no harness-ID branches. Delete
+native-session adapters; the app contains no harness-ID branches and does not
+call concrete adapters directly. `NativeSessionService` receives the adapter
+registry through dependency injection. Delete
 subprocesses receive closed stdin so they cannot become interactive.
 
 This policy does not belong inside `AgentTerminal`; that boundary continues to
@@ -1153,30 +1155,29 @@ src/agenthub/
 │   └── model.py         # immutable semantic models
 ├── providers/
 │   ├── __init__.py      # public coding-agent provider API
-│   ├── registry.py      # built-in coding-agent harness lookup
+│   ├── registry.py      # built-in harness and native-session adapter lookup
 │   ├── antigravity/
 │   │   ├── __init__.py  # Antigravity harness export
-│   │   └── harness.py   # Antigravity harness definition
+│   │   ├── harness.py   # Antigravity harness definition
+│   │   └── session_adapter.py # Antigravity native-session adapter
 │   ├── codex/
 │   │   ├── __init__.py  # Codex harness export
-│   │   └── harness.py   # Codex harness definition
+│   │   ├── harness.py   # Codex harness definition
+│   │   └── session_adapter.py # Codex native-session adapter
 │   ├── devin/
 │   │   ├── __init__.py  # Devin harness export
-│   │   └── harness.py   # Devin harness definition
+│   │   ├── harness.py   # Devin harness definition
+│   │   └── session_adapter.py # Devin native-session adapter
 │   └── opencode/
 │       ├── __init__.py  # OpenCode harness export
-│       └── harness.py   # OpenCode harness definition
+│       ├── harness.py   # OpenCode harness definition
+│       └── session_adapter.py # OpenCode native-session adapter
 ├── native_sessions/
 │   ├── __init__.py      # public native-session API
-│   ├── _normalize.py     # shared provider-record validation
-│   ├── _sqlite.py        # read-only provider database access
+│   ├── _utils.py         # shared command, normalization, and SQLite helpers
 │   ├── adapter.py       # provider adapter protocol and failures
 │   ├── model.py         # normalized discovery and launch models
-│   ├── registry.py      # built-in adapter lookup
-│   ├── antigravity.py   # Antigravity discovery/resume adapter
-│   ├── codex.py         # Codex discovery/resume adapter
-│   ├── devin.py         # Devin discovery/resume adapter
-│   └── opencode.py      # OpenCode discovery/resume adapter
+│   └── service.py       # provider-neutral operation and capability boundary
 ├── notifications/
 │   ├── __init__.py      # public notification API
 │   ├── backend.py       # platform-neutral delivery protocol
@@ -1262,9 +1263,10 @@ tests/
 
 The `harnesses/` package owns generic terminal and harness concepts plus the
 Fish shell definition. The `providers/` package owns coding-agent-specific
-harness definitions and their registry. Provider-specific native-session and
-activity implementations remain in `native_sessions/` and `activity/`
-temporarily and will migrate in later refactors.
+harness definitions, native-session implementations, and their registries.
+The `native_sessions/` package owns only provider-neutral native-session
+contracts, models, utilities, and service logic. Activity implementations
+remain in `activity/` and will migrate in a later refactor.
 
 Packages are appropriate here because harnesses, providers, sessions, and
 terminal hosting are distinct architectural concepts with multiple

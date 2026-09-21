@@ -11,12 +11,12 @@ from agenthub.native_sessions import (
     NativeSessionDeletionError,
     NativeSessionDiscoveryError,
 )
-from agenthub.native_sessions._command import run_delete_command
-from agenthub.native_sessions.antigravity import AntigravitySessionAdapter
-from agenthub.native_sessions.codex import CodexSessionAdapter
-from agenthub.native_sessions.devin import DevinSessionAdapter
+from agenthub.native_sessions._utils import run_delete_command
 from agenthub.native_sessions.model import NativeSession
-from agenthub.native_sessions.opencode import OpenCodeSessionAdapter
+from agenthub.providers.antigravity.session_adapter import AntigravitySessionAdapter
+from agenthub.providers.codex.session_adapter import CodexSessionAdapter
+from agenthub.providers.devin.session_adapter import DevinSessionAdapter
+from agenthub.providers.opencode.session_adapter import OpenCodeSessionAdapter
 
 
 def _database(path: Path, schema: str, values: tuple[object, ...], insert: str) -> None:
@@ -299,17 +299,17 @@ async def test_opencode_rejects_an_unsupported_database_schema(tmp_path: Path) -
     (
         (
             CodexSessionAdapter(),
-            "agenthub.native_sessions.codex.run_delete_command",
+            "agenthub.providers.codex.session_adapter.run_delete_command",
             ("codex", "delete", "--force", "native-id"),
         ),
         (
             DevinSessionAdapter(),
-            "agenthub.native_sessions.devin.run_delete_command",
+            "agenthub.providers.devin.session_adapter.run_delete_command",
             ("devin", "rm", "--force", "native-id"),
         ),
         (
             OpenCodeSessionAdapter(),
-            "agenthub.native_sessions.opencode.run_delete_command",
+            "agenthub.providers.opencode.session_adapter.run_delete_command",
             ("opencode", "session", "delete", "native-id"),
         ),
     ),
@@ -345,7 +345,7 @@ async def test_native_delete_command_cannot_read_agenthub_stdin() -> None:
     process.communicate = AsyncMock(return_value=(b"", b""))
 
     with patch(
-        "agenthub.native_sessions._command.asyncio.create_subprocess_exec",
+        "agenthub.native_sessions._utils.asyncio.create_subprocess_exec",
         AsyncMock(return_value=process),
     ) as create_process:
         await run_delete_command(("provider", "delete", "native-id"))

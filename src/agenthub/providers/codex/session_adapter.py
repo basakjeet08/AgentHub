@@ -5,11 +5,15 @@ import re
 import sqlite3
 from pathlib import Path
 
-from ._command import run_delete_command
-from ._normalize import normalize_session, unique_sessions
-from ._sqlite import read_rows
-from .adapter import NativeSessionDiscoveryError
-from .model import LaunchSpec, NativeSession
+from agenthub.native_sessions import NativeSessionAdapter
+from agenthub.native_sessions._utils import (
+    normalize_session,
+    read_rows,
+    run_delete_command,
+    unique_sessions,
+)
+from agenthub.native_sessions.adapter import NativeSessionDiscoveryError
+from agenthub.native_sessions.model import LaunchSpec, NativeSession
 
 _STATE_DATABASE = re.compile(r"state_(\d+)\.sqlite$")
 
@@ -84,3 +88,6 @@ class CodexSessionAdapter:
         """Permanently delete a Codex thread by its exact UUID."""
 
         await run_delete_command(("codex", "delete", "--force", session.native_session_id))
+
+
+_CODEX_SESSION_ADAPTER_TYPE_CHECK: NativeSessionAdapter = CodexSessionAdapter()
