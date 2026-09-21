@@ -11,7 +11,7 @@ from textual.widgets import OptionList, Static
 from agenthub.activity import AgentActivity
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import FISH, AgentHarness
-from agenthub.native_sessions import NativeSession
+from agenthub.native_sessions import NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.providers import ANTIGRAVITY, CODEX, DEVIN, OPENCODE
 from agenthub.sessions import AgentSession, SessionKind, SessionManager
@@ -502,7 +502,7 @@ async def test_app_injects_its_configured_harnesses_into_the_sidebar(
     )
     app = AgentHubApp(
         agent_harnesses={custom_harness.id: custom_harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
 
     async with app.run_test() as pilot:

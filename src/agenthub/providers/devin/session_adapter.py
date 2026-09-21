@@ -4,7 +4,6 @@ import os
 import sqlite3
 from pathlib import Path
 
-from agenthub.native_sessions import NativeSessionAdapter
 from agenthub.native_sessions._utils import (
     normalize_session,
     read_rows,
@@ -75,6 +74,3 @@ class DevinSessionAdapter:
         """Permanently delete a Devin session by its exact native ID."""
 
         await run_delete_command(("devin", "rm", "--force", session.native_session_id))
-
-
-_DEVIN_SESSION_ADAPTER_TYPE_CHECK: NativeSessionAdapter = DevinSessionAdapter()

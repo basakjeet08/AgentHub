@@ -6,7 +6,7 @@ from textual.widgets import ContentSwitcher, Label, OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import NativeSession
+from agenthub.native_sessions import NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.presentation.modals import NativeSessionLinkModal
 from agenthub.sessions import AgentSession, SessionKind
@@ -19,7 +19,7 @@ def _app_with_pending_and_native_session(
 ) -> tuple[AgentHubApp, AgentSession, AgentSession]:
     app = AgentHubApp(
         agent_harnesses={harness.id: harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     pending = app.session_manager.create(
         name="New session",
@@ -127,7 +127,7 @@ async def test_explicit_target_links_hidden_agent_without_activating_it(
 ) -> None:
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     pending = app.session_manager.create(
         name="New session",
@@ -303,7 +303,7 @@ async def test_explicit_ineligible_targets_do_not_open_link_picker(
 ) -> None:
     shell_app = AgentHubApp(
         shell_harness=sleeping_harness,
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     shell = shell_app.session_manager.create(
         name="Shell",

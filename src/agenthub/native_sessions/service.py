@@ -33,11 +33,12 @@ class NativeSessionService:
         """Discover native conversations for one registered provider."""
 
         try:
-            return self._adapters[harness_id].discover()
+            adapter = self._adapters[harness_id]
         except KeyError as error:
             raise NativeSessionDiscoveryError(
                 f"No native-session adapter is registered for {harness_id}."
             ) from error
+        return adapter.discover()
 
     async def resume(self, session: NativeSession) -> LaunchSpec:
         """Construct an exact-ID launch for one native conversation."""

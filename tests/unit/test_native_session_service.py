@@ -36,6 +36,11 @@ class StubAdapter:
         self.delete_calls.append(session)
 
 
+class KeyErrorDiscoveryAdapter(StubAdapter):
+    def discover(self) -> tuple[NativeSession, ...]:
+        raise KeyError("provider record")
+
+
 def test_service_routes_operations_through_injected_registry() -> None:
     adapter = StubAdapter()
     service = NativeSessionService({"stub": adapter})
@@ -57,6 +62,13 @@ async def test_service_routes_async_operations_through_injected_registry() -> No
     assert launch.command == ("stub", "resume", "native-1")
     assert adapter.resume_calls == [session]
     assert adapter.delete_calls == [session]
+
+
+def test_service_preserves_provider_key_errors_during_discovery() -> None:
+    service = NativeSessionService({"stub": KeyErrorDiscoveryAdapter()})
+
+    with pytest.raises(KeyError, match="provider record"):
+        service.discover("stub")
 
 
 @pytest.mark.parametrize(

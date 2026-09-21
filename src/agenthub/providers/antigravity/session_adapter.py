@@ -5,7 +5,6 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from agenthub.native_sessions import NativeSessionAdapter
 from agenthub.native_sessions._utils import normalize_session, read_rows, unique_sessions
 from agenthub.native_sessions.adapter import (
     NativeSessionDeletionUnavailableError,
@@ -83,6 +82,3 @@ class AntigravitySessionAdapter:
         """Reject unsafe storage edits when no headless native delete API exists."""
 
         raise NativeSessionDeletionUnavailableError.for_provider("Antigravity")
-
-
-_ANTIGRAVITY_SESSION_ADAPTER_TYPE_CHECK: NativeSessionAdapter = AntigravitySessionAdapter()

@@ -4,6 +4,7 @@ from textual.color import Color
 from textual.widgets import Button, OptionList, Static
 
 from agenthub.app import AgentHubApp
+from agenthub.native_sessions import NativeSessionService
 from agenthub.presentation import AgentHubStatusBar, HomeScreen, SessionSidebar, SidebarTab
 from agenthub.presentation.key_bindings import APPLICATION_BINDINGS
 from agenthub.presentation.panels.status_bar import UNLOCKED_ICON
@@ -104,7 +105,7 @@ async def test_home_navigation_moves_focus_without_creating_a_session() -> None:
 
 
 async def test_home_quick_reference_has_no_horizontal_overflow_when_narrow() -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
 
     async with app.run_test(size=(70, 30)) as pilot:
         await pilot.pause()

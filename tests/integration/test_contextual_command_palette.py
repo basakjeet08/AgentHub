@@ -9,7 +9,7 @@ from textual.widgets import Input
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.native_sessions import LaunchSpec, NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar
 from agenthub.presentation.modals import NativeSessionDeleteModal, NativeSessionLinkModal
 from agenthub.sessions import SessionKind
@@ -70,7 +70,7 @@ async def test_sidebar_focus_keeps_palette_context_on_the_active_session(
 ) -> None:
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     pending = app.session_manager.create(
         name="New session",
@@ -140,7 +140,7 @@ async def test_unloaded_agent_uses_open_session_instead_of_contextual_resume(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -179,7 +179,7 @@ async def test_palette_uses_the_active_terminal_as_delete_target(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -222,7 +222,7 @@ async def test_palette_delete_shows_guidance_for_unsupported_provider(
     )
     app = AgentHubApp(
         agent_harnesses={antigravity.id: antigravity},
-        native_session_adapters={antigravity.id: adapter},
+        native_session_service=NativeSessionService({antigravity.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -264,7 +264,7 @@ async def test_delete_callback_revalidates_a_removed_captured_session(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -299,7 +299,7 @@ async def test_shell_sidebar_focus_keeps_the_active_agent_context(
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
         shell_harness=sleeping_harness,
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     active = app.session_manager.create(
         name="Fresh Agent",
@@ -341,7 +341,7 @@ async def test_active_shell_has_no_contextual_lifecycle_commands(
 ) -> None:
     app = AgentHubApp(
         shell_harness=sleeping_harness,
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     shell = app.session_manager.create(
         name="Shell",
@@ -363,7 +363,7 @@ async def test_active_shell_has_no_contextual_lifecycle_commands(
 
 
 async def test_home_palette_has_no_contextual_session_commands() -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
 
     async with app.run_test() as pilot:
         await pilot.press("ctrl+p")

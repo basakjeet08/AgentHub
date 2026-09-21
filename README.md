@@ -305,6 +305,7 @@ Verify the installation:
 ```bash
 python -c "import agenthub; print('ok')"
 ruff check src/ tests/
+python -m mypy
 python -m pytest
 agenthub
 ```
@@ -340,6 +341,7 @@ Development dependencies:
 - `pytest`
 - `pytest-asyncio`
 - `ruff`
+- `mypy`
 - `textual-dev`
 
 Packaging uses Hatchling with an explicit `src/agenthub` wheel package.

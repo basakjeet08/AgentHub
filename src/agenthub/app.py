@@ -29,7 +29,6 @@ from agenthub.activity import (
 from agenthub.harnesses import FISH, AgentHarness
 from agenthub.native_sessions import (
     NativeSession,
-    NativeSessionAdapter,
     NativeSessionDeletionError,
     NativeSessionDeletionUnavailableError,
     NativeSessionService,
@@ -97,7 +96,6 @@ class AgentHubApp(App):
         agent_harnesses: Mapping[str, AgentHarness] | None = None,
         shell_harness: AgentHarness = FISH,
         native_session_service: NativeSessionService | None = None,
-        native_session_adapters: Mapping[str, NativeSessionAdapter] | None = None,
         working_directory_root: Path | None = None,
         desktop_notification_backend: DesktopNotificationBackend | None = None,
     ) -> None:
@@ -110,14 +108,8 @@ class AgentHubApp(App):
             HARNESSES if agent_harnesses is None else agent_harnesses
         )
         self._shell_harness = shell_harness
-        if native_session_service is not None and native_session_adapters is not None:
-            raise ValueError(
-                "provide native_session_service or native_session_adapters, not both"
-            )
         self._native_session_service = native_session_service or NativeSessionService(
             NATIVE_SESSION_ADAPTERS
-            if native_session_adapters is None
-            else native_session_adapters
         )
         self._working_directory_root = (
             Path.home() if working_directory_root is None else working_directory_root

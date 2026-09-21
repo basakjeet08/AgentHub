@@ -8,7 +8,7 @@ from textual.widgets import ContentSwitcher, Input, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.native_sessions import LaunchSpec, NativeSession, NativeSessionService
 from agenthub.presentation.modals import SessionSelectionModal
 from agenthub.sessions import SessionKind
 
@@ -41,7 +41,7 @@ async def test_open_session_palette_command_opens_the_picker(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
     app.session_manager.create(
         name="Palette Target",
         kind=SessionKind.AGENT,
@@ -68,7 +68,7 @@ async def test_open_session_picker_lists_and_switches_running_agents_and_shells(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
     agent = app.session_manager.create(
         name="Auth Refactor",
         kind=SessionKind.AGENT,
@@ -134,7 +134,7 @@ async def test_open_session_picker_resumes_an_unloaded_native_agent(
     adapter = FakeResumeAdapter(sleeping_harness, native_session)
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -181,7 +181,7 @@ async def test_open_session_search_filters_by_harness_and_session_title(
         display_name="Devin",
         icon="🤖",
     )
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
     codex_session = app.session_manager.add_discovered(
         native_session=NativeSession(
             codex.id,
@@ -238,7 +238,7 @@ async def test_open_session_picker_escape_preserves_the_active_session(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
     active = app.session_manager.create(
         name="Active Agent",
         kind=SessionKind.AGENT,
@@ -260,7 +260,7 @@ async def test_open_session_picker_escape_preserves_the_active_session(
 
 
 async def test_open_session_reports_when_no_sessions_are_available() -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
 
     async with app.run_test() as pilot:
         app.action_open_session()
@@ -276,7 +276,7 @@ async def test_open_session_revalidates_a_removed_session(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
     session = app.session_manager.add_discovered(
         native_session=NativeSession(
             sleeping_harness.id,
@@ -306,7 +306,7 @@ async def test_locking_dismisses_open_session_and_refocuses_the_terminal(
     sleeping_harness: AgentHarness,
     tmp_path: Path,
 ) -> None:
-    app = AgentHubApp(native_session_adapters={})
+    app = AgentHubApp(native_session_service=NativeSessionService({}))
     active = app.session_manager.create(
         name="Active Agent",
         kind=SessionKind.AGENT,
