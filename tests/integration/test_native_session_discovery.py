@@ -292,6 +292,7 @@ async def test_discovery_completion_reports_all_configured_agents(
     second_harness = AgentHarness(
         id="second-agent",
         display_name="Second Agent",
+        icon="🧪",
         command=sleeping_harness.command,
         scroll=None,
     )

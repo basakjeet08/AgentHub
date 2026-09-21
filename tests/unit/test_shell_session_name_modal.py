@@ -6,7 +6,10 @@ from unittest.mock import Mock
 from textual.app import App, ComposeResult
 from textual.widgets import Input
 
-from agenthub.presentation.modals.session_name import SessionNameInput, SessionNameModal
+from agenthub.presentation.modals.shell_session_name import (
+    SessionNameInput,
+    ShellSessionNameModal,
+)
 
 
 def test_ctrl_v_schedules_a_widget_owned_clipboard_worker(monkeypatch) -> None:
@@ -27,7 +30,7 @@ def test_ctrl_v_schedules_a_widget_owned_clipboard_worker(monkeypatch) -> None:
     scheduled_paste.close()
 
 
-async def test_session_name_modal_uses_default_name_when_submitted_blank() -> None:
+async def test_shell_session_name_modal_uses_default_name_when_submitted_blank() -> None:
     result: list[str | None] = []
 
     class ModalTestApp(App):
@@ -36,7 +39,7 @@ async def test_session_name_modal_uses_default_name_when_submitted_blank() -> No
 
     app = ModalTestApp()
     async with app.run_test() as pilot:
-        modal = SessionNameModal("Fish", default_name="Shell")
+        modal = ShellSessionNameModal()
         app.push_screen(modal, callback=result.append)
         await pilot.pause()
 
@@ -46,7 +49,7 @@ async def test_session_name_modal_uses_default_name_when_submitted_blank() -> No
         assert result == ["Shell"]
 
 
-async def test_session_name_modal_trims_whitespace() -> None:
+async def test_shell_session_name_modal_trims_whitespace() -> None:
     result: list[str | None] = []
 
     class ModalTestApp(App):
@@ -55,7 +58,7 @@ async def test_session_name_modal_trims_whitespace() -> None:
 
     app = ModalTestApp()
     async with app.run_test() as pilot:
-        modal = SessionNameModal("Fish", default_name="Shell")
+        modal = ShellSessionNameModal()
         app.push_screen(modal, callback=result.append)
         await pilot.pause()
 

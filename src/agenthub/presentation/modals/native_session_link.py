@@ -21,22 +21,26 @@ class NativeSessionLinkModal(ModalScreen[str]):
 
     def __init__(
         self,
-        pending_session: AgentSession,
+        harness_display_name: str,
         candidates: Iterable[AgentSession],
     ) -> None:
         """Retain an already-filtered candidate snapshot for presentation."""
 
         super().__init__()
-        self._pending_session = pending_session
+        self._harness_display_name = harness_display_name
         self._candidates = tuple(candidates)
 
     def compose(self) -> ComposeResult:
         """Compose a context-rich native-session picker."""
 
+        options = []
+        for session in self._candidates:
+            options.append(Option(session.name, id=session.id))
+
         with Vertical(id="native-session-link-dialog"):
             with Horizontal(id="native-session-link-header"):
                 yield Label(
-                    f"Link {self._pending_session.harness.display_name} Session",
+                    f"Link {self._harness_display_name} Session",
                     id="native-session-link-title",
                 )
                 with Horizontal(
@@ -56,16 +60,7 @@ class NativeSessionLinkModal(ModalScreen[str]):
                 id="native-session-link-copy",
                 classes="muted",
             )
-            yield OptionList(
-                *(
-                    Option(
-                        session.name,
-                        id=session.id,
-                    )
-                    for session in self._candidates
-                ),
-                id="native-session-link-list",
-            )
+            yield OptionList(*options, id="native-session-link-list")
             with Grid(id="native-session-link-help", classes="modal-shortcut-grid"):
                 yield Static("↑/↓", classes="modal-shortcut-key")
                 yield Static("Navigate", classes="modal-shortcut-description")
@@ -78,6 +73,7 @@ class NativeSessionLinkModal(ModalScreen[str]):
         session_list = self.query_one("#native-session-link-list", OptionList)
         if session_list.options:
             session_list.highlighted = 0
+
         session_list.focus()
 
     def on_option_list_option_selected(

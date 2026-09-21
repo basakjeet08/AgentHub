@@ -15,8 +15,8 @@ class NativeSessionDeleteModal(ModalScreen[bool]):
     CSS_PATH = "../styles/modals/native_session_delete.tcss"
     BINDINGS: ClassVar = [
         Binding("escape", "cancel", show=False),
-        Binding("left,up", "focus_cancel", show=False),
-        Binding("right,down", "focus_delete", show=False),
+        Binding("left", "focus_cancel", show=False),
+        Binding("right", "focus_delete", show=False),
     ]
 
     def __init__(self, session_name: str) -> None:

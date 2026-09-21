@@ -3,15 +3,15 @@
 from .harness_selection import HarnessSelectionModal
 from .native_session_delete import NativeSessionDeleteModal
 from .native_session_link import NativeSessionLinkModal
-from .session_name import SessionNameModal
-from .session_selection import SessionSelectionModal
+from .open_session import OpenSessionModal
+from .shell_session_name import ShellSessionNameModal
 from .working_directory import WorkingDirectoryModal
 
 __all__ = [
     "HarnessSelectionModal",
     "NativeSessionDeleteModal",
     "NativeSessionLinkModal",
-    "SessionNameModal",
-    "SessionSelectionModal",
+    "OpenSessionModal",
+    "ShellSessionNameModal",
     "WorkingDirectoryModal",
 ]

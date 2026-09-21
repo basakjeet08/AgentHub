@@ -46,32 +46,18 @@ class SessionNameInput(Input):
         self.replace(first_line, start, end)
 
 
-class SessionNameModal(ModalScreen[str]):
-    """Capture and validate an optional AgentHub shell-session name."""
+class ShellSessionNameModal(ModalScreen[str]):
+    """Capture an optional shell-session name."""
 
-    CSS_PATH = "../styles/modals/session_name.tcss"
+    CSS_PATH = "../styles/modals/shell_session_name.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
-
-    def __init__(
-        self,
-        harness_display_name: str,
-        *,
-        default_name: str | None = None,
-        placeholder: str | None = None,
-    ) -> None:
-        """Retain presentation-only harness context and optional default name."""
-
-        super().__init__()
-        self._harness_display_name = harness_display_name
-        self._default_name = default_name
-        self._placeholder = placeholder
 
     def compose(self) -> ComposeResult:
         """Compose the focused name input and keyboard guidance."""
 
         with Vertical(id="session-name-dialog"):
             with Horizontal(id="session-name-header"):
-                yield Label("Name Session", id="session-name-title")
+                yield Label("Name Shell Session", id="session-name-title")
                 with Horizontal(
                     id="session-name-cancel",
                     classes="modal-cancel",
@@ -84,16 +70,11 @@ class SessionNameModal(ModalScreen[str]):
                         "Cancel",
                         classes="modal-shortcut-description modal-cancel-description",
                     )
-            yield Static(
-                f"Harness: {self._harness_display_name}",
-                id="session-name-harness",
-            )
             yield Label("Name", id="session-name-label")
             yield SessionNameInput(
-                placeholder=self._placeholder or "",
+                placeholder="Shell (optional)",
                 id="session-name-input",
             )
-            yield Static("", id="session-name-error")
             with Grid(id="session-name-help", classes="modal-shortcut-grid"):
                 yield Static("Enter", classes="modal-shortcut-key")
                 yield Static("Create", classes="modal-shortcut-description")
@@ -104,27 +85,9 @@ class SessionNameModal(ModalScreen[str]):
         self.query_one("#session-name-input", Input).focus()
 
     def on_input_submitted(self, message: Input.Submitted) -> None:
-        """Return a trimmed non-empty name, or default if optional, or retain focus with validation."""
+        """Return a trimmed name or the default shell-session name."""
 
-        name = message.value.strip()
-        if not name:
-            if self._default_name is not None:
-                self.dismiss(self._default_name)
-                return
-
-            message.input.add_class("invalid-name")
-            self.query_one("#session-name-error", Static).update("Enter a session name.")
-            message.input.focus()
-            return
-
-        self.dismiss(name)
-
-    def on_input_changed(self, message: Input.Changed) -> None:
-        """Clear validation feedback once the input becomes usable."""
-
-        if message.value.strip() or self._default_name is not None:
-            message.input.remove_class("invalid-name")
-            self.query_one("#session-name-error", Static).update("")
+        self.dismiss(message.value.strip() or "Shell")
 
     def action_cancel(self) -> None:
         """Cancel the session naming workflow."""

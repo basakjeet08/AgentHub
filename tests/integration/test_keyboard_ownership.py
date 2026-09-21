@@ -14,7 +14,7 @@ from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
 from agenthub.presentation.modals import (
     HarnessSelectionModal,
     NativeSessionLinkModal,
-    SessionNameModal,
+    ShellSessionNameModal,
     WorkingDirectoryModal,
 )
 from agenthub.presentation.modals.working_directory import FolderTree
@@ -86,7 +86,7 @@ async def test_locked_hub_binding_reaches_pty(
             (
                 HarnessSelectionModal,
                 NativeSessionLinkModal,
-                SessionNameModal,
+                ShellSessionNameModal,
                 WorkingDirectoryModal,
             ),
         )
@@ -165,14 +165,14 @@ async def test_shell_name_input_owns_ctrl_v_over_a_mounted_terminal(
     async with app.run_test() as pilot:
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameModal)
         name_input = app.screen.query_one("#session-name-input", Input)
         pty = session.terminal.board.pty
         assert pty is not None
 
         with (
             patch(
-                "agenthub.presentation.modals.session_name._CLIPBOARD_SERVICE.read_text",
+                "agenthub.presentation.modals.shell_session_name._CLIPBOARD_SERVICE.read_text",
                 AsyncMock(return_value="Clipboard Session"),
             ),
             patch(
@@ -372,7 +372,7 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
         assert app.hub_locked
         assert not isinstance(
             app.screen,
-            (HarnessSelectionModal, SessionNameModal, WorkingDirectoryModal),
+            (HarnessSelectionModal, ShellSessionNameModal, WorkingDirectoryModal),
         )
         assert app.session_manager.sessions == (session,)
         assert app.session_manager.active_session is session
@@ -564,7 +564,7 @@ async def test_removed_shortcuts_reach_unlocked_terminal(
             (
                 HarnessSelectionModal,
                 NativeSessionLinkModal,
-                SessionNameModal,
+                ShellSessionNameModal,
                 WorkingDirectoryModal,
             ),
         )

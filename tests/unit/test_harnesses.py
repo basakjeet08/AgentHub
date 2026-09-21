@@ -65,7 +65,12 @@ def test_registry_contains_only_supported_coding_agents() -> None:
         DEVIN.id,
         OPENCODE.id,
     }
-    assert tuple(HARNESSES) == ("opencode", "codex", "antigravity", "devin")
+
+
+def test_registry_is_ordered_by_display_name() -> None:
+    display_names = [harness.display_name for harness in HARNESSES.values()]
+
+    assert display_names == sorted(display_names, key=str.casefold)
 
 
 @pytest.mark.parametrize(

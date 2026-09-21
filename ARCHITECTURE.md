@@ -1205,8 +1205,8 @@ src/agenthub/
     │   ├── harness_selection.py     # registry-driven agent harness picker
     │   ├── native_session_delete.py # irreversible native-deletion confirmation
     │   ├── native_session_link.py   # explicit native-session reconciliation
-    │   ├── session_name.py          # optional Fish shell session name input
-    │   ├── session_selection.py     # unified Agent/Shell open picker
+    │   ├── open_session.py          # unified Agent/Shell open picker
+    │   ├── shell_session_name.py    # optional Fish shell session name input
     │   └── working_directory.py     # directory-only tree picker
     ├── panels/
     │   ├── __init__.py
@@ -1222,8 +1222,8 @@ src/agenthub/
         │   ├── harness_selection.tcss   # compact picker presentation
         │   ├── native_session_delete.tcss # deletion-confirmation presentation
         │   ├── native_session_link.tcss # native-link picker presentation
-        │   ├── session_name.tcss        # compact name-prompt presentation
-        │   ├── session_selection.tcss   # open-picker presentation
+        │   ├── open_session.tcss        # open-picker presentation
+        │   ├── shell_session_name.tcss  # compact name-prompt presentation
         │   └── working_directory.tcss   # directory-picker presentation
         ├── panels/
         │   ├── sidebar.tcss # sidebar presentation styles
@@ -1245,7 +1245,7 @@ tests/
 │   ├── test_native_session_adapters.py
 │   ├── test_activity_notifications.py
 │   ├── test_session_manager.py
-│   ├── test_session_name_modal.py
+│   ├── test_shell_session_name_modal.py
 │   ├── test_terminal.py
 │   └── test_working_directory_modal.py
 └── integration/

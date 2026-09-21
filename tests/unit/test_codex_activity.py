@@ -202,6 +202,7 @@ def _app_with_observed_codex(tmp_path) -> tuple[AgentHubApp, AgentSession]:
     harness = AgentHarness(
         id="codex",
         display_name="Codex",
+        icon="🧪",
         command=("codex",),
         scroll=None,
     )
@@ -298,6 +299,7 @@ async def test_receiver_start_failure_leaves_codex_launch_unchanged(
     harness = AgentHarness(
         id="codex",
         display_name="Codex",
+        icon="🧪",
         command=("codex",),
         scroll=None,
     )
@@ -330,6 +332,7 @@ async def test_codex_hook_updates_its_agenthub_session_end_to_end(
     harness = AgentHarness(
         id="codex",
         display_name="Codex",
+        icon="🧪",
         command=("codex",),
         scroll=None,
     )

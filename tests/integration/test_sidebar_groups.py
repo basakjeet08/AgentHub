@@ -314,9 +314,10 @@ async def test_loaded_agent_activity_updates_and_unloaded_agent_hides_it(
             sidebar.update_sessions(manager.sessions)
             await pilot.pause()
             lines = str(session_list.get_option(loaded.id).prompt).splitlines()
+            harness_badge = f"{sleeping_harness.icon} "
             assert lines == [
-                "  Test Sleeper · Loaded",
-                f"  {' ' * Content('Test Sleeper · ').cell_length}{label}",
+                f"  {harness_badge}Loaded",
+                f"  {' ' * Content(harness_badge).cell_length}{label}",
             ]
 
         sidebar.select_tab(SidebarTab.UNLOADED)

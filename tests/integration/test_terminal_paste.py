@@ -288,6 +288,7 @@ time.sleep(30)
     harness = AgentHarness(
         id="paste-child",
         display_name="Paste Child",
+        icon="🧪",
         command=(
             sys.executable,
             "-c",

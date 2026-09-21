@@ -68,12 +68,14 @@ async def test_manual_native_deletion_is_reconciled_after_only_its_process_exits
     exiting = AgentHarness(
         id="exiting-provider",
         display_name="Exiting Provider",
+        icon="🧪",
         command=(sys.executable, "-c", "import time; time.sleep(0.2)"),
         scroll=None,
     )
     unrelated = AgentHarness(
         id="unrelated-provider",
         display_name="Unrelated Provider",
+        icon="🧪",
         command=(sys.executable, "-c", "import time; time.sleep(30)"),
         scroll=None,
     )
@@ -154,7 +156,7 @@ async def test_explicit_target_deletes_inactive_agent_not_active_agent(
         assert confirm.has_focus
         await pilot.press("left")
         assert cancel.has_focus
-        await pilot.press("down", "enter")
+        await pilot.press("right", "enter")
         for _ in range(20):
             if highlighted not in app.session_manager.sessions:
                 break

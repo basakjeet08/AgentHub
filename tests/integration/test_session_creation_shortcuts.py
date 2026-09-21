@@ -5,12 +5,13 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from bittty import constants
+from textual.content import Content
 from textual.widgets import ContentSwitcher, Input, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
-from agenthub.presentation.modals import SessionNameModal, WorkingDirectoryModal
+from agenthub.presentation.modals import ShellSessionNameModal, WorkingDirectoryModal
 from agenthub.sessions import SessionKind
 from agenthub.terminal import AgentTerminal
 
@@ -36,7 +37,7 @@ async def _create_named_shell(
 
     app.action_new_shell()
     await pilot.pause()
-    assert isinstance(app.screen, SessionNameModal)
+    assert isinstance(app.screen, ShellSessionNameModal)
     if name is not None:
         app.screen.query_one("#session-name-input", Input).value = name
     await pilot.press("enter")
@@ -180,10 +181,11 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
             for option_list in sidebar.query(OptionList)
             for option in option_list.options
         ]
-        activity_indent = " " * len("Test Sleeper · ")
+        harness_badge = f"{sleeping_harness.icon} "
+        activity_indent = " " * Content(harness_badge).cell_length
         assert option_prompts == [
-            f"▌ Test Sleeper · New session\n▌ {activity_indent}· Unknown",
-            f"  Test Sleeper · New session\n  {activity_indent}· Unknown",
+            f"▌ {harness_badge}New session\n▌ {activity_indent}· Unknown",
+            f"  {harness_badge}New session\n  {activity_indent}· Unknown",
         ]
 
         status = app.query_one(AgentHubStatusBar)
@@ -198,6 +200,7 @@ async def test_exited_shell_is_cleaned_up_and_new_shell_can_be_created(
     reusable_shell = AgentHarness(
         id="test-reusable-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=(
             sys.executable,
             "-c",
@@ -236,6 +239,7 @@ async def test_mounted_shell_scrollback_renders_without_crashing() -> None:
     shell_harness = AgentHarness(
         id="test-output-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=(
             sys.executable,
             "-c",
@@ -271,7 +275,7 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 1: Blank name uses default "Shell"
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameModal)
         await pilot.press("enter")
         await pilot.pause()
         assert len(app.session_manager.sessions) == 1
@@ -297,10 +301,10 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 4: Canceling with Esc creates no shell
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameModal)
         await pilot.press("escape")
         await pilot.pause()
-        assert not isinstance(app.screen, SessionNameModal)
+        assert not isinstance(app.screen, ShellSessionNameModal)
         assert len(app.session_manager.sessions) == 3
 
 
@@ -312,7 +316,7 @@ async def test_shell_creation_modal_reentry_guard(
     async with app.run_test() as pilot:
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameModal)
         first_modal = app.screen
 
         # Repeated New Shell actions do not push another modal.
@@ -323,7 +327,7 @@ async def test_shell_creation_modal_reentry_guard(
         # Dismiss modal
         await pilot.press("escape")
         await pilot.pause()
-        assert not isinstance(app.screen, SessionNameModal)
+        assert not isinstance(app.screen, ShellSessionNameModal)
 
         # During New Agent flow, New Shell is also ignored.
         app.action_new_session()

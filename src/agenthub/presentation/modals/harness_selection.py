@@ -13,13 +13,6 @@ from textual.widgets.option_list import Option
 from agenthub.harnesses import AgentHarness
 
 
-def _harness_option_prompt(harness: AgentHarness) -> str:
-    """Format the option prompt with an icon if present."""
-    if harness.icon:
-        return f"{harness.icon} {harness.display_name}"
-    return harness.display_name
-
-
 class HarnessSelectionModal(ModalScreen[str]):
     """Return the stable ID of a user-selected coding-agent harness."""
 
@@ -27,15 +20,22 @@ class HarnessSelectionModal(ModalScreen[str]):
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
     def __init__(self, harnesses: Iterable[AgentHarness]) -> None:
-        """Retain the registry-derived harnesses in display-name order."""
+        """Retain the registry-derived harnesses in registry order."""
 
         super().__init__()
-        self._harnesses = tuple(
-            sorted(harnesses, key=lambda harness: harness.display_name.casefold())
-        )
+        self._harnesses = tuple(harnesses)
 
     def compose(self) -> ComposeResult:
         """Compose a compact launcher-style harness picker."""
+
+        options = []
+        for harness in self._harnesses:
+            options.append(
+                Option(
+                    f"{harness.icon} {harness.display_name}",
+                    id=harness.id,
+                )
+            )
 
         with Vertical(id="harness-selection-dialog"):
             with Horizontal(id="harness-selection-header"):
@@ -52,13 +52,7 @@ class HarnessSelectionModal(ModalScreen[str]):
                         "Cancel",
                         classes="modal-shortcut-description modal-cancel-description",
                     )
-            yield OptionList(
-                *(
-                    Option(_harness_option_prompt(harness), id=harness.id)
-                    for harness in self._harnesses
-                ),
-                id="harness-selection-list",
-            )
+            yield OptionList(*options, id="harness-selection-list")
             with Grid(id="harness-selection-help", classes="modal-shortcut-grid"):
                 yield Static("↑/↓", classes="modal-shortcut-key")
                 yield Static("Navigate", classes="modal-shortcut-description")
@@ -71,6 +65,7 @@ class HarnessSelectionModal(ModalScreen[str]):
         harness_list = self.query_one("#harness-selection-list", OptionList)
         if harness_list.options:
             harness_list.highlighted = 0
+
         harness_list.focus()
 
     def on_option_list_option_selected(

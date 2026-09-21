@@ -52,6 +52,7 @@ async def test_only_child_exiting_returns_to_empty_home() -> None:
     harness = AgentHarness(
         id="test-exit",
         display_name="Test Exit",
+        icon="🧪",
         command=(sys.executable, "-c", "raise SystemExit(9)"),
         scroll=ScrollKeys(
             down=KeyStroke("e", ctrl=True, alt=True),

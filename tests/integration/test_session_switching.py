@@ -18,6 +18,7 @@ def _exiting_harness(exit_code: int) -> AgentHarness:
     return AgentHarness(
         id="test-exit",
         display_name="Test Exit",
+        icon="🧪",
         command=(sys.executable, "-c", f"raise SystemExit({exit_code})"),
         scroll=ScrollKeys(
             down=KeyStroke("e", ctrl=True, alt=True),
@@ -30,6 +31,7 @@ def _script_harness(harness_id: str, script: str, *args: str) -> AgentHarness:
     return AgentHarness(
         id=harness_id,
         display_name=harness_id,
+        icon="🧪",
         command=(sys.executable, "-c", script, *args),
         scroll=ScrollKeys(
             down=KeyStroke("e", ctrl=True, alt=True),

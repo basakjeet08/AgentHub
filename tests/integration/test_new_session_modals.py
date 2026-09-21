@@ -898,6 +898,7 @@ async def test_selected_directory_reaches_the_actual_child_process(tmp_path: Pat
     harness = AgentHarness(
         id="cwd-reporter",
         display_name="CWD Reporter",
+        icon="🧪",
         command=(
             sys.executable,
             "-c",
@@ -1103,6 +1104,7 @@ async def test_missing_harness_binary_is_removed_without_ghost_session(
     harness = AgentHarness(
         id="missing-binary",
         display_name="Missing Binary",
+        icon="🧪",
         command=("agenthub-guaranteed-missing-command",),
         scroll=None,
     )

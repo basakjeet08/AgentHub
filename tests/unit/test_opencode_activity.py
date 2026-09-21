@@ -276,6 +276,7 @@ async def test_opencode_events_update_sidebar_activity_end_to_end(
     harness = AgentHarness(
         id="opencode",
         display_name="OpenCode",
+        icon="🧪",
         command=("opencode",),
         scroll=None,
     )
@@ -344,6 +345,7 @@ async def test_invalid_opencode_inline_config_does_not_change_provider_launch(
     harness = AgentHarness(
         id="opencode",
         display_name="OpenCode",
+        icon="🧪",
         command=("opencode",),
         scroll=None,
     )

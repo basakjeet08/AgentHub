@@ -46,10 +46,9 @@ def test_folder_tree_filters_out_files_and_hidden_directories_by_default(
     assert tuple(tree.filter_paths(paths)) == (first, hidden, second)
 
 
-def test_working_directory_modal_retains_normalized_root_without_selection(
+def test_working_directory_modal_retains_normalized_root(
     tmp_path: Path,
 ) -> None:
     modal = WorkingDirectoryModal(root=tmp_path / ".." / tmp_path.name)
 
     assert modal._root == tmp_path.resolve()
-    assert modal.selected_directory is None

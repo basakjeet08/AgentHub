@@ -272,6 +272,7 @@ def _app_with_observed_devin(tmp_path: Path) -> tuple[AgentHubApp, AgentSession]
     harness = AgentHarness(
         id="devin",
         display_name="Devin",
+        icon="🧪",
         command=("devin",),
         scroll=None,
     )
@@ -374,6 +375,7 @@ async def test_invalid_devin_config_does_not_change_provider_launch(
     harness = AgentHarness(
         id="devin",
         display_name="Devin",
+        icon="🧪",
         command=("devin",),
         scroll=None,
     )
@@ -407,6 +409,7 @@ async def test_devin_hooks_update_sidebar_activity_end_to_end(
     harness = AgentHarness(
         id="devin",
         display_name="Devin",
+        icon="🧪",
         command=("devin",),
         scroll=None,
     )

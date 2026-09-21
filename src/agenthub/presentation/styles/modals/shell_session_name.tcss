@@ -1,4 +1,4 @@
-SessionNameModal {
+ShellSessionNameModal {
     align: center middle;
     background: $background 70%;
 }
@@ -24,12 +24,6 @@ SessionNameModal {
     text-style: bold;
 }
 
-#session-name-harness {
-    width: 100%;
-    height: 2;
-    color: $text-muted;
-}
-
 #session-name-label {
     width: 100%;
     height: 1;
@@ -39,6 +33,7 @@ SessionNameModal {
 #session-name-input {
     width: 100%;
     margin-top: 1;
+    margin-bottom: 1;
     background: $background;
     color: $foreground;
     border: tall $panel;
@@ -46,16 +41,6 @@ SessionNameModal {
 
 #session-name-input:focus {
     border: tall $primary;
-}
-
-#session-name-input.invalid-name {
-    border: tall $secondary;
-}
-
-#session-name-error {
-    width: 100%;
-    height: 2;
-    color: $secondary;
 }
 
 #session-name-help {

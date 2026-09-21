@@ -261,13 +261,6 @@ class WorkingDirectoryModal(ModalScreen[Path]):
 
         super().__init__()
         self._root = (Path.home() if root is None else root).expanduser().resolve()
-        self._selected_directory: Path | None = None
-
-    @property
-    def selected_directory(self) -> Path | None:
-        """Return the confirmed directory, or ``None`` before confirmation."""
-
-        return self._selected_directory
 
     def compose(self) -> ComposeResult:
         """Compose the directory tree, selection preview, and help text."""
@@ -400,7 +393,6 @@ class WorkingDirectoryModal(ModalScreen[Path]):
             tree.focus()
             return
         selected_directory = event.path.expanduser().resolve()
-        self._selected_directory = selected_directory
         self.query_one("#working-directory-selected-path", Static).update(
             _format_display_path(selected_directory)
         )

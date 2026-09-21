@@ -42,8 +42,8 @@ from agenthub.presentation.modals import (
     HarnessSelectionModal,
     NativeSessionDeleteModal,
     NativeSessionLinkModal,
-    SessionNameModal,
-    SessionSelectionModal,
+    OpenSessionModal,
+    ShellSessionNameModal,
     WorkingDirectoryModal,
 )
 from agenthub.providers import ACTIVITY_ADAPTERS, HARNESSES, NATIVE_SESSION_ADAPTERS
@@ -54,8 +54,8 @@ _SESSION_WORKFLOW_MODALS = (
     HarnessSelectionModal,
     NativeSessionDeleteModal,
     NativeSessionLinkModal,
-    SessionSelectionModal,
-    SessionNameModal,
+    OpenSessionModal,
+    ShellSessionNameModal,
     WorkingDirectoryModal,
 )
 
@@ -466,14 +466,7 @@ class AgentHubApp(App):
         if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
             return
 
-        self.push_screen(
-            SessionNameModal(
-                self._shell_harness.display_name,
-                default_name="Shell",
-                placeholder="Shell (optional)",
-            ),
-            self._on_shell_name_selected,
-        )
+        self.push_screen(ShellSessionNameModal(), self._on_shell_name_selected)
 
     async def _on_shell_name_selected(self, name: str | None) -> None:
         """Create and focus a new Fish shell session with the specified or default name."""
@@ -481,9 +474,8 @@ class AgentHubApp(App):
         if name is None:
             return
 
-        normalized_name = name.strip() or "Shell"
         session = await self._create_and_mount_session(
-            name=normalized_name,
+            name=name,
             harness=self._shell_harness,
             kind=SessionKind.SHELL,
             cwd=Path.cwd(),
@@ -640,7 +632,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            SessionSelectionModal(sessions),
+            OpenSessionModal(sessions),
             self._on_open_session_selected,
         )
 
@@ -732,7 +724,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            NativeSessionLinkModal(pending, candidates),
+            NativeSessionLinkModal(pending.harness.display_name, candidates),
             partial(self._on_native_session_link_selected, pending.id),
         )
 

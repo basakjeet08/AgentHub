@@ -18,10 +18,10 @@ from .opencode.activity_adapter import OPENCODE_ACTIVITY_ADAPTER
 from .opencode.session_adapter import OpenCodeSessionAdapter
 
 HARNESSES: dict[str, AgentHarness] = {
-    OPENCODE.id: OPENCODE,
-    CODEX.id: CODEX,
     ANTIGRAVITY.id: ANTIGRAVITY,
+    CODEX.id: CODEX,
     DEVIN.id: DEVIN,
+    OPENCODE.id: OPENCODE,
 }
 
 DEFAULT_HARNESS = OPENCODE.id

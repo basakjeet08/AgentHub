@@ -363,6 +363,7 @@ async def test_antigravity_hooks_update_sidebar_activity_end_to_end(
     harness = AgentHarness(
         id="antigravity",
         display_name="Antigravity",
+        icon="🧪",
         command=("agy",),
         scroll=None,
     )
@@ -486,6 +487,7 @@ async def test_antigravity_hook_install_failure_does_not_change_launch(
     harness = AgentHarness(
         id="antigravity",
         display_name="Antigravity",
+        icon="🧪",
         command=("agy",),
         scroll=None,
     )

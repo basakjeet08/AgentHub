@@ -211,6 +211,7 @@ async def test_selection_copies_rows_visible_in_terminal_scrollback(
     scrollback_harness = AgentHarness(
         id="test-scrollback",
         display_name="Test Scrollback",
+        icon="🧪",
         command=sleeping_harness.command,
         scroll=None,
     )
@@ -237,6 +238,7 @@ async def test_wide_character_selection_uses_cells_in_scrollback(
     scrollback_harness = AgentHarness(
         id="test-wide-scrollback",
         display_name="Test Wide Scrollback",
+        icon="🧪",
         command=sleeping_harness.command,
         scroll=None,
     )

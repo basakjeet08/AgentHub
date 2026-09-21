@@ -8,22 +8,15 @@ from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, OptionList, Static
-from textual.widgets.option_list import Option, OptionDoesNotExist
+from textual.widgets.option_list import Option
 
 from agenthub.sessions import AgentSession
 
 
-def _session_option_prompt(session: AgentSession) -> str:
-    """Format one session as only its harness icon and title."""
-
-    prefix = f"{session.harness.icon} " if session.harness.icon else ""
-    return f"{prefix}{session.name}"
-
-
-class SessionSelectionModal(ModalScreen[str]):
+class OpenSessionModal(ModalScreen[str]):
     """Return the AgentHub ID of a user-selected openable session."""
 
-    CSS_PATH = "../styles/modals/session_selection.tcss"
+    CSS_PATH = "../styles/modals/open_session.tcss"
     BINDINGS: ClassVar = [
         Binding("escape", "cancel", show=False),
         Binding("up", "cursor_up", show=False, priority=True),
@@ -39,14 +32,20 @@ class SessionSelectionModal(ModalScreen[str]):
         super().__init__()
         self._sessions = tuple(sessions)
         self._harnesses = tuple(
-            {
-                session.harness.id: session.harness
-                for session in self._sessions
-            }.values()
+            {session.harness.id: session.harness for session in self._sessions}.values()
         )
 
     def compose(self) -> ComposeResult:
         """Compose the unified Agent and Shell picker."""
+
+        options = []
+        for session in self._sessions:
+            options.append(
+                Option(
+                    f"{session.harness.icon} {session.name}",
+                    id=session.id,
+                )
+            )
 
         with Vertical(id="session-selection-dialog"):
             with Horizontal(id="session-selection-header"):
@@ -72,16 +71,7 @@ class SessionSelectionModal(ModalScreen[str]):
                 placeholder="Search by harness or session title",
                 id="session-selection-search",
             )
-            yield OptionList(
-                *(
-                    Option(
-                        _session_option_prompt(session),
-                        id=session.id,
-                    )
-                    for session in self._sessions
-                ),
-                id="session-selection-list",
-            )
+            yield OptionList(*options, id="session-selection-list")
             yield Static(
                 "No matching sessions.",
                 id="session-selection-empty",
@@ -94,12 +84,10 @@ class SessionSelectionModal(ModalScreen[str]):
             )
             with Grid(id="session-selection-legend"):
                 for harness in self._harnesses:
-                    meaning = (
-                        f"{harness.icon} {harness.display_name}"
-                        if harness.icon
-                        else harness.display_name
+                    yield Static(
+                        f"{harness.icon} {harness.display_name}",
+                        classes="session-selection-legend-item",
                     )
-                    yield Static(meaning, classes="session-selection-legend-item")
             with Grid(id="session-selection-help", classes="modal-shortcut-grid"):
                 yield Static("↑/↓", classes="modal-shortcut-key")
                 yield Static("Navigate", classes="modal-shortcut-description")
@@ -112,49 +100,39 @@ class SessionSelectionModal(ModalScreen[str]):
         session_list = self.query_one("#session-selection-list", OptionList)
         if session_list.options:
             session_list.highlighted = 0
+
         self.query_one("#session-selection-search", Input).focus()
 
     def on_input_changed(self, message: Input.Changed) -> None:
-        """Filter sessions by harness name or provider-owned session title."""
+        """Filter sessions by harness name or session title."""
 
-        if message.input.id != "session-selection-search":
-            return
-
+        options = []
         query = message.value.strip().casefold()
-        sessions = tuple(
-            session
-            for session in self._sessions
-            if not query
-            or query in session.harness.display_name.casefold()
-            or query in session.name.casefold()
-        )
-        session_list = self.query_one("#session-selection-list", OptionList)
-        session_list.clear_options().add_options(
-            Option(
-                _session_option_prompt(session),
-                id=session.id,
+        for session in self._sessions:
+            matches = (
+                not query
+                or query in session.harness.display_name.casefold()
+                or query in session.name.casefold()
             )
-            for session in sessions
-        )
-        session_list.highlighted = 0 if sessions else None
-        self.query_one("#session-selection-empty", Static).display = not sessions
+
+            if matches:
+                options.append(
+                    Option(
+                        f"{session.harness.icon} {session.name}",
+                        id=session.id,
+                    )
+                )
+
+        session_list = self.query_one("#session-selection-list", OptionList)
+        session_list.clear_options().add_options(options)
+        session_list.highlighted = 0 if options else None
+        self.query_one("#session-selection-empty", Static).display = not options
 
     def on_input_submitted(self, message: Input.Submitted) -> None:
         """Open the highlighted filtered session directly from search."""
 
-        if message.input.id != "session-selection-search":
-            return
-
         message.stop()
-        session_list = self.query_one("#session-selection-list", OptionList)
-        if session_list.highlighted is None:
-            return
-        try:
-            option = session_list.get_option_at_index(session_list.highlighted)
-        except OptionDoesNotExist:
-            return
-        if option.id is not None:
-            self.dismiss(option.id)
+        self.query_one("#session-selection-list", OptionList).action_select()
 
     def on_option_list_option_selected(
         self,
