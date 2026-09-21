@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import json
 from collections.abc import Mapping
 
 import pytest
@@ -50,6 +51,22 @@ def test_codex_normalizer_maps_observed_events(
     assert event.scope_id == "turn-1"
 
 
+def test_codex_normalizer_maps_user_input_tool_to_input_requested() -> None:
+    event = normalize_codex_activity(
+        "logical-session",
+        {
+            "hook_event_name": "PreToolUse",
+            "turn_id": "turn-1",
+            "tool_name": "request_user_input",
+            "tool_input": {"questions": []},
+        },
+    )
+
+    assert event is not None
+    assert event.kind is AgentActivityEventKind.INPUT_REQUESTED
+    assert event.scope_id == "turn-1"
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -93,13 +110,15 @@ async def _forward_event(
     environment: Mapping[str, str],
     event_name: str,
     turn_id: str = "turn-1",
+    tool_name: str | None = None,
 ) -> str:
+    payload = {"hook_event_name": event_name, "turn_id": turn_id}
+    if tool_name is not None:
+        payload["tool_name"] = tool_name
     output = io.StringIO()
     exit_code = await asyncio.to_thread(
         run_codex_activity_hook,
-        input_stream=io.BytesIO(
-            f'{{"hook_event_name":"{event_name}","turn_id":"{turn_id}"}}'.encode()
-        ),
+        input_stream=io.BytesIO(json.dumps(payload).encode()),
         output_stream=output,
         environment=environment,
     )
@@ -247,6 +266,27 @@ def test_codex_permission_navigation_does_not_clear_waiting(
     assert session.activity is AgentActivity.NEEDS_INPUT
 
 
+@pytest.mark.parametrize("key", ["enter", "ctrl+m", "y", "n"])
+def test_codex_question_input_does_not_use_permission_key_fallback(
+    tmp_path,
+    monkeypatch,
+    key: str,
+) -> None:
+    app, session = _app_with_observed_codex(tmp_path)
+    monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
+    app._on_activity_event(
+        AgentActivityEvent(
+            session.id,
+            AgentActivityEventKind.INPUT_REQUESTED,
+            scope_id="turn-a",
+        )
+    )
+
+    app._on_codex_terminal_key(session.id, key)
+
+    assert session.activity is AgentActivity.NEEDS_INPUT
+
+
 async def test_receiver_start_failure_leaves_codex_launch_unchanged(
     tmp_path,
     monkeypatch,
@@ -327,6 +367,25 @@ async def test_codex_hook_updates_its_agenthub_session_end_to_end(
         assert session.activity is AgentActivity.DONE
 
         await _forward_event(registration.environment, "UserPromptSubmit", "turn-b")
+        for _ in range(20):
+            if session.activity is AgentActivity.WORKING:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.WORKING
+
+        await _forward_event(
+            registration.environment,
+            "PreToolUse",
+            "turn-b",
+            tool_name="request_user_input",
+        )
+        for _ in range(20):
+            if session.activity is AgentActivity.NEEDS_INPUT:
+                break
+            await asyncio.sleep(0.01)
+        assert session.activity is AgentActivity.NEEDS_INPUT
+
+        await _forward_event(registration.environment, "PostToolUse", "turn-b")
         for _ in range(20):
             if session.activity is AgentActivity.WORKING:
                 break

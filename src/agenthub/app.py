@@ -1218,6 +1218,8 @@ class AgentHubApp(App):
             session.harness.id != "codex"
             or session_id not in self._activity_registrations
             or session.activity is not AgentActivity.NEEDS_INPUT
+            or self.session_manager.input_wait_kind(session_id)
+            is not AgentActivityEventKind.PERMISSION_REQUESTED
             or key not in {"enter", "ctrl+m", "y", "n"}
         ):
             return

@@ -7,6 +7,7 @@ from agenthub.activity import (
     ActivityReducerState,
     AgentActivity,
     AgentActivityEvent,
+    AgentActivityEventKind,
     reduce_activity_state,
 )
 from agenthub.harnesses import AgentHarness
@@ -64,6 +65,7 @@ class SessionManager:
                 activity=session.activity,
                 active_scope_id=state.active_scope_id,
                 closed_scope_ids=state.closed_scope_ids,
+                input_wait_kind=state.input_wait_kind,
             )
         next_state = reduce_activity_state(state, event)
         self._activity_reducer_states[session.id] = next_state
@@ -71,6 +73,12 @@ class SessionManager:
             return False
         session.activity = next_state.activity
         return True
+
+    def input_wait_kind(self, session_id: str) -> AgentActivityEventKind | None:
+        """Return the active input blocker kind for one tracked session."""
+
+        state = self._activity_reducer_states.get(session_id)
+        return None if state is None else state.input_wait_kind
 
     def create(
         self,

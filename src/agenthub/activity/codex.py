@@ -12,6 +12,7 @@ from ._forwarder import run_activity_hook
 from .model import AgentActivityEvent, AgentActivityEventKind
 
 _PROVIDER = "codex"
+_USER_INPUT_TOOL = "request_user_input"
 _HOOK_EVENTS = (
     "UserPromptSubmit",
     "PreToolUse",
@@ -44,6 +45,8 @@ def normalize_codex_activity(
     kind = _NORMALIZED_EVENTS.get(event_name)
     if kind is None:
         return None
+    if event_name == "PreToolUse" and payload.get("tool_name") == _USER_INPUT_TOOL:
+        kind = AgentActivityEventKind.INPUT_REQUESTED
     turn_id = payload.get("turn_id")
     if not isinstance(turn_id, str) or not turn_id:
         return None

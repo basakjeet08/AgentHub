@@ -245,6 +245,12 @@ tool turn:         SessionStart → UserPromptSubmit → PreToolUse → PostTool
 cancelled approval: SessionStart → UserPromptSubmit → PreToolUse → PermissionRequest → Interrupt → SessionEnd
 ```
 
+Codex's structured `request_user_input` tool is a specialized `PreToolUse`
+signal. The normalizer maps it to `INPUT_REQUESTED`, so the sidebar remains in
+`NEEDS_INPUT` while the question selector is open; its `PostToolUse` signal
+returns the active turn to `WORKING`. The terminal-key fallback remains limited
+to permission prompts, so typing in a structured question cannot clear it.
+
 `PermissionRequest` arrived after `PreToolUse` and did not include a
 `tool_use_id`; `Interrupt` therefore clears the waiting state without relying
 on a later tool or stop event. Codex does not currently emit a passive

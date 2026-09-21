@@ -20,6 +20,10 @@ _TERMINAL_EVENT_KINDS = {
     AgentActivityEventKind.TURN_COMPLETED,
     AgentActivityEventKind.INTERRUPTED,
 }
+_INPUT_WAIT_EVENT_KINDS = {
+    AgentActivityEventKind.PERMISSION_REQUESTED,
+    AgentActivityEventKind.INPUT_REQUESTED,
+}
 
 _ACTIVITY_BY_EVENT = {
     AgentActivityEventKind.SESSION_STARTED: AgentActivity.IDLE,
@@ -42,6 +46,26 @@ class ActivityReducerState:
     activity: AgentActivity = AgentActivity.UNKNOWN
     active_scope_id: str | None = None
     closed_scope_ids: tuple[str, ...] = ()
+    input_wait_kind: AgentActivityEventKind | None = None
+
+
+def _apply_visible_activity(
+    state: ActivityReducerState,
+    event: AgentActivityEvent,
+    activity: AgentActivity,
+) -> ActivityReducerState:
+    """Apply visible activity while retaining which input condition caused it."""
+
+    input_wait_kind = state.input_wait_kind
+    if event.kind in _INPUT_WAIT_EVENT_KINDS and activity is AgentActivity.NEEDS_INPUT:
+        input_wait_kind = event.kind
+    elif activity is not AgentActivity.NEEDS_INPUT:
+        input_wait_kind = None
+    return replace(
+        state,
+        activity=activity,
+        input_wait_kind=input_wait_kind,
+    )
 
 
 def reduce_activity(
@@ -92,7 +116,11 @@ def reduce_activity_state(
         or not scope_id
         or event.kind not in _SCOPED_EVENT_KINDS
     ):
-        return replace(state, activity=reduce_activity(state.activity, event))
+        return _apply_visible_activity(
+            state,
+            event,
+            reduce_activity(state.activity, event),
+        )
 
     if scope_id in state.closed_scope_ids:
         return state
@@ -104,6 +132,7 @@ def reduce_activity_state(
             state,
             activity=AgentActivity.UNKNOWN,
             active_scope_id=scope_id,
+            input_wait_kind=None,
         )
     elif (
         state.activity is AgentActivity.NEEDS_INPUT
@@ -118,7 +147,7 @@ def reduce_activity_state(
         activity = _ACTIVITY_BY_EVENT.get(event.kind, state.activity)
     else:
         activity = reduce_activity(state.activity, event)
-    state = replace(state, activity=activity)
+    state = _apply_visible_activity(state, event, activity)
     if event.kind in _TERMINAL_EVENT_KINDS:
         state = _close_scope(state, scope_id)
     return state

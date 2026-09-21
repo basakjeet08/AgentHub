@@ -288,6 +288,33 @@ def test_permission_that_arrives_before_its_prompt_remains_needs_input() -> None
     )
 
     assert state.activity is AgentActivity.NEEDS_INPUT
+    assert state.input_wait_kind is AgentActivityEventKind.PERMISSION_REQUESTED
+
+
+def test_input_wait_kind_tracks_request_type_until_resolution() -> None:
+    state = reduce_activity_state(
+        ActivityReducerState(),
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.INPUT_REQUESTED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is AgentActivity.NEEDS_INPUT
+    assert state.input_wait_kind is AgentActivityEventKind.INPUT_REQUESTED
+
+    state = reduce_activity_state(
+        state,
+        AgentActivityEvent(
+            "session-1",
+            AgentActivityEventKind.TOOL_FINISHED,
+            scope_id="turn-a",
+        ),
+    )
+
+    assert state.activity is AgentActivity.WORKING
+    assert state.input_wait_kind is None
 
 
 def test_unknown_scoped_event_does_not_replace_the_active_scope() -> None:
