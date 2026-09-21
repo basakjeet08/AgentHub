@@ -18,12 +18,14 @@ from agenthub.activity import (
     AgentActivity,
     AgentActivityEvent,
     AgentActivityEventKind,
+)
+from agenthub.app import AgentHubApp
+from agenthub.harnesses import AgentHarness
+from agenthub.providers.devin.activity_adapter import (
     normalize_devin_activity,
     prepare_devin_activity_launch,
     run_devin_activity_hook,
 )
-from agenthub.app import AgentHubApp
-from agenthub.harnesses import AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 
 
@@ -196,8 +198,8 @@ async def test_devin_receiver_routes_exact_session_and_preserves_prompt_id() -> 
     received = []
     receiver = ActivityReceiver(received.append)
     await receiver.start()
-    first = receiver.register("first-session", "devin")
-    second = receiver.register("second-session", "devin")
+    first = receiver.register("first-session", "devin", normalize_devin_activity)
+    second = receiver.register("second-session", "devin", normalize_devin_activity)
     try:
         crossed_environment = {
             **first.environment,
@@ -280,7 +282,7 @@ def test_devin_ctrl_c_observation_clears_active_prompt(
         )
     )
 
-    app._on_devin_terminal_key(session.id, "ctrl+c")
+    app._on_activity_terminal_key(session.id, "ctrl+c")
 
     assert session.activity is AgentActivity.IDLE
 
@@ -299,7 +301,7 @@ def test_devin_single_escape_observation_clears_working_prompt(
         )
     )
 
-    app._on_devin_terminal_key(session.id, "escape")
+    app._on_activity_terminal_key(session.id, "escape")
     assert session.activity is AgentActivity.IDLE
 
 
@@ -332,7 +334,7 @@ def test_devin_single_escape_observation_clears_waiting_prompt(
         )
     )
 
-    app._on_devin_terminal_key(session.id, "escape")
+    app._on_activity_terminal_key(session.id, "escape")
     assert session.activity is AgentActivity.IDLE
 
 

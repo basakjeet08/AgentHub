@@ -16,15 +16,10 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher
 
 from agenthub.activity import (
-    ActivityReceiver,
-    ActivityRegistration,
+    ActivityService,
     AgentActivity,
     AgentActivityEvent,
     AgentActivityEventKind,
-    codex_command_with_activity_hooks,
-    ensure_antigravity_activity_hooks,
-    opencode_activity_environment,
-    prepare_devin_activity_launch,
 )
 from agenthub.harnesses import FISH, AgentHarness
 from agenthub.native_sessions import (
@@ -51,7 +46,7 @@ from agenthub.presentation.modals import (
     SessionSelectionModal,
     WorkingDirectoryModal,
 )
-from agenthub.providers import HARNESSES, NATIVE_SESSION_ADAPTERS
+from agenthub.providers import ACTIVITY_ADAPTERS, HARNESSES, NATIVE_SESSION_ADAPTERS
 from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
 
@@ -119,9 +114,10 @@ class AgentHubApp(App):
         self._discovery_in_progress = False
         self._provider_locks: dict[str, asyncio.Lock] = {}
         self._command_palette_target_id: str | None = None
-        self._activity_receiver: ActivityReceiver | None = None
-        self._activity_registrations: dict[str, ActivityRegistration] = {}
-        self._activity_artifacts: dict[str, tuple[Path, ...]] = {}
+        self._activity_service = ActivityService(ACTIVITY_ADAPTERS, self._on_activity_event)
+        self._activity_receiver = None
+        self._activity_registrations = self._activity_service.registrations
+        self._activity_artifacts = self._activity_service.artifacts
         self._notification_service = DesktopNotificationService(
             backend=desktop_notification_backend
         )
@@ -180,14 +176,7 @@ class AgentHubApp(App):
 
         for executor in tuple(self._discovery_executors):
             self._shutdown_discovery_executor(executor)
-        receiver = self._activity_receiver
-        for session_id in tuple(
-            self._activity_registrations.keys() | self._activity_artifacts.keys()
-        ):
-            self._revoke_activity_tracking(session_id)
-        self._activity_receiver = None
-        if receiver is not None:
-            await receiver.close()
+        await self._activity_service.close()
         await self._notification_service.shutdown()
 
     @staticmethod
@@ -1084,70 +1073,35 @@ class AgentHubApp(App):
 
         if session.kind is not SessionKind.AGENT:
             return False
-        provider = session.harness.id
-        if provider not in {"antigravity", "codex", "devin", "opencode"}:
-            return False
-        executable = "agy" if provider == "antigravity" else provider
-        if Path(terminal.child_command[0]).name != executable:
-            return False
         try:
-            receiver = self._activity_receiver
-            if receiver is None:
-                receiver = ActivityReceiver(self._on_activity_event)
-                await receiver.start()
-                self._activity_receiver = receiver
-            self._revoke_activity_tracking(session.id)
-            registration = receiver.register(
+            launch = await self._activity_service.prepare(
                 session.id,
-                provider,
+                session.harness.id,
+                terminal.child_command,
                 native_session_id=session.native_session_id,
             )
-            self._activity_registrations[session.id] = registration
-            if provider == "antigravity":
-                ensure_antigravity_activity_hooks()
-            command = terminal.child_command
-            if provider == "codex":
-                command = codex_command_with_activity_hooks(command)
-            elif provider == "devin":
-                launch = prepare_devin_activity_launch(command)
-                command = launch.command
-                self._activity_artifacts[session.id] = (launch.config_path,)
-            environment_overrides = dict(registration.environment)
-            if provider == "opencode":
-                environment_overrides.update(
-                    opencode_activity_environment(
-                        native_session_id=session.native_session_id,
-                    )
-                )
+            if launch is None:
+                return False
+            self._activity_receiver = self._activity_service.receiver
             terminal.configure_launch(
-                command=command,
-                environment_overrides=environment_overrides,
+                command=launch.command,
+                environment_overrides=dict(launch.environment_overrides),
             )
-            if provider == "codex":
-                terminal.set_forwarded_key_observer(
-                    partial(self._on_codex_terminal_key, session.id)
-                )
-            elif provider == "devin":
-                terminal.set_forwarded_key_observer(
-                    partial(self._on_devin_terminal_key, session.id)
-                )
+            terminal.set_forwarded_key_observer(partial(self._on_activity_terminal_key, session.id))
             return True
         except Exception:  # noqa: BLE001 - activity must never prevent a launch
+            self._activity_receiver = self._activity_service.receiver
             self._revoke_activity_tracking(session.id)
             return False
 
     def _initialize_mounted_activity(self, session: AgentSession) -> None:
         """Initialize providers that do not report their own observer readiness."""
 
-        # OpenCode reports plugin readiness itself. Keeping UNKNOWN until that
-        # handshake prevents a rejected plugin from looking successfully idle.
-        if session.harness.id == "opencode":
-            return
         if session.activity is not AgentActivity.UNKNOWN:
             return
-        self._apply_activity_event(
-            AgentActivityEvent(session.id, AgentActivityEventKind.SESSION_STARTED)
-        )
+        event = self._activity_service.initial_event(session.id)
+        if event is not None:
+            self._apply_activity_event(event)
 
     def _revoke_activity_tracking(self, session_id: str) -> None:
         """Invalidate one runtime's activity credential if it exists."""
@@ -1158,15 +1112,7 @@ class AgentHubApp(App):
             terminal = None
         if terminal is not None:
             terminal.set_forwarded_key_observer(None)
-        registration = self._activity_registrations.pop(session_id, None)
-        receiver = self._activity_receiver
-        if registration is not None and receiver is not None:
-            receiver.revoke(registration)
-        for path in self._activity_artifacts.pop(session_id, ()):
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        self._activity_service.revoke(session_id)
 
     def _on_activity_event(self, event: AgentActivityEvent) -> None:
         """Apply one authenticated event and refresh only presentation state."""
@@ -1198,46 +1144,21 @@ class AgentHubApp(App):
         )
         return True
 
-    def _on_codex_terminal_key(self, session_id: str, key: str) -> None:
-        """Clear a Codex permission wait when its decision reaches the child."""
-
+    def _on_activity_terminal_key(self, session_id: str, key: str) -> None:
+        """Route forwarded terminal keys through the provider-neutral service."""
         try:
             session = self.session_manager.get(session_id)
         except KeyError:
             return
-        if (
-            session.harness.id != "codex"
-            or session_id not in self._activity_registrations
-            or session.activity is not AgentActivity.NEEDS_INPUT
-            or self.session_manager.input_wait_kind(session_id)
-            is not AgentActivityEventKind.PERMISSION_REQUESTED
-            or key not in {"enter", "ctrl+m", "y", "n"}
-        ):
-            return
-
-        self._apply_activity_event(
-            AgentActivityEvent(session_id, AgentActivityEventKind.INPUT_RESOLVED)
+        event = self._activity_service.terminal_key_event(
+            session_id,
+            key,
+            provider=session.harness.id,
+            activity=session.activity,
+            input_wait_kind=self.session_manager.input_wait_kind(session_id),
         )
-
-    def _on_devin_terminal_key(self, session_id: str, key: str) -> None:
-        """Recover Devin activity when its UI interrupts without a hook event."""
-
-        try:
-            session = self.session_manager.get(session_id)
-        except KeyError:
-            return
-        if (
-            session.harness.id != "devin"
-            or session_id not in self._activity_registrations
-            or session.activity not in {AgentActivity.WORKING, AgentActivity.NEEDS_INPUT}
-        ):
-            return
-
-        if key not in {"ctrl+c", "escape"}:
-            return
-        self._apply_activity_event(
-            AgentActivityEvent(session_id, AgentActivityEventKind.INTERRUPTED)
-        )
+        if event is not None:
+            self._apply_activity_event(event)
 
     def _agent_sessions(self) -> tuple[AgentSession, ...]:
         """Return managed coding-agent sessions in creation order."""

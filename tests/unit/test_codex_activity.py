@@ -16,12 +16,14 @@ from agenthub.activity import (
     AgentActivity,
     AgentActivityEvent,
     AgentActivityEventKind,
+)
+from agenthub.app import AgentHubApp
+from agenthub.harnesses import AgentHarness
+from agenthub.providers.codex.activity_adapter import (
     codex_command_with_activity_hooks,
     normalize_codex_activity,
     run_codex_activity_hook,
 )
-from agenthub.app import AgentHubApp
-from agenthub.harnesses import AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 
 
@@ -130,8 +132,8 @@ async def test_receiver_routes_two_sessions_without_cross_updates() -> None:
     received = []
     receiver = ActivityReceiver(received.append)
     await receiver.start()
-    first = receiver.register("first-session", "codex")
-    second = receiver.register("second-session", "codex")
+    first = receiver.register("first-session", "codex", normalize_codex_activity)
+    second = receiver.register("second-session", "codex", normalize_codex_activity)
     try:
         crossed_environment = {
             **first.environment,
@@ -164,7 +166,7 @@ async def test_revoked_or_invalid_credentials_are_ignored() -> None:
     received = []
     receiver = ActivityReceiver(received.append)
     await receiver.start()
-    registration = receiver.register("session", "codex")
+    registration = receiver.register("session", "codex", normalize_codex_activity)
     receiver.revoke(registration)
     try:
         environment = {
@@ -241,7 +243,7 @@ def test_codex_permission_decision_observation_resumes_working(
     app, session = _app_with_observed_codex(tmp_path)
     monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
 
-    app._on_codex_terminal_key(session.id, key)
+    app._on_activity_terminal_key(session.id, key)
 
     assert session.activity is AgentActivity.WORKING
     app.session_manager.apply_activity_event(
@@ -261,7 +263,7 @@ def test_codex_permission_navigation_does_not_clear_waiting(
     app, session = _app_with_observed_codex(tmp_path)
     monkeypatch.setattr(app, "_refresh_sidebar", lambda: None)
 
-    app._on_codex_terminal_key(session.id, "down")
+    app._on_activity_terminal_key(session.id, "down")
 
     assert session.activity is AgentActivity.NEEDS_INPUT
 
@@ -282,7 +284,7 @@ def test_codex_question_input_does_not_use_permission_key_fallback(
         )
     )
 
-    app._on_codex_terminal_key(session.id, key)
+    app._on_activity_terminal_key(session.id, key)
 
     assert session.activity is AgentActivity.NEEDS_INPUT
 
@@ -310,7 +312,7 @@ async def test_receiver_start_failure_leaves_codex_launch_unchanged(
     async def fail_start(_receiver) -> None:
         raise OSError("loopback unavailable")
 
-    monkeypatch.setattr(ActivityReceiver, "start", fail_start)
+    monkeypatch.setattr("agenthub.activity.service.ActivityReceiver.start", fail_start)
 
     tracking_ready = await app._prepare_activity_tracking(session, terminal)
 

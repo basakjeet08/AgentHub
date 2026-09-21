@@ -15,12 +15,15 @@ from agenthub.activity import (
     ActivityReceiver,
     AgentActivity,
     AgentActivityEventKind,
+)
+from agenthub.app import AgentHubApp
+from agenthub.harnesses import AgentHarness
+from agenthub.providers.antigravity.activity_adapter import (
+    AntigravityActivityNormalizer,
     ensure_antigravity_activity_hooks,
     normalize_antigravity_activity,
     run_antigravity_activity_hook,
 )
-from agenthub.app import AgentHubApp
-from agenthub.harnesses import AgentHarness
 from agenthub.sessions import SessionKind
 
 
@@ -204,12 +207,12 @@ async def test_antigravity_receiver_routes_two_sessions_without_cross_updates() 
     first = receiver.register(
         "first-session",
         "antigravity",
-        native_session_id="first-root",
+        AntigravityActivityNormalizer("first-root"),
     )
     second = receiver.register(
         "second-session",
         "antigravity",
-        native_session_id="second-root",
+        AntigravityActivityNormalizer("second-root"),
     )
     try:
         crossed_environment = {
@@ -275,7 +278,9 @@ async def test_fresh_antigravity_registration_binds_first_root_pre_invocation() 
     received = []
     receiver = ActivityReceiver(received.append)
     await receiver.start()
-    registration = receiver.register("logical-session", "antigravity")
+    registration = receiver.register(
+        "logical-session", "antigravity", AntigravityActivityNormalizer()
+    )
     try:
         await _forward_event(
             registration.environment,
@@ -352,7 +357,7 @@ async def test_antigravity_hooks_update_sidebar_activity_end_to_end(
 ) -> None:
     hooks_path = tmp_path / "hooks.json"
     monkeypatch.setattr(
-        "agenthub.app.ensure_antigravity_activity_hooks",
+        "agenthub.providers.antigravity.activity_adapter.ensure_antigravity_activity_hooks",
         lambda: ensure_antigravity_activity_hooks(hooks_path=hooks_path),
     )
     harness = AgentHarness(
@@ -474,7 +479,10 @@ async def test_antigravity_hook_install_failure_does_not_change_launch(
     def fail_install() -> None:
         raise OSError("hooks config is unavailable")
 
-    monkeypatch.setattr("agenthub.app.ensure_antigravity_activity_hooks", fail_install)
+    monkeypatch.setattr(
+        "agenthub.providers.antigravity.activity_adapter.ensure_antigravity_activity_hooks",
+        fail_install,
+    )
     harness = AgentHarness(
         id="antigravity",
         display_name="Antigravity",

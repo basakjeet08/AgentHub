@@ -48,6 +48,6 @@ cache-dir = ".cache/ruff"
 
 [tool.mypy]
 python_version = "3.13"
-files = ["src/agenthub/native_sessions", "src/agenthub/providers"]
+files = ["src/agenthub/activity", "src/agenthub/native_sessions", "src/agenthub/providers"]
 strict = true
 pretty = true

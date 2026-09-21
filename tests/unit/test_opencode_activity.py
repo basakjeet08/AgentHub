@@ -13,18 +13,20 @@ import pytest
 from agenthub.activity import (
     AGENTHUB_ACTIVITY_ENDPOINT,
     AGENTHUB_ACTIVITY_TOKEN,
-    AGENTHUB_OPENCODE_SESSION_ID,
     AGENTHUB_SESSION_ID,
-    OPENCODE_CONFIG_CONTENT,
     ActivityReceiver,
     AgentActivity,
     AgentActivityEvent,
     AgentActivityEventKind,
-    normalize_opencode_activity,
-    opencode_activity_environment,
 )
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
+from agenthub.providers.opencode.activity_adapter import (
+    AGENTHUB_OPENCODE_SESSION_ID,
+    OPENCODE_CONFIG_CONTENT,
+    normalize_opencode_activity,
+    opencode_activity_environment,
+)
 from agenthub.sessions import SessionKind
 
 
@@ -133,7 +135,7 @@ def test_opencode_environment_uses_the_packaged_compatibility_plugin() -> None:
     plugin_path = Path(config["plugins"][-1])
     source = plugin_path.read_text(encoding="utf-8")
 
-    assert plugin_path.name == "_opencode_plugin.js"
+    assert plugin_path.name == "activity_plugin.js"
     assert config["plugin"][-1] == str(plugin_path)
     assert "ctx.event.subscribe" in source
     assert "server" in source
@@ -150,8 +152,13 @@ async def test_packaged_plugin_tracks_all_concurrent_v1_input_blockers() -> None
     received: list[AgentActivityEvent] = []
     receiver = ActivityReceiver(received.append)
     await receiver.start()
-    registration = receiver.register("logical-session", "opencode")
-    plugin_path = Path(__file__).parents[2] / "src/agenthub/activity/_opencode_plugin.js"
+    registration = receiver.register(
+        "logical-session", "opencode", normalize_opencode_activity
+    )
+    plugin_path = (
+        Path(__file__).parents[2]
+        / "src/agenthub/providers/opencode/activity_plugin.js"
+    )
     events = [
         {
             "type": "session.status",

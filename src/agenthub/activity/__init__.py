@@ -1,60 +1,30 @@
-"""Provider activity integration helpers."""
+"""Provider-neutral activity models, transport, and service boundary."""
 
 from ._forwarder import (
     AGENTHUB_ACTIVITY_ENDPOINT,
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
 )
-from .antigravity import (
-    ensure_antigravity_activity_hooks,
-    normalize_antigravity_activity,
-    run_antigravity_activity_hook,
-)
-from .codex import (
-    codex_command_with_activity_hooks,
-    normalize_codex_activity,
-    run_codex_activity_hook,
-)
-from .devin import (
-    DevinActivityLaunch,
-    normalize_devin_activity,
-    prepare_devin_activity_launch,
-    run_devin_activity_hook,
-)
+from .adapter import ActivityAdapter, ActivityLaunch, ActivityNormalizer
 from .model import AgentActivity, AgentActivityEvent, AgentActivityEventKind
-from .opencode import (
-    AGENTHUB_OPENCODE_SESSION_ID,
-    OPENCODE_CONFIG_CONTENT,
-    normalize_opencode_activity,
-    opencode_activity_environment,
-)
 from .receiver import ActivityReceiver, ActivityRegistration
 from .reducer import ActivityReducerState, reduce_activity, reduce_activity_state
+from .service import ActivityService
 
 __all__ = [
     "AGENTHUB_ACTIVITY_ENDPOINT",
     "AGENTHUB_ACTIVITY_TOKEN",
-    "AGENTHUB_OPENCODE_SESSION_ID",
     "AGENTHUB_SESSION_ID",
-    "OPENCODE_CONFIG_CONTENT",
+    "ActivityAdapter",
+    "ActivityLaunch",
+    "ActivityNormalizer",
     "ActivityReceiver",
     "ActivityReducerState",
     "ActivityRegistration",
+    "ActivityService",
     "AgentActivity",
     "AgentActivityEvent",
     "AgentActivityEventKind",
-    "DevinActivityLaunch",
-    "codex_command_with_activity_hooks",
-    "ensure_antigravity_activity_hooks",
-    "normalize_antigravity_activity",
-    "normalize_codex_activity",
-    "normalize_devin_activity",
-    "normalize_opencode_activity",
-    "opencode_activity_environment",
-    "prepare_devin_activity_launch",
     "reduce_activity",
     "reduce_activity_state",
-    "run_antigravity_activity_hook",
-    "run_codex_activity_hook",
-    "run_devin_activity_hook",
 ]

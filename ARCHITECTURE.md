@@ -1141,14 +1141,11 @@ src/agenthub/
 ├── activity/
 │   ├── _forwarder.py    # shared neutral local hook forwarding
 │   ├── __init__.py      # public activity API
-│   ├── _opencode_plugin.js # passive OpenCode V2 event bridge
-│   ├── antigravity.py   # Antigravity hook bridge and event normalizer
-│   ├── codex.py         # Codex hook bridge and event normalizer
-│   ├── devin.py         # Devin hook bridge, config overlay, and normalizer
+│   ├── adapter.py       # provider-neutral activity adapter protocol
 │   ├── model.py         # activity state and normalized events
-│   ├── opencode.py      # OpenCode V2 launch config and event normalizer
 │   ├── receiver.py      # authenticated loopback event receiver
-│   └── reducer.py       # provider-neutral activity transitions
+│   ├── reducer.py       # provider-neutral activity transitions
+│   └── service.py       # application-facing activity setup and routing
 ├── harnesses/
 │   ├── __init__.py      # public generic harness API
 │   ├── fish.py          # Fish shell definition
@@ -1159,19 +1156,24 @@ src/agenthub/
 │   ├── antigravity/
 │   │   ├── __init__.py  # Antigravity harness export
 │   │   ├── harness.py   # Antigravity harness definition
-│   │   └── session_adapter.py # Antigravity native-session adapter
+│   │   ├── session_adapter.py # Antigravity native-session adapter
+│   │   └── activity_adapter.py # Antigravity activity integration
 │   ├── codex/
 │   │   ├── __init__.py  # Codex harness export
 │   │   ├── harness.py   # Codex harness definition
-│   │   └── session_adapter.py # Codex native-session adapter
+│   │   ├── session_adapter.py # Codex native-session adapter
+│   │   └── activity_adapter.py # Codex activity integration
 │   ├── devin/
 │   │   ├── __init__.py  # Devin harness export
 │   │   ├── harness.py   # Devin harness definition
-│   │   └── session_adapter.py # Devin native-session adapter
+│   │   ├── session_adapter.py # Devin native-session adapter
+│   │   └── activity_adapter.py # Devin activity integration
 │   └── opencode/
 │       ├── __init__.py  # OpenCode harness export
 │       ├── harness.py   # OpenCode harness definition
-│       └── session_adapter.py # OpenCode native-session adapter
+│       ├── session_adapter.py # OpenCode native-session adapter
+│       ├── activity_adapter.py # OpenCode activity integration
+│       └── activity_plugin.js # passive OpenCode event bridge
 ├── native_sessions/
 │   ├── __init__.py      # public native-session API
 │   ├── _utils.py         # shared command, normalization, and SQLite helpers
@@ -1265,8 +1267,10 @@ The `harnesses/` package owns generic terminal and harness concepts plus the
 Fish shell definition. The `providers/` package owns coding-agent-specific
 harness definitions, native-session implementations, and their registries.
 The `native_sessions/` package owns only provider-neutral native-session
-contracts, models, utilities, and service logic. Activity implementations
-remain in `activity/` and will migrate in a later refactor.
+contracts, models, utilities, and service logic. The `activity/` package owns
+provider-neutral activity models, reducer, transport, adapter contract, and
+service; provider normalization and launch preparation live under each
+provider package.
 
 Packages are appropriate here because harnesses, providers, sessions, and
 terminal hosting are distinct architectural concepts with multiple
