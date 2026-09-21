@@ -8,16 +8,9 @@ from unittest.mock import AsyncMock
 from textual.widgets import ContentSwitcher, OptionList
 
 from agenthub.app import AgentHubApp
-from agenthub.harnesses import (
-    ANTIGRAVITY,
-    CODEX,
-    DEVIN,
-    OPENCODE,
-    AgentHarness,
-    KeyStroke,
-    ScrollKeys,
-)
+from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
 from agenthub.presentation import HomeScreen, SessionSidebar, SidebarTab
+from agenthub.providers import ANTIGRAVITY, CODEX, DEVIN, OPENCODE
 from agenthub.sessions import AgentSession, SessionKind, SessionState
 
 

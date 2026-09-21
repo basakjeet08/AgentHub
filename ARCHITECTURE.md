@@ -392,10 +392,10 @@ sessions; the app controls the widget tree, layout, focus, and visibility.
 
 ### AgentHarness
 
-`AgentHarness` is an immutable, semantic description of a supported coding
-agent. It answers:
+`AgentHarness` is an immutable, provider-independent description of a hosted
+command-line harness. It answers:
 
-- What kind of agent is this?
+- What kind of harness is this?
 - What stable ID identifies it in configuration and persistence?
 - What name should the UI display?
 - What command launches it?
@@ -1148,14 +1148,24 @@ src/agenthub/
 │   ├── receiver.py      # authenticated loopback event receiver
 │   └── reducer.py       # provider-neutral activity transitions
 ├── harnesses/
-│   ├── __init__.py      # public harness API
-│   ├── antigravity.py   # Antigravity definition
-│   ├── codex.py         # Codex definition
-│   ├── devin.py         # Devin definition
+│   ├── __init__.py      # public generic harness API
 │   ├── fish.py          # Fish shell definition
-│   ├── model.py         # immutable semantic models
-│   ├── opencode.py      # OpenCode definition
-│   └── registry.py      # built-in harness lookup
+│   └── model.py         # immutable semantic models
+├── providers/
+│   ├── __init__.py      # public coding-agent provider API
+│   ├── registry.py      # built-in coding-agent harness lookup
+│   ├── antigravity/
+│   │   ├── __init__.py  # Antigravity harness export
+│   │   └── harness.py   # Antigravity harness definition
+│   ├── codex/
+│   │   ├── __init__.py  # Codex harness export
+│   │   └── harness.py   # Codex harness definition
+│   ├── devin/
+│   │   ├── __init__.py  # Devin harness export
+│   │   └── harness.py   # Devin harness definition
+│   └── opencode/
+│       ├── __init__.py  # OpenCode harness export
+│       └── harness.py   # OpenCode harness definition
 ├── native_sessions/
 │   ├── __init__.py      # public native-session API
 │   ├── _normalize.py     # shared provider-record validation
@@ -1250,11 +1260,17 @@ tests/
     └── test_terminal_paste.py
 ```
 
-Packages are appropriate here because harnesses, sessions, and terminal hosting
-are already distinct architectural concepts with multiple responsibilities or
-expected implementations. Imports elsewhere should prefer the package public
-APIs rather than reaching into `model.py`, `manager.py`, or individual harness
-modules.
+The `harnesses/` package owns generic terminal and harness concepts plus the
+Fish shell definition. The `providers/` package owns coding-agent-specific
+harness definitions and their registry. Provider-specific native-session and
+activity implementations remain in `native_sessions/` and `activity/`
+temporarily and will migrate in later refactors.
+
+Packages are appropriate here because harnesses, providers, sessions, and
+terminal hosting are distinct architectural concepts with multiple
+responsibilities or expected implementations. Imports elsewhere should prefer
+the package public APIs rather than reaching into `model.py`, `manager.py`, or
+individual provider harness modules.
 
 Do not create empty `widgets/`, `persistence/`, or `config/` packages yet. Add
 those when the corresponding implementation begins.

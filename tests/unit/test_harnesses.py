@@ -4,16 +4,19 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from agenthub.harnesses import (
+from agenthub.harnesses import FISH, AgentHarness
+from agenthub.providers import (
     ANTIGRAVITY,
     CODEX,
     DEFAULT_HARNESS,
     DEVIN,
-    FISH,
     HARNESSES,
     OPENCODE,
-    AgentHarness,
 )
+from agenthub.providers.antigravity import ANTIGRAVITY as ANTIGRAVITY_PACKAGE
+from agenthub.providers.codex import CODEX as CODEX_PACKAGE
+from agenthub.providers.devin import DEVIN as DEVIN_PACKAGE
+from agenthub.providers.opencode import OPENCODE as OPENCODE_PACKAGE
 
 
 def test_opencode_uses_stable_registry_identity() -> None:
@@ -22,6 +25,14 @@ def test_opencode_uses_stable_registry_identity() -> None:
     assert OPENCODE.display_name == "OpenCode"
     assert OPENCODE.command == ("opencode",)
     assert OPENCODE.icon == "💻"
+    assert OPENCODE.scroll is not None
+    assert OPENCODE.scroll.down.key == "e"
+    assert OPENCODE.scroll.down.ctrl is True
+    assert OPENCODE.scroll.down.alt is True
+    assert OPENCODE.scroll.up.key == "y"
+    assert OPENCODE.scroll.up.ctrl is True
+    assert OPENCODE.scroll.up.alt is True
+    assert OPENCODE.scroll.steps == 3
 
 
 @pytest.mark.parametrize(
@@ -54,6 +65,23 @@ def test_registry_contains_only_supported_coding_agents() -> None:
         DEVIN.id,
         OPENCODE.id,
     }
+    assert tuple(HARNESSES) == ("opencode", "codex", "antigravity", "devin")
+
+
+@pytest.mark.parametrize(
+    ("package_harness", "registry_harness"),
+    [
+        (ANTIGRAVITY_PACKAGE, ANTIGRAVITY),
+        (CODEX_PACKAGE, CODEX),
+        (DEVIN_PACKAGE, DEVIN),
+        (OPENCODE_PACKAGE, OPENCODE),
+    ],
+)
+def test_provider_packages_export_their_registered_harness(
+    package_harness: AgentHarness,
+    registry_harness: AgentHarness,
+) -> None:
+    assert package_harness is registry_harness
 
 
 def test_fish_is_a_shell_runtime_without_agent_scroll_keys() -> None:

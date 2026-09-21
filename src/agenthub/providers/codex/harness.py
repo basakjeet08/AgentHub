@@ -1,6 +1,6 @@
 """Codex harness definition."""
 
-from .model import AgentHarness
+from agenthub.harnesses import AgentHarness
 
 CODEX = AgentHarness(
     id="codex",

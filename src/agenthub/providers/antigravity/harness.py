@@ -1,6 +1,6 @@
 """Google Antigravity CLI harness definition."""
 
-from .model import AgentHarness
+from agenthub.harnesses import AgentHarness
 
 ANTIGRAVITY = AgentHarness(
     id="antigravity",

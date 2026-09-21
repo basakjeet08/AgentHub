@@ -1,6 +1,6 @@
 """OpenCode harness definition."""
 
-from .model import AgentHarness, KeyStroke, ScrollKeys
+from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
 
 OPENCODE = AgentHarness(
     id="opencode",

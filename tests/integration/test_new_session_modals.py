@@ -11,13 +11,14 @@ from textual.pilot import Pilot
 from textual.widgets import ContentSwitcher, Label, OptionList, Static
 
 from agenthub.app import AgentHubApp
-from agenthub.harnesses import ANTIGRAVITY, DEVIN, AgentHarness
+from agenthub.harnesses import AgentHarness
 from agenthub.presentation import HomeScreen, SessionSidebar
 from agenthub.presentation.modals import (
     HarnessSelectionModal,
     WorkingDirectoryModal,
 )
 from agenthub.presentation.modals.working_directory import FolderTree
+from agenthub.providers import ANTIGRAVITY, DEVIN
 from agenthub.sessions import SessionKind
 
 

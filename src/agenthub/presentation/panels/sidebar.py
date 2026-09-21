@@ -15,7 +15,7 @@ from textual.widgets import OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from agenthub.activity import AgentActivity
-from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, OPENCODE, AgentHarness
+from agenthub.harnesses import AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 
 _ACTIVE_INDICATOR = "▌"
@@ -90,10 +90,9 @@ class SessionSidebar(Vertical):
         self._cursor_visible = True
         self._animation_tick = 0
         self._activity_animation_timer: Timer | None = None
-        self._harnesses: tuple[AgentHarness, ...] = (
-            (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
-            if harnesses is None
-            else tuple(sorted(harnesses, key=lambda harness: harness.display_name.casefold()))
+        configured_harnesses = () if harnesses is None else harnesses
+        self._harnesses: tuple[AgentHarness, ...] = tuple(
+            sorted(configured_harnesses, key=lambda harness: harness.display_name.casefold())
         )
 
     @property

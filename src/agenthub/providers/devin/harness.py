@@ -1,6 +1,6 @@
 """Devin CLI harness definition."""
 
-from .model import AgentHarness
+from agenthub.harnesses import AgentHarness
 
 DEVIN = AgentHarness(
     id="devin",

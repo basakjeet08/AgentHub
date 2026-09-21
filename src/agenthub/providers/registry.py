@@ -1,9 +1,10 @@
 """Registry of built-in coding-agent harnesses."""
 
+from agenthub.harnesses import AgentHarness
+
 from .antigravity import ANTIGRAVITY
 from .codex import CODEX
 from .devin import DEVIN
-from .model import AgentHarness
 from .opencode import OPENCODE
 
 HARNESSES: dict[str, AgentHarness] = {

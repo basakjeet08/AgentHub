@@ -26,7 +26,7 @@ from agenthub.activity import (
     opencode_activity_environment,
     prepare_devin_activity_launch,
 )
-from agenthub.harnesses import FISH, HARNESSES, AgentHarness
+from agenthub.harnesses import FISH, AgentHarness
 from agenthub.native_sessions import (
     NATIVE_SESSION_ADAPTERS,
     NativeSession,
@@ -52,6 +52,7 @@ from agenthub.presentation.modals import (
     SessionSelectionModal,
     WorkingDirectoryModal,
 )
+from agenthub.providers import HARNESSES
 from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
 
@@ -146,6 +147,7 @@ class AgentHubApp(App):
             with Horizontal(id="application-body"):
                 yield SessionSidebar(
                     sessions,
+                    harnesses=self._agent_harnesses.values(),
                     id="session-sidebar",
                 )
                 yield ContentSwitcher(
