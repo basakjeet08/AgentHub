@@ -5,15 +5,15 @@ from textual.widgets import Button, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.native_sessions import NativeSessionService
-from agenthub.presentation import AgentHubStatusBar, HomeScreen, SessionSidebar, SidebarTab
+from agenthub.presentation import HomeScreen, SessionSidebar, SidebarTab
 from agenthub.presentation.key_bindings import APPLICATION_BINDINGS
-from agenthub.presentation.panels.status_bar import UNLOCKED_ICON
+from agenthub.presentation.panels.sidebar import UNLOCKED_ICON
 from agenthub.terminal import AgentTerminal
 
 _GLOBAL_REFERENCE = [
+    ("Ctrl+G", "Lock / unlock"),
     ("Ctrl+P", "Command palette"),
     ("Ctrl+S", "Focus sidebar"),
-    ("Ctrl+G", "Lock / unlock"),
     ("Ctrl+Shift+R", "Refresh native sessions"),
 ]
 
@@ -24,7 +24,7 @@ _SIDEBAR_REFERENCE = [
 ]
 
 
-async def test_empty_startup_shows_static_home_sidebar_and_real_status() -> None:
+async def test_empty_startup_shows_static_home_and_sidebar() -> None:
     app = AgentHubApp()
 
     async with app.run_test(size=(100, 36)) as pilot:
@@ -65,20 +65,12 @@ async def test_empty_startup_shows_static_home_sidebar_and_real_status() -> None
         assert brand.styles.border_bottom == ("solid", Color.parse("#BB9AF7"))
         assert sidebar.query_one(OptionList).styles.overflow_y == "auto"
 
-        status = app.query_one(AgentHubStatusBar)
-        assert [child.id for child in status.children] == [
-            "session-metrics",
-            "lock-status",
-        ]
-        assert status.query_one("#mode-indicator", Static).content == UNLOCKED_ICON
-        assert status.query_one("#mode-label", Static).content == "Unlocked"
-        assert status.query_one("#mode-action", Static).content == "Ctrl+G Lock"
-        assert status.query_one("#session-count", Static).content == "Sessions 0"
-        assert status.query_one("#running-count", Static).content == "Running 0"
-        assert (
-            status.query_one("#running-count", Static).region.x
-            < status.query_one("#mode-indicator", Static).region.x
-        )
+        assert sidebar.query_one("#sidebar-mode-indicator", Static).content == UNLOCKED_ICON
+        assert sidebar.query_one("#sidebar-mode-label", Static).content == "Unlocked"
+        assert sidebar.query_one("#sidebar-mode-action", Static).content == "Ctrl+G Lock"
+        lock_status = sidebar.query_one("#sidebar-lock-status")
+        assert lock_status.region.bottom == sidebar.content_region.bottom
+        assert lock_status.content_region.height == 1
 
         assert AgentHubApp.BINDINGS == list(APPLICATION_BINDINGS)
         assert [(binding.key, binding.action) for binding in APPLICATION_BINDINGS] == [

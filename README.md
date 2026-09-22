@@ -21,8 +21,8 @@ multi-session runtime architecture:
 - It starts on a lightweight Home screen with essential shortcuts, discovers
   native conversations in the background, and does not launch a coding-agent
   process until one is selected.
-- It provides a persistent session sidebar, Home content area, and application
-  status bar.
+- It provides a persistent session sidebar with keyboard-ownership status and
+  a Home content area.
 - It uses Textual's built-in Tokyo Night theme with shared semantic component
   styles.
 - It represents logical native conversations with `AgentSession`, keeps their

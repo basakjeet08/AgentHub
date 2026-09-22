@@ -10,7 +10,7 @@ from typing import ClassVar
 
 from textual.app import App, ComposeResult, SystemCommand
 from textual.command import CommandPalette
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher
@@ -33,7 +33,6 @@ from agenthub.notifications import (
     DesktopNotificationService,
 )
 from agenthub.presentation import (
-    AgentHubStatusBar,
     HomeScreen,
     SessionSidebar,
 )
@@ -80,7 +79,6 @@ class AgentHubApp(App):
         "presentation/styles/app.tcss",
         "presentation/styles/screens/home.tcss",
         "presentation/styles/panels/sidebar.tcss",
-        "presentation/styles/panels/status_bar.tcss",
     ]
 
     BINDINGS: ClassVar = list(APPLICATION_BINDINGS)
@@ -133,28 +131,22 @@ class AgentHubApp(App):
             if active_session is not None and active_session.terminal is not None
             else "home-screen"
         )
-        with Vertical(id="app-shell"):
-            with Horizontal(id="application-body"):
-                yield SessionSidebar(
-                    sessions,
-                    harnesses=self._agent_harnesses.values(),
-                    id="session-sidebar",
-                )
-                yield ContentSwitcher(
-                    HomeScreen(id="home-screen"),
-                    *(
-                        session.terminal
-                        for session in sessions
-                        if session.terminal is not None
-                    ),
-                    initial=initial,
-                    id="session-content",
-                )
-            yield AgentHubStatusBar(
-                session_count=len(sessions),
-                running_count=0,
+        with Horizontal(id="application-body"):
+            yield SessionSidebar(
+                sessions,
+                harnesses=self._agent_harnesses.values(),
                 locked=self.hub_locked,
-                id="status-bar",
+                id="session-sidebar",
+            )
+            yield ContentSwitcher(
+                HomeScreen(id="home-screen"),
+                *(
+                    session.terminal
+                    for session in sessions
+                    if session.terminal is not None
+                ),
+                initial=initial,
+                id="session-content",
             )
 
     def on_mount(self) -> None:
@@ -165,7 +157,6 @@ class AgentHubApp(App):
             self.show_session(session.id)
         else:
             self.query_one(HomeScreen).focus()
-        self.call_after_refresh(self._refresh_status)
         self._start_native_session_discovery()
 
     async def on_unmount(self) -> None:
@@ -245,7 +236,6 @@ class AgentHubApp(App):
             else:
                 session.state = SessionState.UNLOADED
             self._refresh_sidebar()
-            self._refresh_status()
             self.notify(
                 f"Could not resume {session.name}: {error}",
                 severity="error",
@@ -253,7 +243,6 @@ class AgentHubApp(App):
             return session
 
         self._refresh_sidebar()
-        self._refresh_status()
         return self.show_session(session.id)
 
     async def _discover_native_sessions(self) -> None:
@@ -304,7 +293,6 @@ class AgentHubApp(App):
 
             summary_lines.append(f"{harness.display_name} - {len(result.sessions)}")
         self._refresh_sidebar()
-        self._refresh_status()
 
         if discovery_failed:
             completion_message = "Session discovery completed with errors:"
@@ -436,14 +424,14 @@ class AgentHubApp(App):
         return super().check_action(action, parameters)
 
     def watch_hub_locked(self, locked: bool) -> None:
-        """Keep binding metadata and the authoritative status text current."""
+        """Keep bindings and the sidebar's keyboard-ownership text current."""
 
         self.refresh_bindings()
         if not self.is_running:
             return
-        status_bars = self.query(AgentHubStatusBar).nodes
-        if status_bars:
-            status_bars[0].update_mode(locked)
+        sidebars = self.query(SessionSidebar).nodes
+        if sidebars:
+            sidebars[0].update_lock_mode(locked)
 
     def action_toggle_hub_lock(self) -> None:
         """Transfer navigation-key ownership between AgentHub and the terminal."""
@@ -874,7 +862,6 @@ class AgentHubApp(App):
         if was_active:
             self._show_home()
         self._refresh_sidebar()
-        self._refresh_status()
 
         try:
             if terminal is not None and terminal.is_mounted:
@@ -922,12 +909,10 @@ class AgentHubApp(App):
             if current is not None and current.state is SessionState.DELETING:
                 self.session_manager.fail_native_deletion(session.id)
             self._refresh_sidebar()
-            self._refresh_status()
             self._notify_native_deletion_error(session, error)
             return
 
         self._refresh_sidebar()
-        self._refresh_status()
         self.notify(
             f'Deleted "{native_session.name}" permanently.',
             title="Native session deleted",
@@ -957,7 +942,6 @@ class AgentHubApp(App):
             return
 
         self._refresh_sidebar()
-        self._refresh_status()
         self.notify(
             f"Linked running terminal to {linked.name}.",
             title="Native session linked",
@@ -1050,7 +1034,6 @@ class AgentHubApp(App):
                 if previous_session in self.session_manager.sessions:
                     self.session_manager.select(previous_session.id)
             raise
-        self.call_after_refresh(self._refresh_status)
         return session
 
     async def _prepare_activity_tracking(
@@ -1206,20 +1189,6 @@ class AgentHubApp(App):
         if session is not None:
             await self._handle_session_process_exited(session, message.exit_code)
 
-    def _refresh_status(self) -> None:
-        """Update the status bar using only current runtime facts."""
-
-        sessions = self.session_manager.sessions
-        running_agents = sum(
-            session.terminal is not None and session.terminal.is_process_running
-            for session in self._agent_sessions()
-        )
-        self.query_one(AgentHubStatusBar).update_state(
-            session_count=len(sessions),
-            running_count=running_agents,
-            locked=self.hub_locked,
-        )
-
     async def _handle_session_process_exited(
         self,
         session: AgentSession,
@@ -1249,10 +1218,8 @@ class AgentHubApp(App):
             await terminal.remove()
 
         self._refresh_sidebar()
-        self._refresh_status()
         result = await self._reconcile_native_provider(session.harness.id)
         self._refresh_sidebar()
-        self._refresh_status()
         if result.error is not None:
             self.notify(
                 f"Could not reconcile {session.harness.display_name} after exit: "
@@ -1279,7 +1246,6 @@ class AgentHubApp(App):
             await terminal.remove()
 
         self._refresh_sidebar()
-        self._refresh_status()
 
     def _show_home(self) -> None:
         """Display and focus Home without changing keyboard-ownership mode."""

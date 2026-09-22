@@ -1,5 +1,7 @@
 """Lightweight Home orientation and shortcut reference."""
 
+from typing import cast
+
 from textual.app import ComposeResult
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
@@ -11,30 +13,11 @@ from agenthub.presentation.key_bindings import (
     TOGGLE_HUB_LOCK_BINDING,
 )
 
-
-def _display_key(binding_key: str | None, fallback: str) -> str:
-    """Return a binding's display label with its configured key as fallback."""
-
-    return binding_key or fallback
-
-
 _GLOBAL_SHORTCUTS = (
-    (
-        _display_key(COMMAND_PALETTE_BINDING.key_display, COMMAND_PALETTE_BINDING.key),
-        "Command palette",
-    ),
-    (
-        _display_key(FOCUS_SIDEBAR_BINDING.key_display, FOCUS_SIDEBAR_BINDING.key),
-        "Focus sidebar",
-    ),
-    (
-        _display_key(TOGGLE_HUB_LOCK_BINDING.key_display, TOGGLE_HUB_LOCK_BINDING.key),
-        "Lock / unlock",
-    ),
-    (
-        _display_key(RESYNC_SESSIONS_BINDING.key_display, RESYNC_SESSIONS_BINDING.key),
-        "Refresh native sessions",
-    ),
+    (cast(str, TOGGLE_HUB_LOCK_BINDING.key_display), "Lock / unlock"),
+    (cast(str, COMMAND_PALETTE_BINDING.key_display), "Command palette"),
+    (cast(str, FOCUS_SIDEBAR_BINDING.key_display), "Focus sidebar"),
+    (cast(str, RESYNC_SESSIONS_BINDING.key_display), "Refresh native sessions"),
 )
 
 _SIDEBAR_SHORTCUTS = (

@@ -102,3 +102,40 @@ SessionSidebar,
     color: $text-muted;
     overflow: hidden;
 }
+
+#sidebar-lock-status {
+    width: 100%;
+    height: 3;
+    padding: 1 1 0 1;
+    border-top: solid $panel;
+    color: $text-muted;
+}
+
+#sidebar-mode-indicator {
+    width: 1;
+    height: 1;
+    margin-right: 1;
+    content-align: center middle;
+    text-align: center;
+}
+
+SessionSidebar.-locked #sidebar-mode-indicator {
+    color: $success;
+}
+
+SessionSidebar.-unlocked #sidebar-mode-indicator {
+    color: $warning;
+}
+
+#sidebar-mode-label {
+    width: 1fr;
+    color: $foreground;
+    text-style: bold;
+}
+
+#sidebar-mode-action {
+    width: auto;
+    margin-left: 1;
+    color: $secondary;
+    text-align: right;
+}

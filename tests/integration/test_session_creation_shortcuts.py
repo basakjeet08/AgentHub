@@ -6,11 +6,11 @@ from unittest.mock import Mock
 
 from bittty import constants
 from textual.content import Content
-from textual.widgets import ContentSwitcher, Input, OptionList, Static
+from textual.widgets import ContentSwitcher, Input, OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
+from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.presentation.modals import (
     ShellSessionNameInputModal,
     WorkingDirectoryPickerModal,
@@ -117,7 +117,7 @@ async def test_new_shell_action_creates_fish_shells_and_ctrl_s_navigates(
         assert session_list.highlighted == session_list.get_option_index(shell_one.id)
 
 
-async def test_mixed_sessions_update_grouped_sidebar_and_status(
+async def test_mixed_sessions_update_grouped_sidebar(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp(
@@ -191,9 +191,6 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
             f"  {harness_badge}New session\n  {activity_indent}· Unknown",
         ]
 
-        status = app.query_one(AgentHubStatusBar)
-        assert status.query_one("#session-count", Static).content == "Sessions 4"
-        assert status.query_one("#running-count", Static).content == "Running 2"
 
 
 async def test_exited_shell_is_cleaned_up_and_new_shell_can_be_created(

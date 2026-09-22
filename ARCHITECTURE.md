@@ -34,9 +34,8 @@ main.py
    ▼
 AgentHubApp
    │
-   ├── SessionSidebar
+   ├── SessionSidebar (sessions + keyboard ownership)
    ├── HomeScreen
-   ├── AgentHubStatusBar
    └── NativeSessionService → native-session adapters → unloaded AgentSession entries
 ```
 
@@ -56,7 +55,7 @@ bittty / PTY → coding agent`.
   allowing one provider failure to prevent startup;
 - resumes unloaded conversations by exact native ID and reuses an existing
   terminal when one is already running;
-- owns the persistent sidebar, main content area, and status bar shell;
+- owns the persistent sidebar and main content area;
 - mounts every terminal runtime known at composition time inside a
   `ContentSwitcher`;
 - owns the session sidebar, active-terminal visibility, and focus;
@@ -988,16 +987,15 @@ Normal empty startup uses a persistent application shell:
 │                      │                                    │
 │                      │ Lightweight orientation            │
 │                      │ Essential shortcut reference       │
-├──────────────────────┴────────────────────────────────────┤
-│ Sessions 0   Running 0            ○ Unlocked  Ctrl+G Lock │
-└───────────────────────────────────────────────────────────┘
+│ ○ Unlocked Ctrl+G    │                                    │
+└──────────────────────┴────────────────────────────────────┘
 ```
 
-The status bar keeps session and running-agent metrics on the left while the
-keyboard-ownership state and Ctrl+G action remain grouped on the right.
+The sidebar keeps its category counts and keyboard-ownership state together.
+The Ctrl+G action hint remains anchored at the bottom of the sidebar.
 The Home screen is a content view inside the application shell rather than a
-separate Textual screen stack entry. This keeps shared navigation and status
-chrome mounted while future content changes inside the `ContentSwitcher`. Home
+separate Textual screen stack entry. This keeps shared navigation chrome mounted
+while future content changes inside the `ContentSwitcher`. Home
 contains only static orientation, a compact essential-shortcut reference, and a
 pointer to the README usage guide. It adds no focusable controls or application
 bindings and uses only page-level scrolling when a short viewport requires it.
@@ -1210,8 +1208,7 @@ src/agenthub/
     │   └── working_directory_picker.py  # directory-only tree picker
     ├── panels/
     │   ├── __init__.py
-    │   ├── sidebar.py   # session navigation panel
-    │   └── status_bar.py   # real application state and counts
+    │   └── sidebar.py   # session navigation and keyboard-ownership status
     ├── screens/
     │   ├── __init__.py
     │   └── home.py      # static landing orientation and shortcut reference
@@ -1226,8 +1223,7 @@ src/agenthub/
         │   ├── shell_session_name_input.tcss  # compact name-prompt presentation
         │   └── working_directory_picker.tcss  # directory-picker presentation
         ├── panels/
-        │   ├── sidebar.tcss # sidebar presentation styles
-        │   └── status_bar.tcss # persistent status presentation
+        │   └── sidebar.tcss # sidebar and lock-status presentation
         └── screens/
             └── home.tcss    # responsive Home landing presentation
 
@@ -1305,8 +1301,8 @@ The architectural foundation is implemented:
    to the active terminal, exit events map to the correct session, and app
    shutdown terminates both processes.
 8. A persistent application shell, Textual's built-in Tokyo Night theme,
-   responsive static Home landing view, clean zero-session sidebar, and real
-   status bar establish the shared UI foundation.
+   responsive static Home landing view, and clean zero-session sidebar
+   establish the shared UI foundation.
 9. Sidebar presentation classifies one manager-owned session collection into
    counted Loaded, Unloaded, and Shells tabs backed by the same selection flow.
 10. New Agent opens a registry-driven harness picker followed by a
@@ -1368,7 +1364,7 @@ The architectural foundation is implemented:
 
 The remaining sequence is:
 
-1. Add usage and quota details to the status bar.
+1. Add usage and quota details to the application shell.
 2. Add macOS desktop activity notification delivery.
 3. Add packaging and distribution workflows.
 
@@ -1651,9 +1647,9 @@ covered by an integration test.
 Current state: native-session adapters discover Codex, OpenCode, Devin, and
 Antigravity conversations at startup. They appear unloaded, resume by exact
 native ID when selected, and reuse an already-running terminal. The
-harness/terminal/session/manager boundaries, Home-first
-application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
-ownership, loaded/unloaded Agent grouping, registry-driven Antigravity, Codex,
+harness/terminal/session/manager boundaries, Home-first application shell,
+persistent sidebar with Locked/Unlocked keyboard ownership, loaded/unloaded
+Agent grouping, registry-driven Antigravity, Codex,
 Devin, and OpenCode selection, required session naming, working-directory
 browsing, shell creation and navigation, explicit session kinds, exited-runtime cleanup, and multi-session
 switching runtime are implemented and tested. Normal startup and incomplete or

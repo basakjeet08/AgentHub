@@ -8,7 +8,7 @@ from textual.widgets import ContentSwitcher, Static
 from agenthub.activity import AgentActivity, AgentActivityEvent, AgentActivityEventKind
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness, KeyStroke, ScrollKeys
-from agenthub.presentation import AgentHubStatusBar, HomeScreen, SessionSidebar
+from agenthub.presentation import HomeScreen, SessionSidebar
 from agenthub.sessions import AgentSession, SessionKind
 from agenthub.terminal import AgentTerminal
 
@@ -37,10 +37,8 @@ async def test_quit_action_exits_and_stops_the_active_terminal(
         assert process is not None
         assert session.terminal.has_focus
 
-        status = app.query_one(AgentHubStatusBar)
-        assert status.query_one("#mode-label", Static).content == "Unlocked"
-        assert status.query_one("#session-count", Static).content == "Sessions 1"
-        assert status.query_one("#running-count", Static).content == "Running 1"
+        sidebar = app.query_one(SessionSidebar)
+        assert sidebar.query_one("#sidebar-mode-label", Static).content == "Unlocked"
 
         await app.action_quit()
 
@@ -77,9 +75,6 @@ async def test_only_child_exiting_returns_to_empty_home() -> None:
         assert home.has_focus
         assert app.query_one(SessionSidebar).visible_session_ids == ()
         assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
-        status = app.query_one(AgentHubStatusBar)
-        assert status.query_one("#session-count", Static).content == "Sessions 0"
-        assert status.query_one("#running-count", Static).content == "Running 0"
 
 
 async def test_showing_a_done_session_acknowledges_its_attention_state(
