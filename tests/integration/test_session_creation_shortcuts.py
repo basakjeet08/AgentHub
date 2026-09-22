@@ -11,7 +11,10 @@ from textual.widgets import ContentSwitcher, Input, OptionList, Static
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
-from agenthub.presentation.modals import ShellSessionNameModal, WorkingDirectoryModal
+from agenthub.presentation.modals import (
+    ShellSessionNameInputModal,
+    WorkingDirectoryPickerModal,
+)
 from agenthub.sessions import SessionKind
 from agenthub.terminal import AgentTerminal
 
@@ -23,7 +26,7 @@ async def _create_agent(app: AgentHubApp, pilot) -> None:
     await pilot.pause()
     await pilot.press("enter")
     await pilot.pause()
-    assert isinstance(app.screen, WorkingDirectoryModal)
+    assert isinstance(app.screen, WorkingDirectoryPickerModal)
     await pilot.press("enter")
     await pilot.pause()
 
@@ -37,9 +40,9 @@ async def _create_named_shell(
 
     app.action_new_shell()
     await pilot.pause()
-    assert isinstance(app.screen, ShellSessionNameModal)
+    assert isinstance(app.screen, ShellSessionNameInputModal)
     if name is not None:
-        app.screen.query_one("#session-name-input", Input).value = name
+        app.screen.query_one("#shell-session-name-input", Input).value = name
     await pilot.press("enter")
     await pilot.pause()
 
@@ -91,7 +94,7 @@ async def test_new_shell_action_creates_fish_shells_and_ctrl_s_navigates(
         assert shell_one.cwd == Path.cwd().resolve()
         assert shell_one.terminal.working_directory == Path.cwd().resolve()
         assert shell_one is not first_agent
-        assert not isinstance(app.screen, WorkingDirectoryModal)
+        assert not isinstance(app.screen, WorkingDirectoryPickerModal)
         sidebar = app.query_one(SessionSidebar)
         session_list = app.query_one("#sidebar-session-list", OptionList)
         assert sidebar.selected_tab is SidebarTab.SHELLS
@@ -275,7 +278,7 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 1: Blank name uses default "Shell"
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, ShellSessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameInputModal)
         await pilot.press("enter")
         await pilot.pause()
         assert len(app.session_manager.sessions) == 1
@@ -284,7 +287,7 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 2: Whitespace trimming on custom name
         app.action_new_shell()
         await pilot.pause()
-        app.screen.query_one("#session-name-input", Input).value = "   Server Shell   "
+        app.screen.query_one("#shell-session-name-input", Input).value = "   Server Shell   "
         await pilot.press("enter")
         await pilot.pause()
         assert len(app.session_manager.sessions) == 2
@@ -301,10 +304,10 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 4: Canceling with Esc creates no shell
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, ShellSessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameInputModal)
         await pilot.press("escape")
         await pilot.pause()
-        assert not isinstance(app.screen, ShellSessionNameModal)
+        assert not isinstance(app.screen, ShellSessionNameInputModal)
         assert len(app.session_manager.sessions) == 3
 
 
@@ -316,7 +319,7 @@ async def test_shell_creation_modal_reentry_guard(
     async with app.run_test() as pilot:
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, ShellSessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameInputModal)
         first_modal = app.screen
 
         # Repeated New Shell actions do not push another modal.
@@ -327,13 +330,14 @@ async def test_shell_creation_modal_reentry_guard(
         # Dismiss modal
         await pilot.press("escape")
         await pilot.pause()
-        assert not isinstance(app.screen, ShellSessionNameModal)
+        assert not isinstance(app.screen, ShellSessionNameInputModal)
 
         # During New Agent flow, New Shell is also ignored.
         app.action_new_session()
         await pilot.pause()
-        from agenthub.presentation.modals import HarnessSelectionModal
-        assert isinstance(app.screen, HarnessSelectionModal)
+        from agenthub.presentation.modals import HarnessPickerModal
+
+        assert isinstance(app.screen, HarnessPickerModal)
         harness_modal = app.screen
 
         app.action_new_shell()

@@ -13,10 +13,10 @@ from textual.widgets.option_list import Option
 from agenthub.harnesses import AgentHarness
 
 
-class HarnessSelectionModal(ModalScreen[str]):
+class HarnessPickerModal(ModalScreen[str]):
     """Return the stable ID of a user-selected coding-agent harness."""
 
-    CSS_PATH = "../styles/modals/harness_selection.tcss"
+    CSS_PATH = "../styles/modals/harness_picker.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
     def __init__(self, harnesses: Iterable[AgentHarness]) -> None:
@@ -37,11 +37,11 @@ class HarnessSelectionModal(ModalScreen[str]):
                 )
             )
 
-        with Vertical(id="harness-selection-dialog"):
-            with Horizontal(id="harness-selection-header"):
-                yield Label("Select a harness", id="harness-selection-title")
+        with Vertical(id="harness-picker-dialog"):
+            with Horizontal(id="harness-picker-header"):
+                yield Label("Select a harness", id="harness-picker-title")
                 with Horizontal(
-                    id="harness-selection-cancel",
+                    id="harness-picker-cancel",
                     classes="modal-cancel",
                 ):
                     yield Static(
@@ -52,8 +52,8 @@ class HarnessSelectionModal(ModalScreen[str]):
                         "Cancel",
                         classes="modal-shortcut-description modal-cancel-description",
                     )
-            yield OptionList(*options, id="harness-selection-list")
-            with Grid(id="harness-selection-help", classes="modal-shortcut-grid"):
+            yield OptionList(*options, id="harness-picker-list")
+            with Grid(id="harness-picker-help", classes="modal-shortcut-grid"):
                 yield Static("↑/↓", classes="modal-shortcut-key")
                 yield Static("Navigate", classes="modal-shortcut-description")
                 yield Static("Enter", classes="modal-shortcut-key")
@@ -62,7 +62,7 @@ class HarnessSelectionModal(ModalScreen[str]):
     def on_mount(self) -> None:
         """Select and focus the first displayed harness when available."""
 
-        harness_list = self.query_one("#harness-selection-list", OptionList)
+        harness_list = self.query_one("#harness-picker-list", OptionList)
         if harness_list.options:
             harness_list.highlighted = 0
 

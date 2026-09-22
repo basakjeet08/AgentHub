@@ -1,9 +1,9 @@
-ShellSessionNameModal {
+ShellSessionNameInputModal {
     align: center middle;
     background: $background 70%;
 }
 
-#session-name-dialog {
+#shell-session-name-input-dialog {
     width: 54;
     max-width: 90%;
     height: auto;
@@ -12,25 +12,25 @@ ShellSessionNameModal {
     border: tall $panel;
 }
 
-#session-name-header {
+#shell-session-name-input-header {
     width: 100%;
     height: 2;
 }
 
-#session-name-title {
+#shell-session-name-input-title {
     width: 1fr;
     height: 1;
     color: $foreground;
     text-style: bold;
 }
 
-#session-name-label {
+#shell-session-name-input-label {
     width: 100%;
     height: 1;
     color: $foreground;
 }
 
-#session-name-input {
+#shell-session-name-input {
     width: 100%;
     margin-top: 1;
     margin-bottom: 1;
@@ -39,11 +39,11 @@ ShellSessionNameModal {
     border: tall $panel;
 }
 
-#session-name-input:focus {
+#shell-session-name-input:focus {
     border: tall $primary;
 }
 
-#session-name-help {
+#shell-session-name-input-help {
     width: 100%;
     height: 1;
 }

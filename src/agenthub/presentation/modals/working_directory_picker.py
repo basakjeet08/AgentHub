@@ -28,7 +28,7 @@ def _format_display_path(path: Path) -> str:
     return "~" if relative == Path() else f"~/{relative}"
 
 
-class FolderTree(DirectoryTree):
+class DirectoryPickerTree(DirectoryTree):
     """DirectoryTree variant that displays folders only."""
 
     class NameFilterChanged(Message):
@@ -247,10 +247,10 @@ class FolderTree(DirectoryTree):
             self.move_cursor(node.children[0])
 
 
-class WorkingDirectoryModal(ModalScreen[Path]):
+class WorkingDirectoryPickerModal(ModalScreen[Path]):
     """Collect a normalized working directory without creating a runtime."""
 
-    CSS_PATH = "../styles/modals/working_directory.tcss"
+    CSS_PATH = "../styles/modals/working_directory_picker.tcss"
     BINDINGS: ClassVar = [
         Binding("ctrl+h", "toggle_hidden", show=False),
         Binding("escape", "cancel", show=False),
@@ -265,14 +265,14 @@ class WorkingDirectoryModal(ModalScreen[Path]):
     def compose(self) -> ComposeResult:
         """Compose the directory tree, selection preview, and help text."""
 
-        with Vertical(id="working-directory-dialog"):
-            with Horizontal(id="working-directory-header"):
+        with Vertical(id="working-directory-picker-dialog"):
+            with Horizontal(id="working-directory-picker-header"):
                 yield Label(
                     "Choose Working Directory",
-                    id="working-directory-title",
+                    id="working-directory-picker-title",
                 )
                 with Horizontal(
-                    id="working-directory-cancel",
+                    id="working-directory-picker-cancel",
                     classes="modal-cancel",
                 ):
                     yield Static(
@@ -283,20 +283,23 @@ class WorkingDirectoryModal(ModalScreen[Path]):
                         "Cancel",
                         classes="modal-shortcut-description modal-cancel-description",
                     )
-            yield FolderTree(self._root, id="working-directory-tree")
-            with Horizontal(id="working-directory-selected-row"):
-                yield Label("Selected", id="working-directory-selected-label")
+            yield DirectoryPickerTree(self._root, id="directory-picker-tree")
+            with Horizontal(id="working-directory-picker-selected-row"):
+                yield Label("Selected", id="working-directory-picker-selected-label")
                 yield Static(
                     _format_display_path(self._root),
-                    id="working-directory-selected-path",
+                    id="working-directory-picker-selected-path",
                 )
-            with Horizontal(id="working-directory-filter-row"):
-                yield Label("Filter", id="working-directory-filter-label")
+            with Horizontal(id="working-directory-picker-filter-row"):
+                yield Label("Filter", id="working-directory-picker-filter-label")
                 yield Static(
                     "Type to filter current folder",
-                    id="working-directory-filter-value",
+                    id="working-directory-picker-filter-value",
                 )
-            with Grid(id="working-directory-help", classes="modal-shortcut-grid"):
+            with Grid(
+                id="working-directory-picker-help",
+                classes="modal-shortcut-grid",
+            ):
                 yield Static("↑/↓", classes="modal-shortcut-key")
                 yield Static("Navigate", classes="modal-shortcut-description")
                 yield Static("←", classes="modal-shortcut-key")
@@ -314,7 +317,7 @@ class WorkingDirectoryModal(ModalScreen[Path]):
                 yield Static("Ctrl+H", classes="modal-shortcut-key")
                 yield Static(
                     self._hidden_help_text(show_hidden=False),
-                    id="working-directory-hidden-help",
+                    id="working-directory-picker-hidden-help",
                     classes="modal-shortcut-description",
                 )
                 yield Static("Type", classes="modal-shortcut-key")
@@ -325,30 +328,30 @@ class WorkingDirectoryModal(ModalScreen[Path]):
     def on_mount(self) -> None:
         """Give native tree navigation immediate keyboard focus."""
 
-        self.query_one(FolderTree).focus()
+        self.query_one(DirectoryPickerTree).focus()
 
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
         """Preview the directory under the native tree cursor."""
 
         data = event.node.data
         if data is not None:
-            self.query_one("#working-directory-selected-path", Static).update(
+            self.query_one("#working-directory-picker-selected-path", Static).update(
                 _format_display_path(data.path)
             )
 
-    def on_folder_tree_name_filter_changed(
+    def on_directory_picker_tree_name_filter_changed(
         self,
-        event: FolderTree.NameFilterChanged,
+        event: DirectoryPickerTree.NameFilterChanged,
     ) -> None:
         """Keep the visible filter state synchronized with tree navigation."""
 
         event.stop()
-        self._update_filter_status(self.query_one(FolderTree))
+        self._update_filter_status(self.query_one(DirectoryPickerTree))
 
     async def on_key(self, event: events.Key) -> None:
         """Turn unmodified printable keys into a local directory-name filter."""
 
-        tree = self.query_one(FolderTree)
+        tree = self.query_one(DirectoryPickerTree)
         if not tree.has_focus:
             return
 
@@ -388,12 +391,12 @@ class WorkingDirectoryModal(ModalScreen[Path]):
         """Confirm the authoritative DirectoryTree selection as a real Path."""
 
         event.stop()
-        tree = self.query_one(FolderTree)
+        tree = self.query_one(DirectoryPickerTree)
         if tree.name_filter_query and not tree.has_name_filter_matches:
             tree.focus()
             return
         selected_directory = event.path.expanduser().resolve()
-        self.query_one("#working-directory-selected-path", Static).update(
+        self.query_one("#working-directory-picker-selected-path", Static).update(
             _format_display_path(selected_directory)
         )
         self.dismiss(selected_directory)
@@ -401,7 +404,7 @@ class WorkingDirectoryModal(ModalScreen[Path]):
     async def action_toggle_hidden(self) -> None:
         """Toggle dot-prefixed directories and preserve the current tree state."""
 
-        tree = self.query_one(FolderTree)
+        tree = self.query_one(DirectoryPickerTree)
         filter_directory = tree.name_filter_directory
         tree.show_hidden = not tree.show_hidden
         await tree.reload()
@@ -413,15 +416,15 @@ class WorkingDirectoryModal(ModalScreen[Path]):
             tree.focus_nearest_loaded_ancestor(filter_directory)
         else:
             tree.focus_first_name_filter_match()
-        self.query_one("#working-directory-hidden-help", Static).update(
+        self.query_one("#working-directory-picker-hidden-help", Static).update(
             self._hidden_help_text(show_hidden=tree.show_hidden)
         )
         tree.focus()
 
-    def _update_filter_status(self, tree: FolderTree) -> None:
+    def _update_filter_status(self, tree: DirectoryPickerTree) -> None:
         """Reflect the active local query and its directory scope in the UI."""
 
-        filter_value = self.query_one("#working-directory-filter-value", Static)
+        filter_value = self.query_one("#working-directory-picker-filter-value", Static)
         if tree.name_filter_query and tree.name_filter_directory is not None:
             filter_value.update(
                 f"{_format_display_path(tree.name_filter_directory)}: "

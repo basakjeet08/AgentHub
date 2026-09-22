@@ -1,56 +1,50 @@
-NativeSessionLinkModal {
+HarnessPickerModal {
     align: center middle;
     background: $background 70%;
 }
 
-#native-session-link-dialog {
-    width: 68;
-    max-width: 94%;
+#harness-picker-dialog {
+    width: 54;
+    max-width: 90%;
     height: auto;
-    max-height: 88%;
+    max-height: 80%;
     padding: 1 2;
     background: $surface;
     border: tall $panel;
 }
 
-#native-session-link-header {
+#harness-picker-header {
     width: 100%;
     height: 2;
 }
 
-#native-session-link-title {
+#harness-picker-title {
     width: 1fr;
     height: 1;
     color: $foreground;
     text-style: bold;
 }
 
-#native-session-link-copy {
-    width: 100%;
-    height: auto;
-    margin-bottom: 1;
-}
-
-#native-session-link-list {
+#harness-picker-list {
     width: 100%;
     height: auto;
     min-height: 3;
-    max-height: 14;
+    max-height: 12;
     background: transparent;
     border: none;
 }
 
-#native-session-link-list > .option-list--option {
+#harness-picker-list > .option-list--option {
     padding: 0 1;
 }
 
-#native-session-link-list > .option-list--option-highlighted {
+#harness-picker-list > .option-list--option-highlighted {
     background: $panel;
     color: $foreground;
     text-style: bold;
 }
 
-#native-session-link-help {
+#harness-picker-help {
     width: 100%;
     height: 2;
     margin-top: 1;

@@ -13,10 +13,10 @@ from textual.widgets.option_list import Option
 from agenthub.sessions import AgentSession
 
 
-class OpenSessionModal(ModalScreen[str]):
+class SessionPickerModal(ModalScreen[str]):
     """Return the AgentHub ID of a user-selected openable session."""
 
-    CSS_PATH = "../styles/modals/open_session.tcss"
+    CSS_PATH = "../styles/modals/session_picker.tcss"
     BINDINGS: ClassVar = [
         Binding("escape", "cancel", show=False),
         Binding("up", "cursor_up", show=False, priority=True),
@@ -47,11 +47,11 @@ class OpenSessionModal(ModalScreen[str]):
                 )
             )
 
-        with Vertical(id="session-selection-dialog"):
-            with Horizontal(id="session-selection-header"):
-                yield Label("Open Session", id="session-selection-title")
+        with Vertical(id="session-picker-dialog"):
+            with Horizontal(id="session-picker-header"):
+                yield Label("Open Session", id="session-picker-title")
                 with Horizontal(
-                    id="session-selection-cancel",
+                    id="session-picker-cancel",
                     classes="modal-cancel",
                 ):
                     yield Static(
@@ -64,31 +64,31 @@ class OpenSessionModal(ModalScreen[str]):
                     )
             yield Static(
                 "Choose an Agent or Shell session to open.",
-                id="session-selection-copy",
+                id="session-picker-copy",
                 classes="muted",
             )
             yield Input(
                 placeholder="Search by harness or session title",
-                id="session-selection-search",
+                id="session-picker-search",
             )
-            yield OptionList(*options, id="session-selection-list")
+            yield OptionList(*options, id="session-picker-list")
             yield Static(
                 "No matching sessions.",
-                id="session-selection-empty",
+                id="session-picker-empty",
                 classes="muted",
             )
             yield Static(
                 "Harnesses",
-                id="session-selection-legend-title",
+                id="session-picker-legend-title",
                 classes="muted",
             )
-            with Grid(id="session-selection-legend"):
+            with Grid(id="session-picker-legend"):
                 for harness in self._harnesses:
                     yield Static(
                         f"{harness.icon} {harness.display_name}",
-                        classes="session-selection-legend-item",
+                        classes="session-picker-legend-item",
                     )
-            with Grid(id="session-selection-help", classes="modal-shortcut-grid"):
+            with Grid(id="session-picker-help", classes="modal-shortcut-grid"):
                 yield Static("↑/↓", classes="modal-shortcut-key")
                 yield Static("Navigate", classes="modal-shortcut-description")
                 yield Static("Enter", classes="modal-shortcut-key")
@@ -97,11 +97,11 @@ class OpenSessionModal(ModalScreen[str]):
     def on_mount(self) -> None:
         """Select the first session and focus the search field."""
 
-        session_list = self.query_one("#session-selection-list", OptionList)
+        session_list = self.query_one("#session-picker-list", OptionList)
         if session_list.options:
             session_list.highlighted = 0
 
-        self.query_one("#session-selection-search", Input).focus()
+        self.query_one("#session-picker-search", Input).focus()
 
     def on_input_changed(self, message: Input.Changed) -> None:
         """Filter sessions by harness name or session title."""
@@ -123,16 +123,16 @@ class OpenSessionModal(ModalScreen[str]):
                     )
                 )
 
-        session_list = self.query_one("#session-selection-list", OptionList)
+        session_list = self.query_one("#session-picker-list", OptionList)
         session_list.clear_options().add_options(options)
         session_list.highlighted = 0 if options else None
-        self.query_one("#session-selection-empty", Static).display = not options
+        self.query_one("#session-picker-empty", Static).display = not options
 
     def on_input_submitted(self, message: Input.Submitted) -> None:
         """Open the highlighted filtered session directly from search."""
 
         message.stop()
-        self.query_one("#session-selection-list", OptionList).action_select()
+        self.query_one("#session-picker-list", OptionList).action_select()
 
     def on_option_list_option_selected(
         self,
@@ -152,9 +152,9 @@ class OpenSessionModal(ModalScreen[str]):
     def action_cursor_up(self) -> None:
         """Move through filtered results without leaving the search field."""
 
-        self.query_one("#session-selection-list", OptionList).action_cursor_up()
+        self.query_one("#session-picker-list", OptionList).action_cursor_up()
 
     def action_cursor_down(self) -> None:
         """Move through filtered results without leaving the search field."""
 
-        self.query_one("#session-selection-list", OptionList).action_cursor_down()
+        self.query_one("#session-picker-list", OptionList).action_cursor_down()

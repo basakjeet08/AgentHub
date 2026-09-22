@@ -14,10 +14,10 @@ from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.presentation import HomeScreen, SessionSidebar
 from agenthub.presentation.modals import (
-    HarnessSelectionModal,
-    WorkingDirectoryModal,
+    HarnessPickerModal,
+    WorkingDirectoryPickerModal,
 )
-from agenthub.presentation.modals.working_directory import FolderTree
+from agenthub.presentation.modals.working_directory_picker import DirectoryPickerTree
 from agenthub.providers import ANTIGRAVITY, DEVIN
 from agenthub.sessions import SessionKind
 
@@ -25,18 +25,18 @@ from agenthub.sessions import SessionKind
 async def _open_working_directory_modal(
     app: AgentHubApp,
     pilot: Pilot,
-) -> WorkingDirectoryModal:
+) -> WorkingDirectoryPickerModal:
     """Select the highlighted harness without creating a runtime."""
 
     app.action_new_session()
     await pilot.pause()
     await pilot.press("enter")
     await pilot.pause()
-    assert isinstance(app.screen, WorkingDirectoryModal)
+    assert isinstance(app.screen, WorkingDirectoryPickerModal)
     return app.screen
 
 
-async def _load_tree(tree: FolderTree) -> None:
+async def _load_tree(tree: DirectoryPickerTree) -> None:
     """Wait for a deterministic view of the tree's current root."""
 
     await tree.reload_node(tree.root)
@@ -49,8 +49,8 @@ async def _confirm_directory(
 ) -> None:
     """Move the native cursor and confirm exactly once with Enter."""
 
-    assert isinstance(app.screen, WorkingDirectoryModal)
-    tree = app.screen.query_one(FolderTree)
+    assert isinstance(app.screen, WorkingDirectoryPickerModal)
+    tree = app.screen.query_one(DirectoryPickerTree)
     await _load_tree(tree)
     target = tree.root
     if target.data is None or target.data.path.resolve() != directory.resolve():
@@ -72,21 +72,21 @@ async def test_new_agent_action_opens_registry_harness_modal_without_creating() 
         await pilot.pause()
         await pilot.pause()
 
-        assert isinstance(app.screen, HarnessSelectionModal)
+        assert isinstance(app.screen, HarnessPickerModal)
         assert app.session_manager.sessions == ()
-        harness_list = app.screen.query_one("#harness-selection-list", OptionList)
+        harness_list = app.screen.query_one("#harness-picker-list", OptionList)
         assert harness_list.has_focus
         assert harness_list.highlighted == 0
-        assert str(app.screen.query_one("#harness-selection-title", Label).content) == (
+        assert str(app.screen.query_one("#harness-picker-title", Label).content) == (
             "Select a harness"
         )
-        cancel = app.screen.query_one("#harness-selection-cancel")
+        cancel = app.screen.query_one("#harness-picker-cancel")
         assert str(cancel.query_one(".modal-shortcut-key", Static).content) == "Esc"
         assert (
             str(cancel.query_one(".modal-shortcut-description", Static).content)
             == "Cancel"
         )
-        assert not app.screen.query("#harness-selection-prompt")
+        assert not app.screen.query("#harness-picker-prompt")
         assert tuple(
             (option.id, str(option.prompt)) for option in harness_list.options
         ) == (
@@ -106,7 +106,7 @@ async def test_escape_from_harness_modal_preserves_empty_home() -> None:
         await pilot.press("escape")
         await pilot.pause()
 
-        assert not isinstance(app.screen, HarnessSelectionModal)
+        assert not isinstance(app.screen, HarnessPickerModal)
         assert app.session_manager.sessions == ()
         assert app.query_one("#session-content", ContentSwitcher).current == "home-screen"
         assert app.query_one(HomeScreen).has_focus
@@ -132,9 +132,9 @@ async def test_harness_confirmation_opens_focused_directory_modal_without_creati
 
         assert app.session_manager.sessions == ()
         assert not app.query("AgentTerminal")
-        assert modal.query_one(FolderTree).path == tmp_path.resolve()
-        assert modal.query_one(FolderTree).has_focus
-        cancel = modal.query_one("#working-directory-cancel")
+        assert modal.query_one(DirectoryPickerTree).path == tmp_path.resolve()
+        assert modal.query_one(DirectoryPickerTree).has_focus
+        cancel = modal.query_one("#working-directory-picker-cancel")
         assert str(cancel.query_one(".modal-shortcut-key", Static).content) == "Esc"
         assert (
             str(cancel.query_one(".modal-shortcut-description", Static).content)
@@ -153,10 +153,10 @@ async def test_directory_modal_uses_compact_height_and_header_spacing(
 
     async with app.run_test(size=(100, 36)) as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        dialog = modal.query_one("#working-directory-dialog")
-        header = modal.query_one("#working-directory-header")
-        title = modal.query_one("#working-directory-title")
-        tree = modal.query_one(FolderTree)
+        dialog = modal.query_one("#working-directory-picker-dialog")
+        header = modal.query_one("#working-directory-picker-header")
+        title = modal.query_one("#working-directory-picker-title")
+        tree = modal.query_one(DirectoryPickerTree)
 
         assert dialog.region.height == 25
         assert header.region.height == 2
@@ -219,7 +219,7 @@ async def test_directory_modal_shows_folders_and_hides_files(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
+        tree = modal.query_one(DirectoryPickerTree)
         await _load_tree(tree)
 
         visible_paths = {
@@ -251,8 +251,8 @@ async def test_ctrl_h_toggles_hidden_directories_without_creating_runtime(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
-        hidden_help = modal.query_one("#working-directory-hidden-help", Static)
+        tree = modal.query_one(DirectoryPickerTree)
+        hidden_help = modal.query_one("#working-directory-picker-hidden-help", Static)
         await _load_tree(tree)
 
         assert {
@@ -344,8 +344,10 @@ async def test_typing_filters_current_directory_and_backspace_restores_entries(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
-        filter_value = modal.query_one("#working-directory-filter-value", Static)
+        tree = modal.query_one(DirectoryPickerTree)
+        filter_value = modal.query_one(
+            "#working-directory-picker-filter-value", Static
+        )
         await _load_tree(tree)
         projects_node = next(
             child
@@ -453,7 +455,7 @@ async def test_filter_is_local_and_filtered_directory_can_be_selected(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
+        tree = modal.query_one(DirectoryPickerTree)
         await _load_tree(tree)
         projects_node = next(
             child
@@ -533,7 +535,7 @@ async def test_enter_with_no_filter_matches_does_not_select_scope_directory(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
+        tree = modal.query_one(DirectoryPickerTree)
         await _load_tree(tree)
         projects_node = next(
             child
@@ -575,7 +577,7 @@ async def test_filter_query_supports_spaces_in_directory_names(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
+        tree = modal.query_one(DirectoryPickerTree)
         await _load_tree(tree)
 
         await pilot.press("M", "y", "space", "P", "r", "o", "j", "e", "c", "t")
@@ -608,8 +610,10 @@ async def test_right_enters_filtered_directory_with_a_fresh_filter(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
-        filter_value = modal.query_one("#working-directory-filter-value", Static)
+        tree = modal.query_one(DirectoryPickerTree)
+        filter_value = modal.query_one(
+            "#working-directory-picker-filter-value", Static
+        )
         await _load_tree(tree)
 
         await pilot.press(*"Projects")
@@ -663,7 +667,7 @@ async def test_filter_composes_with_hidden_toggle_and_escape_still_cancels(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
+        tree = modal.query_one(DirectoryPickerTree)
         await _load_tree(tree)
 
         await pilot.press("p", "r", "i", "v", "a", "t", "e")
@@ -688,7 +692,7 @@ async def test_filter_composes_with_hidden_toggle_and_escape_still_cancels(
         await pilot.press("escape")
         await pilot.pause()
 
-        assert not isinstance(app.screen, WorkingDirectoryModal)
+        assert not isinstance(app.screen, WorkingDirectoryPickerModal)
         assert app.session_manager.sessions == ()
 
 
@@ -706,8 +710,10 @@ async def test_hiding_active_hidden_filter_scope_clears_filter(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
-        filter_value = modal.query_one("#working-directory-filter-value", Static)
+        tree = modal.query_one(DirectoryPickerTree)
+        filter_value = modal.query_one(
+            "#working-directory-picker-filter-value", Static
+        )
         await _load_tree(tree)
         await pilot.press("ctrl+h")
         await pilot.pause()
@@ -770,7 +776,7 @@ async def test_directory_modal_expands_and_selects_a_nested_folder(
 
     async with app.run_test() as pilot:
         modal = await _open_working_directory_modal(app, pilot)
-        tree = modal.query_one(FolderTree)
+        tree = modal.query_one(DirectoryPickerTree)
         await _load_tree(tree)
         projects_node = next(
             node
@@ -946,13 +952,13 @@ async def test_multiple_harness_navigation_connects_selection_to_fresh_session(
     async with app.run_test() as pilot:
         app.action_new_session()
         await pilot.pause()
-        harness_list = app.screen.query_one("#harness-selection-list", OptionList)
+        harness_list = app.screen.query_one("#harness-picker-list", OptionList)
         await pilot.press("down")
         assert harness_list.highlighted == 1
 
         await pilot.press("enter")
         await pilot.pause()
-        assert isinstance(app.screen, WorkingDirectoryModal)
+        assert isinstance(app.screen, WorkingDirectoryPickerModal)
         assert app.session_manager.sessions == ()
         await _confirm_directory(app, pilot, tmp_path)
         session = app.session_manager.active_session
@@ -990,7 +996,7 @@ async def test_cancelling_directory_with_existing_terminal_preserves_runtime(
             await pilot.press("p")
             await pilot.pause()
 
-        assert app.screen.query_one(FolderTree).name_filter_query == "p"
+        assert app.screen.query_one(DirectoryPickerTree).name_filter_query == "p"
         write_spy.assert_not_called()
 
         await pilot.press("escape")

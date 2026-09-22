@@ -3,9 +3,9 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from agenthub.presentation.modals.working_directory import (
-    FolderTree,
-    WorkingDirectoryModal,
+from agenthub.presentation.modals.working_directory_picker import (
+    DirectoryPickerTree,
+    WorkingDirectoryPickerModal,
     _format_display_path,
 )
 
@@ -23,7 +23,7 @@ def test_format_display_path_abbreviates_home_and_descendants(tmp_path: Path) ->
         assert _format_display_path(outside) == str(outside.resolve())
 
 
-def test_folder_tree_filters_out_files_and_hidden_directories_by_default(
+def test_directory_picker_tree_filters_out_files_and_hidden_directories_by_default(
     tmp_path: Path,
 ) -> None:
     first = tmp_path / "first"
@@ -34,7 +34,7 @@ def test_folder_tree_filters_out_files_and_hidden_directories_by_default(
     second.mkdir()
     hidden.mkdir()
     file_path.touch()
-    tree = FolderTree.__new__(FolderTree)
+    tree = DirectoryPickerTree.__new__(DirectoryPickerTree)
     tree.show_hidden = False
 
     paths = (first, hidden, file_path, second)
@@ -46,9 +46,9 @@ def test_folder_tree_filters_out_files_and_hidden_directories_by_default(
     assert tuple(tree.filter_paths(paths)) == (first, hidden, second)
 
 
-def test_working_directory_modal_retains_normalized_root(
+def test_working_directory_picker_modal_retains_normalized_root(
     tmp_path: Path,
 ) -> None:
-    modal = WorkingDirectoryModal(root=tmp_path / ".." / tmp_path.name)
+    modal = WorkingDirectoryPickerModal(root=tmp_path / ".." / tmp_path.name)
 
     assert modal._root == tmp_path.resolve()

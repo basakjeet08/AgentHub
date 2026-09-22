@@ -13,10 +13,10 @@ from textual.widgets.option_list import Option
 from agenthub.sessions import AgentSession
 
 
-class NativeSessionLinkModal(ModalScreen[str]):
+class SessionLinkModal(ModalScreen[str]):
     """Return the AgentHub row ID of a user-selected native conversation."""
 
-    CSS_PATH = "../styles/modals/native_session_link.tcss"
+    CSS_PATH = "../styles/modals/session_link.tcss"
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
     def __init__(
@@ -37,14 +37,14 @@ class NativeSessionLinkModal(ModalScreen[str]):
         for session in self._candidates:
             options.append(Option(session.name, id=session.id))
 
-        with Vertical(id="native-session-link-dialog"):
-            with Horizontal(id="native-session-link-header"):
+        with Vertical(id="session-link-dialog"):
+            with Horizontal(id="session-link-header"):
                 yield Label(
                     f"Link {self._harness_display_name} Session",
-                    id="native-session-link-title",
+                    id="session-link-title",
                 )
                 with Horizontal(
-                    id="native-session-link-cancel",
+                    id="session-link-cancel",
                     classes="modal-cancel",
                 ):
                     yield Static(
@@ -57,11 +57,11 @@ class NativeSessionLinkModal(ModalScreen[str]):
                     )
             yield Static(
                 "Choose the native conversation opened by this running terminal.",
-                id="native-session-link-copy",
+                id="session-link-copy",
                 classes="muted",
             )
-            yield OptionList(*options, id="native-session-link-list")
-            with Grid(id="native-session-link-help", classes="modal-shortcut-grid"):
+            yield OptionList(*options, id="session-link-list")
+            with Grid(id="session-link-help", classes="modal-shortcut-grid"):
                 yield Static("↑/↓", classes="modal-shortcut-key")
                 yield Static("Navigate", classes="modal-shortcut-description")
                 yield Static("Enter", classes="modal-shortcut-key")
@@ -70,7 +70,7 @@ class NativeSessionLinkModal(ModalScreen[str]):
     def on_mount(self) -> None:
         """Select and focus the first native conversation."""
 
-        session_list = self.query_one("#native-session-link-list", OptionList)
+        session_list = self.query_one("#session-link-list", OptionList)
         if session_list.options:
             session_list.highlighted = 0
 

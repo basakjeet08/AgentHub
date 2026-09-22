@@ -39,24 +39,24 @@ from agenthub.presentation import (
 )
 from agenthub.presentation.key_bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
 from agenthub.presentation.modals import (
-    HarnessSelectionModal,
-    NativeSessionDeleteModal,
-    NativeSessionLinkModal,
-    OpenSessionModal,
-    ShellSessionNameModal,
-    WorkingDirectoryModal,
+    HarnessPickerModal,
+    SessionDeleteConfirmationModal,
+    SessionLinkModal,
+    SessionPickerModal,
+    ShellSessionNameInputModal,
+    WorkingDirectoryPickerModal,
 )
 from agenthub.providers import ACTIVITY_ADAPTERS, HARNESSES, NATIVE_SESSION_ADAPTERS
 from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
 
 _SESSION_WORKFLOW_MODALS = (
-    HarnessSelectionModal,
-    NativeSessionDeleteModal,
-    NativeSessionLinkModal,
-    OpenSessionModal,
-    ShellSessionNameModal,
-    WorkingDirectoryModal,
+    HarnessPickerModal,
+    SessionPickerModal,
+    SessionDeleteConfirmationModal,
+    SessionLinkModal,
+    ShellSessionNameInputModal,
+    WorkingDirectoryPickerModal,
 )
 
 _FRESH_AGENT_NAME = "New session"
@@ -466,7 +466,7 @@ class AgentHubApp(App):
         if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
             return
 
-        self.push_screen(ShellSessionNameModal(), self._on_shell_name_selected)
+        self.push_screen(ShellSessionNameInputModal(), self._on_shell_name_selected)
 
     async def _on_shell_name_selected(self, name: str | None) -> None:
         """Create and focus a new Fish shell session with the specified or default name."""
@@ -608,7 +608,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            HarnessSelectionModal(self._agent_harnesses.values()),
+            HarnessPickerModal(self._agent_harnesses.values()),
             self._on_harness_selected,
         )
 
@@ -632,7 +632,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            OpenSessionModal(sessions),
+            SessionPickerModal(sessions),
             self._on_open_session_selected,
         )
 
@@ -724,7 +724,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            NativeSessionLinkModal(pending.harness.display_name, candidates),
+            SessionLinkModal(pending.harness.display_name, candidates),
             partial(self._on_native_session_link_selected, pending.id),
         )
 
@@ -784,7 +784,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            NativeSessionDeleteModal(session.name),
+            SessionDeleteConfirmationModal(session.name),
             partial(self._on_native_session_delete_confirmed, session.id),
         )
 
@@ -972,7 +972,7 @@ class AgentHubApp(App):
 
         harness = self._agent_harnesses[harness_id]
         self.push_screen(
-            WorkingDirectoryModal(root=self._working_directory_root),
+            WorkingDirectoryPickerModal(root=self._working_directory_root),
             partial(self._on_working_directory_selected, harness),
         )
 

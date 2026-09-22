@@ -11,7 +11,7 @@ from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar
-from agenthub.presentation.modals import NativeSessionDeleteModal, NativeSessionLinkModal
+from agenthub.presentation.modals import SessionDeleteConfirmationModal, SessionLinkModal
 from agenthub.sessions import SessionKind
 
 
@@ -113,7 +113,7 @@ async def test_sidebar_focus_keeps_palette_context_on_the_active_session(
         await pilot.press("enter")
         await pilot.pause()
 
-        assert isinstance(app.screen, NativeSessionLinkModal)
+        assert isinstance(app.screen, SessionLinkModal)
         await pilot.press("enter")
         await pilot.pause()
 
@@ -197,7 +197,7 @@ async def test_palette_uses_the_active_terminal_as_delete_target(
         await pilot.press("enter")
         await pilot.pause()
 
-        assert isinstance(app.screen, NativeSessionDeleteModal)
+        assert isinstance(app.screen, SessionDeleteConfirmationModal)
 
 
 async def test_palette_delete_shows_guidance_for_unsupported_provider(
@@ -243,7 +243,7 @@ async def test_palette_delete_shows_guidance_for_unsupported_provider(
         assert notification.title == "Native deletion unavailable"
         assert notification.severity == "warning"
         assert "Antigravity does not currently expose" in notification.message
-        assert not isinstance(app.screen, NativeSessionDeleteModal)
+        assert not isinstance(app.screen, SessionDeleteConfirmationModal)
         assert adapter.deleted_ids == []
 
 
@@ -289,7 +289,7 @@ async def test_delete_callback_revalidates_a_removed_captured_session(
         )
         assert notification.severity == "warning"
         assert adapter.deleted_ids == []
-        assert not isinstance(app.screen, NativeSessionDeleteModal)
+        assert not isinstance(app.screen, SessionDeleteConfirmationModal)
 
 
 async def test_shell_sidebar_focus_keeps_the_active_agent_context(

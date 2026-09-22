@@ -1008,13 +1008,13 @@ modal screens:
 Ctrl+P → New Agent
    │
    ▼
-HarnessSelectionModal
+HarnessPickerModal
    │ stable harness ID or cancellation
    ▼
 AgentHubApp resolves registry
    │ selected harness
    ▼
-WorkingDirectoryModal
+WorkingDirectoryPickerModal
    │ confirmed normalized Path or cancellation
    ▼
 AgentHubApp._create_agent_session(...)
@@ -1036,7 +1036,7 @@ Fresh runtime reconciliation is deliberately explicit rather than heuristic:
 Open running fresh Agent (native_session_id=None)
    │
    ▼ Ctrl+P → Link
-NativeSessionLinkModal
+SessionLinkModal
    │ same-harness, same-cwd, unloaded, unique-ID native rows only
    ▼ user selects one row
 SessionManager.link_native_session(...)
@@ -1077,7 +1077,7 @@ clears its filter and focuses the nearest ancestor that remains visible.
 
 Textual 8.2.8 normally loads `DirectoryTree` entries through a threaded worker.
 Under the project's Python 3.13 runtime, that worker prevents the event loop's
-default executor from shutting down after the picker is used. `FolderTree`
+default executor from shutting down after the picker is used. `DirectoryPickerTree`
 therefore retains Textual's loading queue and filesystem error handling while
 performing directory scans and entry checks in cooperative async handlers. This
 version-sensitive adapter behavior is protected by integration tests.
@@ -1202,12 +1202,12 @@ src/agenthub/
     ├── key_bindings.py  # Textual bindings and shared shortcut metadata
     ├── modals/
     │   ├── __init__.py
-    │   ├── harness_selection.py     # registry-driven agent harness picker
-    │   ├── native_session_delete.py # irreversible native-deletion confirmation
-    │   ├── native_session_link.py   # explicit native-session reconciliation
-    │   ├── open_session.py          # unified Agent/Shell open picker
-    │   ├── shell_session_name.py    # optional Fish shell session name input
-    │   └── working_directory.py     # directory-only tree picker
+    │   ├── harness_picker.py        # registry-driven agent harness picker
+    │   ├── session_picker.py        # unified Agent/Shell open picker
+    │   ├── session_delete_confirmation.py # irreversible native-deletion confirmation
+    │   ├── session_link.py          # explicit native-session reconciliation
+    │   ├── shell_session_name_input.py  # optional Fish shell session name input
+    │   └── working_directory_picker.py  # directory-only tree picker
     ├── panels/
     │   ├── __init__.py
     │   ├── sidebar.py   # session navigation panel
@@ -1219,12 +1219,12 @@ src/agenthub/
         ├── app.tcss         # persistent application-shell layout
         ├── theme.tcss       # shared component and Textual overlay styles
         ├── modals/
-        │   ├── harness_selection.tcss   # compact picker presentation
-        │   ├── native_session_delete.tcss # deletion-confirmation presentation
-        │   ├── native_session_link.tcss # native-link picker presentation
-        │   ├── open_session.tcss        # open-picker presentation
-        │   ├── shell_session_name.tcss  # compact name-prompt presentation
-        │   └── working_directory.tcss   # directory-picker presentation
+        │   ├── harness_picker.tcss      # compact picker presentation
+        │   ├── session_picker.tcss      # session-picker presentation
+        │   ├── session_delete_confirmation.tcss # deletion-confirmation presentation
+        │   ├── session_link.tcss        # native-link picker presentation
+        │   ├── shell_session_name_input.tcss  # compact name-prompt presentation
+        │   └── working_directory_picker.tcss  # directory-picker presentation
         ├── panels/
         │   ├── sidebar.tcss # sidebar presentation styles
         │   └── status_bar.tcss # persistent status presentation
@@ -1245,9 +1245,9 @@ tests/
 │   ├── test_native_session_adapters.py
 │   ├── test_activity_notifications.py
 │   ├── test_session_manager.py
-│   ├── test_shell_session_name_modal.py
+│   ├── test_shell_session_name_input_modal.py
 │   ├── test_terminal.py
-│   └── test_working_directory_modal.py
+│   └── test_working_directory_picker_modal.py
 └── integration/
     ├── test_app_lifecycle.py
     ├── test_desktop_activity_notifications.py

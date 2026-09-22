@@ -9,7 +9,7 @@ from textual.widgets import ContentSwitcher, Input, OptionList, Static
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
 from agenthub.native_sessions import LaunchSpec, NativeSession, NativeSessionService
-from agenthub.presentation.modals import OpenSessionModal
+from agenthub.presentation.modals import SessionPickerModal
 from agenthub.sessions import SessionKind
 
 
@@ -61,7 +61,7 @@ async def test_open_session_palette_command_opens_the_picker(
         await pilot.press("enter")
         await pilot.pause()
 
-        assert isinstance(app.screen, OpenSessionModal)
+        assert isinstance(app.screen, SessionPickerModal)
 
 
 async def test_open_session_picker_lists_and_switches_running_agents_and_shells(
@@ -87,9 +87,9 @@ async def test_open_session_picker_lists_and_switches_running_agents_and_shells(
         app.action_open_session()
         await pilot.pause()
 
-        assert isinstance(app.screen, OpenSessionModal)
-        session_list = app.screen.query_one("#session-selection-list", OptionList)
-        assert app.screen.query_one("#session-selection-search", Input).has_focus
+        assert isinstance(app.screen, SessionPickerModal)
+        session_list = app.screen.query_one("#session-picker-list", OptionList)
+        assert app.screen.query_one("#session-picker-search", Input).has_focus
         assert tuple(
             (option.id, str(option.prompt)) for option in session_list.options
         ) == (
@@ -145,7 +145,7 @@ async def test_open_session_picker_resumes_an_unloaded_native_agent(
 
         app.action_open_session()
         await pilot.pause()
-        session_list = app.screen.query_one("#session-selection-list", OptionList)
+        session_list = app.screen.query_one("#session-picker-list", OptionList)
         assert tuple(
             (option.id, str(option.prompt)) for option in session_list.options
         ) == (
@@ -204,10 +204,10 @@ async def test_open_session_search_filters_by_harness_and_session_title(
     async with app.run_test() as pilot:
         app.action_open_session()
         await pilot.pause()
-        search = app.screen.query_one("#session-selection-search", Input)
-        session_list = app.screen.query_one("#session-selection-list", OptionList)
-        empty = app.screen.query_one("#session-selection-empty", Static)
-        legend = app.screen.query_one("#session-selection-legend")
+        search = app.screen.query_one("#session-picker-search", Input)
+        session_list = app.screen.query_one("#session-picker-list", OptionList)
+        empty = app.screen.query_one("#session-picker-empty", Static)
+        legend = app.screen.query_one("#session-picker-legend")
 
         assert tuple(str(option.prompt) for option in session_list.options) == (
             "🌀 Authentication Refactor",
@@ -249,12 +249,12 @@ async def test_open_session_picker_escape_preserves_the_active_session(
     async with app.run_test() as pilot:
         app.action_open_session()
         await pilot.pause()
-        assert isinstance(app.screen, OpenSessionModal)
+        assert isinstance(app.screen, SessionPickerModal)
 
         await pilot.press("escape")
         await pilot.pause()
 
-        assert not isinstance(app.screen, OpenSessionModal)
+        assert not isinstance(app.screen, SessionPickerModal)
         assert app.session_manager.active_session is active
         assert active.terminal is not None and active.terminal.has_focus
 
@@ -266,7 +266,7 @@ async def test_open_session_reports_when_no_sessions_are_available() -> None:
         app.action_open_session()
         await pilot.pause()
 
-        assert not isinstance(app.screen, OpenSessionModal)
+        assert not isinstance(app.screen, SessionPickerModal)
         notification = list(app._notifications)[-1]
         assert notification.message == "No sessions are available to open."
         assert notification.severity == "information"
@@ -290,13 +290,13 @@ async def test_open_session_revalidates_a_removed_session(
     async with app.run_test() as pilot:
         app.action_open_session()
         await pilot.pause()
-        assert isinstance(app.screen, OpenSessionModal)
+        assert isinstance(app.screen, SessionPickerModal)
 
         app.session_manager.remove(session.id)
         await pilot.press("enter")
         await pilot.pause()
 
-        assert not isinstance(app.screen, OpenSessionModal)
+        assert not isinstance(app.screen, SessionPickerModal)
         notification = list(app._notifications)[-1]
         assert notification.message == "The selected session is no longer available."
         assert notification.severity == "warning"
@@ -317,11 +317,11 @@ async def test_locking_dismisses_open_session_and_refocuses_the_terminal(
     async with app.run_test() as pilot:
         app.action_open_session()
         await pilot.pause()
-        assert isinstance(app.screen, OpenSessionModal)
+        assert isinstance(app.screen, SessionPickerModal)
 
         await pilot.press("ctrl+g")
         await pilot.pause()
 
         assert app.hub_locked
-        assert not isinstance(app.screen, OpenSessionModal)
+        assert not isinstance(app.screen, SessionPickerModal)
         assert active.terminal is not None and active.terminal.has_focus

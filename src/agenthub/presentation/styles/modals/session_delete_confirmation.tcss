@@ -1,9 +1,9 @@
-NativeSessionDeleteModal {
+SessionDeleteConfirmationModal {
     align: center middle;
     background: $background 70%;
 }
 
-#native-session-delete-dialog {
+#session-delete-confirmation-dialog {
     width: 54;
     max-width: 90%;
     height: auto;
@@ -12,19 +12,19 @@ NativeSessionDeleteModal {
     border: tall $panel;
 }
 
-#native-session-delete-copy {
+#session-delete-confirmation-copy {
     width: 100%;
     height: 2;
     color: $foreground;
     text-style: bold;
 }
 
-#native-session-delete-actions {
+#session-delete-confirmation-actions {
     width: 100%;
     height: auto;
     align-horizontal: right;
 }
 
-#native-session-delete-actions Button {
+#session-delete-confirmation-actions Button {
     margin-left: 1;
 }
