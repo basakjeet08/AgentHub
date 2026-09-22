@@ -105,8 +105,8 @@ SessionSidebar,
 
 #sidebar-lock-status {
     width: 100%;
-    height: 3;
-    padding: 1 1 0 1;
+    height: 4;
+    padding: 1;
     border-top: solid $panel;
     color: $text-muted;
 }
