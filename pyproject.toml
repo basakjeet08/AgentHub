@@ -26,6 +26,7 @@ dev = [
 
 [project.scripts]
 agenthub = "agenthub.main:main"
+agenthub-v2 = "agenthub_v2.main:main"
 
 [tool.hatch.build]
 # VCS ignore files are not consulted: file selection is fully explicit
@@ -34,7 +35,7 @@ agenthub = "agenthub.main:main"
 ignore-vcs = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agenthub"]
+packages = ["src/agenthub", "src/agenthub_v2"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -48,6 +49,6 @@ cache-dir = ".cache/ruff"
 
 [tool.mypy]
 python_version = "3.13"
-files = ["src/agenthub/activity", "src/agenthub/native_sessions", "src/agenthub/providers"]
+files = ["src/agenthub/activity", "src/agenthub/native_sessions", "src/agenthub/providers", "src/agenthub_v2"]
 strict = true
 pretty = true
