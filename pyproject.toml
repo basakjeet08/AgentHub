@@ -20,6 +20,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "ruff",
+    "mypy",
     "textual-dev",
 ]
 
@@ -44,3 +45,9 @@ cache_dir = ".cache/pytest"
 target-version = "py313"
 line-length = 100
 cache-dir = ".cache/ruff"
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/agenthub/activity", "src/agenthub/native_sessions", "src/agenthub/providers"]
+strict = true
+pretty = true

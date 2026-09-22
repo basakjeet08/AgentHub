@@ -1,0 +1,30 @@
+SessionDeleteConfirmationModal {
+    align: center middle;
+    background: $background 70%;
+}
+
+#session-delete-confirmation-dialog {
+    width: 54;
+    max-width: 90%;
+    height: auto;
+    padding: 2;
+    background: $surface;
+    border: tall $panel;
+}
+
+#session-delete-confirmation-copy {
+    width: 100%;
+    height: 2;
+    color: $foreground;
+    text-style: bold;
+}
+
+#session-delete-confirmation-actions {
+    width: 100%;
+    height: auto;
+    align-horizontal: right;
+}
+
+#session-delete-confirmation-actions Button {
+    margin-left: 1;
+}

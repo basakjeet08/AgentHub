@@ -5,12 +5,16 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from bittty import constants
-from textual.widgets import ContentSwitcher, Input, OptionList, Static
+from textual.content import Content
+from textual.widgets import ContentSwitcher, Input, OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
-from agenthub.presentation.modals import SessionNameModal, WorkingDirectoryModal
+from agenthub.presentation import SessionSidebar, SidebarTab
+from agenthub.presentation.modals import (
+    ShellSessionNameInputModal,
+    WorkingDirectoryPickerModal,
+)
 from agenthub.sessions import SessionKind
 from agenthub.terminal import AgentTerminal
 
@@ -22,7 +26,7 @@ async def _create_agent(app: AgentHubApp, pilot) -> None:
     await pilot.pause()
     await pilot.press("enter")
     await pilot.pause()
-    assert isinstance(app.screen, WorkingDirectoryModal)
+    assert isinstance(app.screen, WorkingDirectoryPickerModal)
     await pilot.press("enter")
     await pilot.pause()
 
@@ -36,9 +40,9 @@ async def _create_named_shell(
 
     app.action_new_shell()
     await pilot.pause()
-    assert isinstance(app.screen, SessionNameModal)
+    assert isinstance(app.screen, ShellSessionNameInputModal)
     if name is not None:
-        app.screen.query_one("#session-name-input", Input).value = name
+        app.screen.query_one("#shell-session-name-input", Input).value = name
     await pilot.press("enter")
     await pilot.pause()
 
@@ -90,7 +94,7 @@ async def test_new_shell_action_creates_fish_shells_and_ctrl_s_navigates(
         assert shell_one.cwd == Path.cwd().resolve()
         assert shell_one.terminal.working_directory == Path.cwd().resolve()
         assert shell_one is not first_agent
-        assert not isinstance(app.screen, WorkingDirectoryModal)
+        assert not isinstance(app.screen, WorkingDirectoryPickerModal)
         sidebar = app.query_one(SessionSidebar)
         session_list = app.query_one("#sidebar-session-list", OptionList)
         assert sidebar.selected_tab is SidebarTab.SHELLS
@@ -113,7 +117,7 @@ async def test_new_shell_action_creates_fish_shells_and_ctrl_s_navigates(
         assert session_list.highlighted == session_list.get_option_index(shell_one.id)
 
 
-async def test_mixed_sessions_update_grouped_sidebar_and_status(
+async def test_mixed_sessions_update_grouped_sidebar(
     sleeping_harness: AgentHarness,
 ) -> None:
     app = AgentHubApp(
@@ -180,15 +184,13 @@ async def test_mixed_sessions_update_grouped_sidebar_and_status(
             for option_list in sidebar.query(OptionList)
             for option in option_list.options
         ]
-        activity_indent = " " * len("Test Sleeper · ")
+        harness_badge = f"{sleeping_harness.icon} "
+        activity_indent = " " * Content(harness_badge).cell_length
         assert option_prompts == [
-            f"▌ Test Sleeper · New session\n▌ {activity_indent}· Unknown",
-            f"  Test Sleeper · New session\n  {activity_indent}· Unknown",
+            f"▌ {harness_badge}New session\n▌ {activity_indent}· Unknown",
+            f"  {harness_badge}New session\n  {activity_indent}· Unknown",
         ]
 
-        status = app.query_one(AgentHubStatusBar)
-        assert status.query_one("#session-count", Static).content == "Sessions 4"
-        assert status.query_one("#running-count", Static).content == "Running 2"
 
 
 async def test_exited_shell_is_cleaned_up_and_new_shell_can_be_created(
@@ -198,6 +200,7 @@ async def test_exited_shell_is_cleaned_up_and_new_shell_can_be_created(
     reusable_shell = AgentHarness(
         id="test-reusable-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=(
             sys.executable,
             "-c",
@@ -236,6 +239,7 @@ async def test_mounted_shell_scrollback_renders_without_crashing() -> None:
     shell_harness = AgentHarness(
         id="test-output-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=(
             sys.executable,
             "-c",
@@ -271,7 +275,7 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 1: Blank name uses default "Shell"
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameInputModal)
         await pilot.press("enter")
         await pilot.pause()
         assert len(app.session_manager.sessions) == 1
@@ -280,7 +284,7 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 2: Whitespace trimming on custom name
         app.action_new_shell()
         await pilot.pause()
-        app.screen.query_one("#session-name-input", Input).value = "   Server Shell   "
+        app.screen.query_one("#shell-session-name-input", Input).value = "   Server Shell   "
         await pilot.press("enter")
         await pilot.pause()
         assert len(app.session_manager.sessions) == 2
@@ -297,10 +301,10 @@ async def test_shell_naming_modal_workflow_rules(
         # Rule 4: Canceling with Esc creates no shell
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameInputModal)
         await pilot.press("escape")
         await pilot.pause()
-        assert not isinstance(app.screen, SessionNameModal)
+        assert not isinstance(app.screen, ShellSessionNameInputModal)
         assert len(app.session_manager.sessions) == 3
 
 
@@ -312,7 +316,7 @@ async def test_shell_creation_modal_reentry_guard(
     async with app.run_test() as pilot:
         app.action_new_shell()
         await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
+        assert isinstance(app.screen, ShellSessionNameInputModal)
         first_modal = app.screen
 
         # Repeated New Shell actions do not push another modal.
@@ -323,13 +327,14 @@ async def test_shell_creation_modal_reentry_guard(
         # Dismiss modal
         await pilot.press("escape")
         await pilot.pause()
-        assert not isinstance(app.screen, SessionNameModal)
+        assert not isinstance(app.screen, ShellSessionNameInputModal)
 
         # During New Agent flow, New Shell is also ignored.
         app.action_new_session()
         await pilot.pause()
-        from agenthub.presentation.modals import HarnessSelectionModal
-        assert isinstance(app.screen, HarnessSelectionModal)
+        from agenthub.presentation.modals import HarnessPickerModal
+
+        assert isinstance(app.screen, HarnessPickerModal)
         harness_modal = app.screen
 
         app.action_new_shell()

@@ -21,6 +21,7 @@ def sleeping_harness() -> AgentHarness:
     return AgentHarness(
         id="test-sleeper",
         display_name="Test Sleeper",
+        icon="🧪",
         command=(sys.executable, "-c", "import time; time.sleep(30)"),
         scroll=ScrollKeys(
             down=KeyStroke("e", ctrl=True, alt=True),

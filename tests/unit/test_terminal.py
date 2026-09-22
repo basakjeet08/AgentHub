@@ -264,6 +264,7 @@ def test_top_anchored_partial_scroll_region_is_retained(tmp_path: Path) -> None:
     shell_harness = AgentHarness(
         id="test-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=("fish",),
         scroll=None,
     )
@@ -285,6 +286,7 @@ def test_repeated_partial_scroll_regions_accumulate(tmp_path: Path) -> None:
     shell_harness = AgentHarness(
         id="test-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=("fish",),
         scroll=None,
     )
@@ -306,6 +308,7 @@ def test_page_keys_scroll_native_history_for_plain_shell(tmp_path: Path) -> None
     shell_harness = AgentHarness(
         id="test-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=("fish",),
         scroll=None,
     )
@@ -326,6 +329,7 @@ def test_wheel_scrolls_native_history_for_plain_shell(tmp_path: Path) -> None:
     shell_harness = AgentHarness(
         id="test-shell",
         display_name="Test Shell",
+        icon="🧪",
         command=("fish",),
         scroll=None,
     )

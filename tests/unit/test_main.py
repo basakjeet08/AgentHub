@@ -25,7 +25,7 @@ def test_main_routes_codex_activity_hook(monkeypatch) -> None:
         calls += 1
         return 0
 
-    monkeypatch.setattr("agenthub.main.run_codex_activity_hook", fake_hook)
+    monkeypatch.setattr("agenthub.main.ACTIVITY_ADAPTERS", {"codex": type("Adapter", (), {"run_hook": lambda _self, _event=None: fake_hook()})()})
 
     exit_code = main(["activity-hook", "codex"])
 
@@ -41,7 +41,7 @@ def test_main_routes_devin_activity_hook(monkeypatch) -> None:
         calls += 1
         return 0
 
-    monkeypatch.setattr("agenthub.main.run_devin_activity_hook", fake_hook)
+    monkeypatch.setattr("agenthub.main.ACTIVITY_ADAPTERS", {"devin": type("Adapter", (), {"run_hook": lambda _self, _event=None: fake_hook()})()})
 
     exit_code = main(["activity-hook", "devin"])
 
@@ -56,9 +56,19 @@ def test_main_routes_antigravity_activity_hook(monkeypatch) -> None:
         events.append(event_name)
         return 0
 
-    monkeypatch.setattr("agenthub.main.run_antigravity_activity_hook", fake_hook)
+    monkeypatch.setattr("agenthub.main.ACTIVITY_ADAPTERS", {"antigravity": type("Adapter", (), {"run_hook": lambda _self, event=None: fake_hook(event)})()})
 
     exit_code = main(["activity-hook", "antigravity", "PreInvocation"])
 
     assert exit_code == 0
     assert events == ["PreInvocation"]
+
+
+def test_main_rejects_malformed_provider_hook_arguments() -> None:
+    import pytest
+
+    with pytest.raises(SystemExit):
+        main(["activity-hook", "codex", "unexpected-event"])
+
+    with pytest.raises(SystemExit):
+        main(["activity-hook", "antigravity"])

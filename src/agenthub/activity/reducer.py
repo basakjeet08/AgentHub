@@ -1,6 +1,7 @@
 """Deterministic transitions for provider-neutral Agent activity."""
 
 from dataclasses import dataclass, replace
+from typing import cast
 
 from .model import AgentActivity, AgentActivityEvent, AgentActivityEventKind
 
@@ -57,7 +58,11 @@ def _apply_visible_activity(
     """Apply visible activity while retaining which input condition caused it."""
 
     input_wait_kind = state.input_wait_kind
-    if event.kind in _INPUT_WAIT_EVENT_KINDS and activity is AgentActivity.NEEDS_INPUT:
+    if (
+        isinstance(event.kind, AgentActivityEventKind)
+        and event.kind in _INPUT_WAIT_EVENT_KINDS
+        and activity is AgentActivity.NEEDS_INPUT
+    ):
         input_wait_kind = event.kind
     elif activity is not AgentActivity.NEEDS_INPUT:
         input_wait_kind = None
@@ -86,7 +91,7 @@ def reduce_activity(
         AgentActivityEventKind.TOOL_FINISHED,
     }:
         return current
-    return _ACTIVITY_BY_EVENT.get(event.kind, current)
+    return _ACTIVITY_BY_EVENT.get(cast(AgentActivityEventKind, event.kind), current)
 
 
 def _close_scope(state: ActivityReducerState, scope_id: str) -> ActivityReducerState:
@@ -144,7 +149,9 @@ def reduce_activity_state(
     # whether the turn may actually finish. Unlike a terminal event, that leaves
     # the active scope open, so later work in the same scope must resume it.
     if state.activity is AgentActivity.DONE and scope_id == state.active_scope_id:
-        activity = _ACTIVITY_BY_EVENT.get(event.kind, state.activity)
+        activity = _ACTIVITY_BY_EVENT.get(
+            cast(AgentActivityEventKind, event.kind), state.activity
+        )
     else:
         activity = reduce_activity(state.activity, event)
     state = _apply_visible_activity(state, event, activity)

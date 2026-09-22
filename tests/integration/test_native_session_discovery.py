@@ -9,7 +9,7 @@ from textual.widgets import OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import LaunchSpec, NativeSession
+from agenthub.native_sessions import LaunchSpec, NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.sessions import SessionState
 
@@ -53,7 +53,7 @@ async def test_discovered_session_starts_unloaded_and_resumes_once(
     adapter = FakeNativeSessionAdapter(sleeping_harness, tmp_path)
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -115,15 +115,17 @@ async def test_provider_discovery_does_not_block_the_event_loop(
             time.sleep(0.2)
             return ()
 
+    adapter = SlowAdapter(sleeping_harness, tmp_path)
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
-    adapter = SlowAdapter(sleeping_harness, tmp_path)
     executor = ThreadPoolExecutor(max_workers=1)
     started_at = time.monotonic()
     try:
-        discovery = asyncio.create_task(app._discover_from_adapter(adapter, executor))
+        discovery = asyncio.create_task(
+            app._discover_from_service(sleeping_harness.id, executor)
+        )
         await asyncio.sleep(0.02)
 
         assert time.monotonic() - started_at < 0.1
@@ -143,7 +145,7 @@ async def test_resync_shortcut_reconciles_unloaded_native_sessions(
     adapter = FakeNativeSessionAdapter(sleeping_harness, tmp_path)
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -206,7 +208,7 @@ async def test_resync_keeps_unidentified_runtime_and_native_session_separate(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -269,7 +271,7 @@ async def test_provider_discovery_reports_when_no_sessions_are_found(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -290,6 +292,7 @@ async def test_discovery_completion_reports_all_configured_agents(
     second_harness = AgentHarness(
         id="second-agent",
         display_name="Second Agent",
+        icon="🧪",
         command=sleeping_harness.command,
         scroll=None,
     )
@@ -302,7 +305,7 @@ async def test_discovery_completion_reports_all_configured_agents(
             sleeping_harness.id: sleeping_harness,
             second_harness.id: second_harness,
         },
-        native_session_adapters=adapters,
+        native_session_service=NativeSessionService(adapters),
     )
 
     async with app.run_test() as pilot:
@@ -330,7 +333,7 @@ async def test_provider_discovery_failure_does_not_stop_application(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:

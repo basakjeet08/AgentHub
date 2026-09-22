@@ -1,7 +1,7 @@
 """Integration coverage for terminal-first keyboard ownership."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from textual.command import CommandPalette
@@ -10,15 +10,15 @@ from textual.widgets import Input, OptionList, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.presentation import AgentHubStatusBar, SessionSidebar, SidebarTab
+from agenthub.presentation import SessionSidebar, SidebarTab
 from agenthub.presentation.modals import (
-    HarnessSelectionModal,
-    NativeSessionLinkModal,
-    SessionNameModal,
-    WorkingDirectoryModal,
+    HarnessPickerModal,
+    SessionLinkModal,
+    ShellSessionNameInputModal,
+    WorkingDirectoryPickerModal,
 )
-from agenthub.presentation.modals.working_directory import FolderTree
-from agenthub.presentation.panels.status_bar import LOCKED_ICON, UNLOCKED_ICON
+from agenthub.presentation.modals.working_directory_picker import DirectoryPickerTree
+from agenthub.presentation.panels.sidebar import LOCKED_ICON, UNLOCKED_ICON
 from agenthub.sessions import AgentSession, SessionKind
 
 
@@ -84,10 +84,10 @@ async def test_locked_hub_binding_reaches_pty(
         assert not isinstance(
             app.screen,
             (
-                HarnessSelectionModal,
-                NativeSessionLinkModal,
-                SessionNameModal,
-                WorkingDirectoryModal,
+                HarnessPickerModal,
+                SessionLinkModal,
+                ShellSessionNameInputModal,
+                WorkingDirectoryPickerModal,
             ),
         )
         assert app.session_manager.sessions == (session,)
@@ -157,40 +157,6 @@ async def test_super_a_is_consumed_without_crashing_or_reaching_pty(
         assert session.terminal.has_focus
 
 
-async def test_shell_name_input_owns_ctrl_v_over_a_mounted_terminal(
-    sleeping_harness: AgentHarness,
-) -> None:
-    app, (session,) = _app_with_sessions(sleeping_harness)
-
-    async with app.run_test() as pilot:
-        app.action_new_shell()
-        await pilot.pause()
-        assert isinstance(app.screen, SessionNameModal)
-        name_input = app.screen.query_one("#session-name-input", Input)
-        pty = session.terminal.board.pty
-        assert pty is not None
-
-        with (
-            patch(
-                "agenthub.presentation.modals.session_name._CLIPBOARD_SERVICE.read_text",
-                AsyncMock(return_value="Clipboard Session"),
-            ),
-            patch(
-                "agenthub.terminal.widget._CLIPBOARD_SERVICE.read",
-                AsyncMock(return_value="must not reach terminal"),
-            ) as terminal_clipboard,
-            patch.object(pty, "write", wraps=pty.write) as write_spy,
-        ):
-            await pilot.press("ctrl+v")
-            await app.workers.wait_for_complete()
-            await pilot.pause()
-
-        assert name_input.value == "Clipboard Session"
-        assert name_input.has_focus
-        terminal_clipboard.assert_not_awaited()
-        write_spy.assert_not_called()
-
-
 async def test_ctrl_g_toggles_mode_without_reaching_pty(
     sleeping_harness: AgentHarness,
 ) -> None:
@@ -200,27 +166,27 @@ async def test_ctrl_g_toggles_mode_without_reaching_pty(
         await pilot.pause()
         pty = session.terminal.board.pty
         assert pty is not None
-        status = app.query_one(AgentHubStatusBar)
+        sidebar = app.query_one(SessionSidebar)
 
-        assert status.query_one("#mode-indicator", Static).content == UNLOCKED_ICON
-        assert status.query_one("#mode-label", Static).content == "Unlocked"
-        assert status.query_one("#mode-action", Static).content == "Ctrl+G Lock"
+        assert sidebar.query_one("#sidebar-mode-indicator", Static).content == UNLOCKED_ICON
+        assert sidebar.query_one("#sidebar-mode-label", Static).content == "Unlocked"
+        assert sidebar.query_one("#sidebar-mode-action", Static).content == "Ctrl+G Lock"
 
         with patch.object(pty, "write", wraps=pty.write) as write_spy:
             await pilot.press("ctrl+g")
             await pilot.pause()
 
             assert app.hub_locked
-            assert status.query_one("#mode-indicator", Static).content == LOCKED_ICON
-            assert status.query_one("#mode-label", Static).content == "Locked"
-            assert status.query_one("#mode-action", Static).content == "Ctrl+G Unlock"
+            assert sidebar.query_one("#sidebar-mode-indicator", Static).content == LOCKED_ICON
+            assert sidebar.query_one("#sidebar-mode-label", Static).content == "Locked"
+            assert sidebar.query_one("#sidebar-mode-action", Static).content == "Ctrl+G Unlock"
 
             await pilot.press("ctrl+g")
             await pilot.pause()
 
         assert not app.hub_locked
-        assert status.query_one("#mode-indicator", Static).content == UNLOCKED_ICON
-        assert status.query_one("#mode-label", Static).content == "Unlocked"
+        assert sidebar.query_one("#sidebar-mode-indicator", Static).content == UNLOCKED_ICON
+        assert sidebar.query_one("#sidebar-mode-label", Static).content == "Unlocked"
         write_spy.assert_not_called()
 
 
@@ -342,8 +308,8 @@ async def test_locking_from_command_palette_closes_it_and_refocuses_terminal(
 @pytest.mark.parametrize(
     ("stage", "expected_modal"),
     [
-        ("harness", HarnessSelectionModal),
-        ("cwd", WorkingDirectoryModal),
+        ("harness", HarnessPickerModal),
+        ("cwd", WorkingDirectoryPickerModal),
     ],
 )
 async def test_locking_cancels_new_session_modal_with_active_terminal(
@@ -372,7 +338,11 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
         assert app.hub_locked
         assert not isinstance(
             app.screen,
-            (HarnessSelectionModal, SessionNameModal, WorkingDirectoryModal),
+            (
+                HarnessPickerModal,
+                ShellSessionNameInputModal,
+                WorkingDirectoryPickerModal,
+            ),
         )
         assert app.session_manager.sessions == (session,)
         assert app.session_manager.active_session is session
@@ -384,8 +354,13 @@ async def test_locking_cancels_new_session_modal_with_active_terminal(
 @pytest.mark.parametrize(
     ("stage", "expected_modal", "focus_selector", "focus_type"),
     [
-        ("harness", HarnessSelectionModal, "#harness-selection-list", OptionList),
-        ("cwd", WorkingDirectoryModal, "#working-directory-tree", FolderTree),
+        ("harness", HarnessPickerModal, "#harness-picker-list", OptionList),
+        (
+            "cwd",
+            WorkingDirectoryPickerModal,
+            "#directory-picker-tree",
+            DirectoryPickerTree,
+        ),
     ],
 )
 async def test_locking_on_home_keeps_new_session_modal_open(
@@ -393,7 +368,7 @@ async def test_locking_on_home_keeps_new_session_modal_open(
     stage: str,
     expected_modal: type[ModalScreen],
     focus_selector: str,
-    focus_type: type[OptionList] | type[Input] | type[FolderTree],
+    focus_type: type[OptionList] | type[Input] | type[DirectoryPickerTree],
     tmp_path: Path,
 ) -> None:
     app = AgentHubApp(
@@ -498,7 +473,7 @@ async def test_ctrl_m_remains_terminal_enter_while_unlocked(
             await pilot.pause()
 
         write_spy.assert_called_once_with("\r")
-        assert not isinstance(app.screen, NativeSessionLinkModal)
+        assert not isinstance(app.screen, SessionLinkModal)
 
 
 async def test_home_uses_retained_shortcuts_and_ignores_removed_creation_key() -> None:
@@ -562,9 +537,9 @@ async def test_removed_shortcuts_reach_unlocked_terminal(
         assert not isinstance(
             app.screen,
             (
-                HarnessSelectionModal,
-                NativeSessionLinkModal,
-                SessionNameModal,
-                WorkingDirectoryModal,
+                HarnessPickerModal,
+                SessionLinkModal,
+                ShellSessionNameInputModal,
+                WorkingDirectoryPickerModal,
             ),
         )

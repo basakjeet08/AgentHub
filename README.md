@@ -21,8 +21,8 @@ multi-session runtime architecture:
 - It starts on a lightweight Home screen with essential shortcuts, discovers
   native conversations in the background, and does not launch a coding-agent
   process until one is selected.
-- It provides a persistent session sidebar, Home content area, and application
-  status bar.
+- It provides a persistent session sidebar with keyboard-ownership status and
+  a Home content area.
 - It uses Textual's built-in Tokyo Night theme with shared semantic component
   styles.
 - It represents logical native conversations with `AgentSession`, keeps their
@@ -305,6 +305,7 @@ Verify the installation:
 ```bash
 python -c "import agenthub; print('ok')"
 ruff check src/ tests/
+python -m mypy
 python -m pytest
 agenthub
 ```
@@ -340,6 +341,7 @@ Development dependencies:
 - `pytest`
 - `pytest-asyncio`
 - `ruff`
+- `mypy`
 - `textual-dev`
 
 Packaging uses Hatchling with an explicit `src/agenthub` wheel package.

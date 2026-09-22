@@ -10,58 +10,52 @@ from typing import ClassVar
 
 from textual.app import App, ComposeResult, SystemCommand
 from textual.command import CommandPalette
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher
 
 from agenthub.activity import (
-    ActivityReceiver,
-    ActivityRegistration,
+    ActivityService,
     AgentActivity,
     AgentActivityEvent,
     AgentActivityEventKind,
-    codex_command_with_activity_hooks,
-    ensure_antigravity_activity_hooks,
-    opencode_activity_environment,
-    prepare_devin_activity_launch,
 )
-from agenthub.harnesses import FISH, HARNESSES, AgentHarness
+from agenthub.harnesses import FISH, AgentHarness
 from agenthub.native_sessions import (
-    NATIVE_SESSION_ADAPTERS,
     NativeSession,
-    NativeSessionAdapter,
     NativeSessionDeletionError,
     NativeSessionDeletionUnavailableError,
+    NativeSessionService,
 )
 from agenthub.notifications import (
     DesktopNotificationBackend,
     DesktopNotificationService,
 )
 from agenthub.presentation import (
-    AgentHubStatusBar,
     HomeScreen,
     SessionSidebar,
 )
 from agenthub.presentation.key_bindings import APPLICATION_BINDINGS, TERMINAL_GATED_ACTIONS
 from agenthub.presentation.modals import (
-    HarnessSelectionModal,
-    NativeSessionDeleteModal,
-    NativeSessionLinkModal,
-    SessionNameModal,
-    SessionSelectionModal,
-    WorkingDirectoryModal,
+    HarnessPickerModal,
+    SessionDeleteConfirmationModal,
+    SessionLinkModal,
+    SessionPickerModal,
+    ShellSessionNameInputModal,
+    WorkingDirectoryPickerModal,
 )
+from agenthub.providers import ACTIVITY_ADAPTERS, HARNESSES, NATIVE_SESSION_ADAPTERS
 from agenthub.sessions import AgentSession, SessionKind, SessionManager, SessionState
 from agenthub.terminal import AgentTerminal
 
 _SESSION_WORKFLOW_MODALS = (
-    HarnessSelectionModal,
-    NativeSessionDeleteModal,
-    NativeSessionLinkModal,
-    SessionSelectionModal,
-    SessionNameModal,
-    WorkingDirectoryModal,
+    HarnessPickerModal,
+    SessionPickerModal,
+    SessionDeleteConfirmationModal,
+    SessionLinkModal,
+    ShellSessionNameInputModal,
+    WorkingDirectoryPickerModal,
 )
 
 _FRESH_AGENT_NAME = "New session"
@@ -85,7 +79,6 @@ class AgentHubApp(App):
         "presentation/styles/app.tcss",
         "presentation/styles/screens/home.tcss",
         "presentation/styles/panels/sidebar.tcss",
-        "presentation/styles/panels/status_bar.tcss",
     ]
 
     BINDINGS: ClassVar = list(APPLICATION_BINDINGS)
@@ -95,7 +88,7 @@ class AgentHubApp(App):
         *,
         agent_harnesses: Mapping[str, AgentHarness] | None = None,
         shell_harness: AgentHarness = FISH,
-        native_session_adapters: Mapping[str, NativeSessionAdapter] | None = None,
+        native_session_service: NativeSessionService | None = None,
         working_directory_root: Path | None = None,
         desktop_notification_backend: DesktopNotificationBackend | None = None,
     ) -> None:
@@ -108,10 +101,8 @@ class AgentHubApp(App):
             HARNESSES if agent_harnesses is None else agent_harnesses
         )
         self._shell_harness = shell_harness
-        self._native_session_adapters = dict(
+        self._native_session_service = native_session_service or NativeSessionService(
             NATIVE_SESSION_ADAPTERS
-            if native_session_adapters is None
-            else native_session_adapters
         )
         self._working_directory_root = (
             Path.home() if working_directory_root is None else working_directory_root
@@ -121,9 +112,7 @@ class AgentHubApp(App):
         self._discovery_in_progress = False
         self._provider_locks: dict[str, asyncio.Lock] = {}
         self._command_palette_target_id: str | None = None
-        self._activity_receiver: ActivityReceiver | None = None
-        self._activity_registrations: dict[str, ActivityRegistration] = {}
-        self._activity_artifacts: dict[str, tuple[Path, ...]] = {}
+        self._activity_service = ActivityService(ACTIVITY_ADAPTERS, self._on_activity_event)
         self._notification_service = DesktopNotificationService(
             backend=desktop_notification_backend
         )
@@ -142,27 +131,22 @@ class AgentHubApp(App):
             if active_session is not None and active_session.terminal is not None
             else "home-screen"
         )
-        with Vertical(id="app-shell"):
-            with Horizontal(id="application-body"):
-                yield SessionSidebar(
-                    sessions,
-                    id="session-sidebar",
-                )
-                yield ContentSwitcher(
-                    HomeScreen(id="home-screen"),
-                    *(
-                        session.terminal
-                        for session in sessions
-                        if session.terminal is not None
-                    ),
-                    initial=initial,
-                    id="session-content",
-                )
-            yield AgentHubStatusBar(
-                session_count=len(sessions),
-                running_count=0,
+        with Horizontal(id="application-body"):
+            yield SessionSidebar(
+                sessions,
+                harnesses=self._agent_harnesses.values(),
                 locked=self.hub_locked,
-                id="status-bar",
+                id="session-sidebar",
+            )
+            yield ContentSwitcher(
+                HomeScreen(id="home-screen"),
+                *(
+                    session.terminal
+                    for session in sessions
+                    if session.terminal is not None
+                ),
+                initial=initial,
+                id="session-content",
             )
 
     def on_mount(self) -> None:
@@ -173,7 +157,6 @@ class AgentHubApp(App):
             self.show_session(session.id)
         else:
             self.query_one(HomeScreen).focus()
-        self.call_after_refresh(self._refresh_status)
         self._start_native_session_discovery()
 
     async def on_unmount(self) -> None:
@@ -181,14 +164,7 @@ class AgentHubApp(App):
 
         for executor in tuple(self._discovery_executors):
             self._shutdown_discovery_executor(executor)
-        receiver = self._activity_receiver
-        for session_id in tuple(
-            self._activity_registrations.keys() | self._activity_artifacts.keys()
-        ):
-            self._revoke_activity_tracking(session_id)
-        self._activity_receiver = None
-        if receiver is not None:
-            await receiver.close()
+        await self._activity_service.close()
         await self._notification_service.shutdown()
 
     @staticmethod
@@ -231,14 +207,6 @@ class AgentHubApp(App):
         if session.kind is not SessionKind.AGENT or session.native_session_id is None:
             raise ValueError(f"session {session_id!r} cannot be resumed")
 
-        adapter = self._native_session_adapters.get(session.harness.id)
-        if adapter is None:
-            self.notify(
-                f"No native-session adapter is available for {session.harness.display_name}.",
-                severity="error",
-            )
-            return session
-
         session.state = SessionState.STARTING
         self._refresh_sidebar()
         native_session = NativeSession(
@@ -249,7 +217,7 @@ class AgentHubApp(App):
         )
         terminal: AgentTerminal | None = None
         try:
-            launch = await adapter.resume(native_session)
+            launch = await self._native_session_service.resume(native_session)
             terminal = AgentTerminal(
                 session.harness,
                 command=launch.command,
@@ -268,7 +236,6 @@ class AgentHubApp(App):
             else:
                 session.state = SessionState.UNLOADED
             self._refresh_sidebar()
-            self._refresh_status()
             self.notify(
                 f"Could not resume {session.name}: {error}",
                 severity="error",
@@ -276,7 +243,6 @@ class AgentHubApp(App):
             return session
 
         self._refresh_sidebar()
-        self._refresh_status()
         return self.show_session(session.id)
 
     async def _discover_native_sessions(self) -> None:
@@ -291,8 +257,8 @@ class AgentHubApp(App):
         """Discover each provider independently without blocking app startup."""
 
         providers = tuple(
-            (harness, adapter)
-            for harness_id, adapter in self._native_session_adapters.items()
+            (harness_id, harness)
+            for harness_id in self._native_session_service.harness_ids
             if (harness := self._agent_harnesses.get(harness_id)) is not None
         )
         if not providers:
@@ -307,15 +273,15 @@ class AgentHubApp(App):
         try:
             discoveries = await asyncio.gather(
                 *(
-                    self._discover_and_reconcile_provider(harness, adapter, executor)
-                    for harness, adapter in providers
+                    self._discover_and_reconcile_provider(harness_id, harness, executor)
+                    for harness_id, harness in providers
                 )
             )
         finally:
             self._shutdown_discovery_executor(executor)
         summary_lines: list[str] = []
         discovery_failed = False
-        for (harness, _adapter), result in zip(
+        for (_harness_id, harness), result in zip(
             providers,
             discoveries,
             strict=True,
@@ -327,7 +293,6 @@ class AgentHubApp(App):
 
             summary_lines.append(f"{harness.display_name} - {len(result.sessions)}")
         self._refresh_sidebar()
-        self._refresh_status()
 
         if discovery_failed:
             completion_message = "Session discovery completed with errors:"
@@ -345,7 +310,7 @@ class AgentHubApp(App):
     def _start_native_session_discovery(self) -> None:
         """Schedule one discovery cycle unless another is already running."""
 
-        if not self._native_session_adapters or self._discovery_in_progress:
+        if not self._native_session_service.harness_ids or self._discovery_in_progress:
             return
         self._discovery_in_progress = True
         self.run_worker(
@@ -353,16 +318,16 @@ class AgentHubApp(App):
             group="native-session-discovery",
         )
 
-    async def _discover_from_adapter(
+    async def _discover_from_service(
         self,
-        adapter: NativeSessionAdapter,
+        harness_id: str,
         executor: ThreadPoolExecutor,
     ) -> _DiscoveryResult:
         """Normalize one provider's discoveries while containing its failures."""
 
         future = None
         try:
-            future = executor.submit(adapter.discover)
+            future = executor.submit(self._native_session_service.discover, harness_id)
             async with asyncio.timeout(10):
                 while not future.done():
                     await asyncio.sleep(0.01)
@@ -377,14 +342,14 @@ class AgentHubApp(App):
 
     async def _discover_and_reconcile_provider(
         self,
+        harness_id: str,
         harness: AgentHarness,
-        adapter: NativeSessionAdapter,
         executor: ThreadPoolExecutor,
     ) -> _DiscoveryResult:
         """Discover and normally reconcile exactly one serialized provider."""
 
         async with self._provider_lock(harness.id):
-            result = await self._discover_from_adapter(adapter, executor)
+            result = await self._discover_from_service(harness_id, executor)
             if result.error is not None:
                 return result
             native_sessions = tuple(
@@ -402,13 +367,12 @@ class AgentHubApp(App):
         """Run normal reconciliation for one harness and no unrelated providers."""
 
         harness = self._agent_harnesses.get(harness_id)
-        adapter = self._native_session_adapters.get(harness_id)
-        if harness is None or adapter is None:
+        if harness is None:
             return _DiscoveryResult(error="native-session adapter is unavailable")
 
         executor = self._create_discovery_executor(max_workers=1)
         try:
-            return await self._discover_and_reconcile_provider(harness, adapter, executor)
+            return await self._discover_and_reconcile_provider(harness_id, harness, executor)
         finally:
             self._shutdown_discovery_executor(executor)
 
@@ -460,14 +424,14 @@ class AgentHubApp(App):
         return super().check_action(action, parameters)
 
     def watch_hub_locked(self, locked: bool) -> None:
-        """Keep binding metadata and the authoritative status text current."""
+        """Keep bindings and the sidebar's keyboard-ownership text current."""
 
         self.refresh_bindings()
         if not self.is_running:
             return
-        status_bars = self.query(AgentHubStatusBar).nodes
-        if status_bars:
-            status_bars[0].update_mode(locked)
+        sidebars = self.query(SessionSidebar).nodes
+        if sidebars:
+            sidebars[0].update_lock_mode(locked)
 
     def action_toggle_hub_lock(self) -> None:
         """Transfer navigation-key ownership between AgentHub and the terminal."""
@@ -490,14 +454,7 @@ class AgentHubApp(App):
         if isinstance(self.screen, _SESSION_WORKFLOW_MODALS):
             return
 
-        self.push_screen(
-            SessionNameModal(
-                self._shell_harness.display_name,
-                default_name="Shell",
-                placeholder="Shell (optional)",
-            ),
-            self._on_shell_name_selected,
-        )
+        self.push_screen(ShellSessionNameInputModal(), self._on_shell_name_selected)
 
     async def _on_shell_name_selected(self, name: str | None) -> None:
         """Create and focus a new Fish shell session with the specified or default name."""
@@ -505,9 +462,8 @@ class AgentHubApp(App):
         if name is None:
             return
 
-        normalized_name = name.strip() or "Shell"
         session = await self._create_and_mount_session(
-            name=normalized_name,
+            name=name,
             harness=self._shell_harness,
             kind=SessionKind.SHELL,
             cwd=Path.cwd(),
@@ -626,12 +582,11 @@ class AgentHubApp(App):
     def _can_offer_native_session_delete(self, session: AgentSession) -> bool:
         """Return whether Delete can act or provide provider-specific guidance."""
 
-        adapter = self._native_session_adapters.get(session.harness.id)
         return (
             session.kind is SessionKind.AGENT
             and session.native_session_id is not None
             and session.state in {SessionState.RUNNING, SessionState.UNLOADED}
-            and adapter is not None
+            and self._native_session_service.delete_capability(session.harness.id) is not None
         )
 
     def action_new_session(self) -> None:
@@ -641,7 +596,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            HarnessSelectionModal(self._agent_harnesses.values()),
+            HarnessPickerModal(self._agent_harnesses.values()),
             self._on_harness_selected,
         )
 
@@ -665,7 +620,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            SessionSelectionModal(sessions),
+            SessionPickerModal(sessions),
             self._on_open_session_selected,
         )
 
@@ -757,7 +712,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            NativeSessionLinkModal(pending, candidates),
+            SessionLinkModal(pending.harness.display_name, candidates),
             partial(self._on_native_session_link_selected, pending.id),
         )
 
@@ -794,14 +749,14 @@ class AgentHubApp(App):
                 markup=False,
             )
             return
-        adapter = self._native_session_adapters.get(session.harness.id)
-        if adapter is None:
+        deletion_capability = self._native_session_service.delete_capability(session.harness.id)
+        if deletion_capability is None:
             self.notify(
                 f"No native-session adapter is available for {session.harness.display_name}.",
                 severity="error",
             )
             return
-        if not adapter.supports_delete:
+        if not deletion_capability:
             self._notify_native_deletion_error(
                 session,
                 NativeSessionDeletionUnavailableError.for_provider(
@@ -817,7 +772,7 @@ class AgentHubApp(App):
             return
 
         self.push_screen(
-            NativeSessionDeleteModal(session.name),
+            SessionDeleteConfirmationModal(session.name),
             partial(self._on_native_session_delete_confirmed, session.id),
         )
 
@@ -867,18 +822,20 @@ class AgentHubApp(App):
             )
             return
 
-        adapter = self._native_session_adapters.get(session.harness.id)
-        if (
-            session.kind is not SessionKind.AGENT
-            or session.native_session_id is None
-            or adapter is None
-        ):
+        if session.kind is not SessionKind.AGENT or session.native_session_id is None:
             self.notify(
                 "The selected Agent is not eligible for native deletion.",
                 severity="error",
             )
             return
-        if not adapter.supports_delete:
+        deletion_capability = self._native_session_service.delete_capability(session.harness.id)
+        if deletion_capability is None:
+            self.notify(
+                "The selected Agent is not eligible for native deletion.",
+                severity="error",
+            )
+            return
+        if not deletion_capability:
             self._notify_native_deletion_error(
                 session,
                 NativeSessionDeletionUnavailableError.for_provider(
@@ -905,7 +862,6 @@ class AgentHubApp(App):
         if was_active:
             self._show_home()
         self._refresh_sidebar()
-        self._refresh_status()
 
         try:
             if terminal is not None and terminal.is_mounted:
@@ -918,8 +874,8 @@ class AgentHubApp(App):
             executor = self._create_discovery_executor(max_workers=1)
             try:
                 async with self._provider_lock(harness.id):
-                    await adapter.delete(native_session)
-                    discovery = await self._discover_from_adapter(adapter, executor)
+                    await self._native_session_service.delete(native_session)
+                    discovery = await self._discover_from_service(harness.id, executor)
                     if discovery.error is not None:
                         raise NativeSessionDeletionError(
                             f"could not verify deletion: {discovery.error}"
@@ -953,12 +909,10 @@ class AgentHubApp(App):
             if current is not None and current.state is SessionState.DELETING:
                 self.session_manager.fail_native_deletion(session.id)
             self._refresh_sidebar()
-            self._refresh_status()
             self._notify_native_deletion_error(session, error)
             return
 
         self._refresh_sidebar()
-        self._refresh_status()
         self.notify(
             f'Deleted "{native_session.name}" permanently.',
             title="Native session deleted",
@@ -988,7 +942,6 @@ class AgentHubApp(App):
             return
 
         self._refresh_sidebar()
-        self._refresh_status()
         self.notify(
             f"Linked running terminal to {linked.name}.",
             title="Native session linked",
@@ -1003,7 +956,7 @@ class AgentHubApp(App):
 
         harness = self._agent_harnesses[harness_id]
         self.push_screen(
-            WorkingDirectoryModal(root=self._working_directory_root),
+            WorkingDirectoryPickerModal(root=self._working_directory_root),
             partial(self._on_working_directory_selected, harness),
         )
 
@@ -1081,7 +1034,6 @@ class AgentHubApp(App):
                 if previous_session in self.session_manager.sessions:
                     self.session_manager.select(previous_session.id)
             raise
-        self.call_after_refresh(self._refresh_status)
         return session
 
     async def _prepare_activity_tracking(
@@ -1093,53 +1045,20 @@ class AgentHubApp(App):
 
         if session.kind is not SessionKind.AGENT:
             return False
-        provider = session.harness.id
-        if provider not in {"antigravity", "codex", "devin", "opencode"}:
-            return False
-        executable = "agy" if provider == "antigravity" else provider
-        if Path(terminal.child_command[0]).name != executable:
-            return False
         try:
-            receiver = self._activity_receiver
-            if receiver is None:
-                receiver = ActivityReceiver(self._on_activity_event)
-                await receiver.start()
-                self._activity_receiver = receiver
-            self._revoke_activity_tracking(session.id)
-            registration = receiver.register(
+            launch = await self._activity_service.prepare(
                 session.id,
-                provider,
+                session.harness.id,
+                terminal.child_command,
                 native_session_id=session.native_session_id,
             )
-            self._activity_registrations[session.id] = registration
-            if provider == "antigravity":
-                ensure_antigravity_activity_hooks()
-            command = terminal.child_command
-            if provider == "codex":
-                command = codex_command_with_activity_hooks(command)
-            elif provider == "devin":
-                launch = prepare_devin_activity_launch(command)
-                command = launch.command
-                self._activity_artifacts[session.id] = (launch.config_path,)
-            environment_overrides = dict(registration.environment)
-            if provider == "opencode":
-                environment_overrides.update(
-                    opencode_activity_environment(
-                        native_session_id=session.native_session_id,
-                    )
-                )
+            if launch is None:
+                return False
             terminal.configure_launch(
-                command=command,
-                environment_overrides=environment_overrides,
+                command=launch.command,
+                environment_overrides=dict(launch.environment_overrides),
             )
-            if provider == "codex":
-                terminal.set_forwarded_key_observer(
-                    partial(self._on_codex_terminal_key, session.id)
-                )
-            elif provider == "devin":
-                terminal.set_forwarded_key_observer(
-                    partial(self._on_devin_terminal_key, session.id)
-                )
+            terminal.set_forwarded_key_observer(partial(self._on_activity_terminal_key, session.id))
             return True
         except Exception:  # noqa: BLE001 - activity must never prevent a launch
             self._revoke_activity_tracking(session.id)
@@ -1148,15 +1067,11 @@ class AgentHubApp(App):
     def _initialize_mounted_activity(self, session: AgentSession) -> None:
         """Initialize providers that do not report their own observer readiness."""
 
-        # OpenCode reports plugin readiness itself. Keeping UNKNOWN until that
-        # handshake prevents a rejected plugin from looking successfully idle.
-        if session.harness.id == "opencode":
-            return
         if session.activity is not AgentActivity.UNKNOWN:
             return
-        self._apply_activity_event(
-            AgentActivityEvent(session.id, AgentActivityEventKind.SESSION_STARTED)
-        )
+        event = self._activity_service.initial_event(session.id)
+        if event is not None:
+            self._apply_activity_event(event)
 
     def _revoke_activity_tracking(self, session_id: str) -> None:
         """Invalidate one runtime's activity credential if it exists."""
@@ -1167,15 +1082,7 @@ class AgentHubApp(App):
             terminal = None
         if terminal is not None:
             terminal.set_forwarded_key_observer(None)
-        registration = self._activity_registrations.pop(session_id, None)
-        receiver = self._activity_receiver
-        if registration is not None and receiver is not None:
-            receiver.revoke(registration)
-        for path in self._activity_artifacts.pop(session_id, ()):
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        self._activity_service.revoke(session_id)
 
     def _on_activity_event(self, event: AgentActivityEvent) -> None:
         """Apply one authenticated event and refresh only presentation state."""
@@ -1207,46 +1114,20 @@ class AgentHubApp(App):
         )
         return True
 
-    def _on_codex_terminal_key(self, session_id: str, key: str) -> None:
-        """Clear a Codex permission wait when its decision reaches the child."""
-
+    def _on_activity_terminal_key(self, session_id: str, key: str) -> None:
+        """Route forwarded terminal keys through the provider-neutral service."""
         try:
             session = self.session_manager.get(session_id)
         except KeyError:
             return
-        if (
-            session.harness.id != "codex"
-            or session_id not in self._activity_registrations
-            or session.activity is not AgentActivity.NEEDS_INPUT
-            or self.session_manager.input_wait_kind(session_id)
-            is not AgentActivityEventKind.PERMISSION_REQUESTED
-            or key not in {"enter", "ctrl+m", "y", "n"}
-        ):
-            return
-
-        self._apply_activity_event(
-            AgentActivityEvent(session_id, AgentActivityEventKind.INPUT_RESOLVED)
+        event = self._activity_service.terminal_key_event(
+            session_id,
+            key,
+            activity=session.activity,
+            input_wait_kind=self.session_manager.input_wait_kind(session_id),
         )
-
-    def _on_devin_terminal_key(self, session_id: str, key: str) -> None:
-        """Recover Devin activity when its UI interrupts without a hook event."""
-
-        try:
-            session = self.session_manager.get(session_id)
-        except KeyError:
-            return
-        if (
-            session.harness.id != "devin"
-            or session_id not in self._activity_registrations
-            or session.activity not in {AgentActivity.WORKING, AgentActivity.NEEDS_INPUT}
-        ):
-            return
-
-        if key not in {"ctrl+c", "escape"}:
-            return
-        self._apply_activity_event(
-            AgentActivityEvent(session_id, AgentActivityEventKind.INTERRUPTED)
-        )
+        if event is not None:
+            self._apply_activity_event(event)
 
     def _agent_sessions(self) -> tuple[AgentSession, ...]:
         """Return managed coding-agent sessions in creation order."""
@@ -1308,20 +1189,6 @@ class AgentHubApp(App):
         if session is not None:
             await self._handle_session_process_exited(session, message.exit_code)
 
-    def _refresh_status(self) -> None:
-        """Update the status bar using only current runtime facts."""
-
-        sessions = self.session_manager.sessions
-        running_agents = sum(
-            session.terminal is not None and session.terminal.is_process_running
-            for session in self._agent_sessions()
-        )
-        self.query_one(AgentHubStatusBar).update_state(
-            session_count=len(sessions),
-            running_count=running_agents,
-            locked=self.hub_locked,
-        )
-
     async def _handle_session_process_exited(
         self,
         session: AgentSession,
@@ -1351,10 +1218,8 @@ class AgentHubApp(App):
             await terminal.remove()
 
         self._refresh_sidebar()
-        self._refresh_status()
         result = await self._reconcile_native_provider(session.harness.id)
         self._refresh_sidebar()
-        self._refresh_status()
         if result.error is not None:
             self.notify(
                 f"Could not reconcile {session.harness.display_name} after exit: "
@@ -1381,7 +1246,6 @@ class AgentHubApp(App):
             await terminal.remove()
 
         self._refresh_sidebar()
-        self._refresh_status()
 
     def _show_home(self) -> None:
         """Display and focus Home without changing keyboard-ownership mode."""

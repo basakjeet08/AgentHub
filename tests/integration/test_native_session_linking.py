@@ -6,9 +6,9 @@ from textual.widgets import ContentSwitcher, Label, OptionList
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import NativeSession
+from agenthub.native_sessions import NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar, SidebarTab
-from agenthub.presentation.modals import NativeSessionLinkModal
+from agenthub.presentation.modals import SessionLinkModal
 from agenthub.sessions import AgentSession, SessionKind
 
 
@@ -19,7 +19,7 @@ def _app_with_pending_and_native_session(
 ) -> tuple[AgentHubApp, AgentSession, AgentSession]:
     app = AgentHubApp(
         agent_harnesses={harness.id: harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     pending = app.session_manager.create(
         name="New session",
@@ -71,11 +71,11 @@ async def test_explicit_target_links_native_row_without_restarting_terminal(
         app._begin_native_session_link(pending.id)
         await pilot.pause()
 
-        assert isinstance(app.screen, NativeSessionLinkModal)
-        assert app.screen.query_one("#native-session-link-title", Label).content == (
+        assert isinstance(app.screen, SessionLinkModal)
+        assert app.screen.query_one("#session-link-title", Label).content == (
             f"Link {sleeping_harness.display_name} Session"
         )
-        link_list = app.screen.query_one("#native-session-link-list", OptionList)
+        link_list = app.screen.query_one("#session-link-list", OptionList)
         assert len(link_list.options) == 1
         prompt = str(link_list.get_option(native.id).prompt)
         assert "Auth Refactor" in prompt
@@ -127,7 +127,7 @@ async def test_explicit_target_links_hidden_agent_without_activating_it(
 ) -> None:
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     pending = app.session_manager.create(
         name="New session",
@@ -170,7 +170,7 @@ async def test_explicit_target_links_hidden_agent_without_activating_it(
 
         app._begin_native_session_link(pending.id)
         await pilot.pause()
-        assert isinstance(app.screen, NativeSessionLinkModal)
+        assert isinstance(app.screen, SessionLinkModal)
 
         await pilot.press("enter")
         await pilot.pause()
@@ -228,7 +228,7 @@ async def test_explicit_shell_target_never_falls_back_to_active_agent(
         app._begin_native_session_link(shell.id)
         await pilot.pause()
 
-        assert not isinstance(app.screen, NativeSessionLinkModal)
+        assert not isinstance(app.screen, SessionLinkModal)
         assert pending.native_session_id is None
         assert app.session_manager.sessions == (pending, native, shell)
         assert app.session_manager.active_session is pending
@@ -260,7 +260,7 @@ async def test_ineligible_explicit_target_does_not_fall_back_to_active_agent(
         app._begin_native_session_link(ineligible.id)
         await pilot.pause()
 
-        assert not isinstance(app.screen, NativeSessionLinkModal)
+        assert not isinstance(app.screen, SessionLinkModal)
         assert active.native_session_id is None
         assert native in app.session_manager.sessions
         assert app.session_manager.active_session is active
@@ -285,7 +285,7 @@ async def test_link_picker_escape_keeps_both_rows_unchanged(
 
         app._begin_native_session_link(pending.id)
         await pilot.pause()
-        assert isinstance(app.screen, NativeSessionLinkModal)
+        assert isinstance(app.screen, SessionLinkModal)
 
         await pilot.press("escape")
         await pilot.pause()
@@ -303,7 +303,7 @@ async def test_explicit_ineligible_targets_do_not_open_link_picker(
 ) -> None:
     shell_app = AgentHubApp(
         shell_harness=sleeping_harness,
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
     )
     shell = shell_app.session_manager.create(
         name="Shell",
@@ -315,7 +315,7 @@ async def test_explicit_ineligible_targets_do_not_open_link_picker(
         await pilot.pause()
         shell_app._begin_native_session_link(shell.id)
         await pilot.pause()
-        assert not isinstance(shell_app.screen, NativeSessionLinkModal)
+        assert not isinstance(shell_app.screen, SessionLinkModal)
 
     linked_app, linked, native = _app_with_pending_and_native_session(
         sleeping_harness,
@@ -327,4 +327,4 @@ async def test_explicit_ineligible_targets_do_not_open_link_picker(
         await pilot.pause()
         linked_app._begin_native_session_link(linked.id)
         await pilot.pause()
-        assert not isinstance(linked_app.screen, NativeSessionLinkModal)
+        assert not isinstance(linked_app.screen, SessionLinkModal)

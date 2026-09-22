@@ -1,0 +1,88 @@
+SessionPickerModal {
+    align: center middle;
+    background: $background 70%;
+}
+
+#session-picker-dialog {
+    width: 72;
+    max-width: 94%;
+    height: auto;
+    max-height: 88%;
+    padding: 1 2;
+    background: $surface;
+    border: tall $panel;
+}
+
+#session-picker-header {
+    width: 100%;
+    height: 2;
+}
+
+#session-picker-title {
+    width: 1fr;
+    height: 1;
+    color: $foreground;
+    text-style: bold;
+}
+
+#session-picker-copy {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#session-picker-search {
+    width: 100%;
+    height: 3;
+    margin-bottom: 1;
+}
+
+#session-picker-list {
+    width: 100%;
+    height: auto;
+    min-height: 3;
+    max-height: 14;
+    background: transparent;
+    border: none;
+}
+
+#session-picker-list > .option-list--option {
+    padding: 0 1;
+}
+
+#session-picker-list > .option-list--option-highlighted {
+    background: $panel;
+    color: $foreground;
+    text-style: bold;
+}
+
+#session-picker-empty {
+    display: none;
+    width: 100%;
+    height: 3;
+    padding: 1;
+}
+
+#session-picker-legend-title {
+    width: 100%;
+    height: 1;
+    margin-top: 1;
+}
+
+#session-picker-legend {
+    width: 100%;
+    height: auto;
+    grid-size: 3;
+    grid-columns: 1fr 1fr 1fr;
+    grid-gutter: 0 1;
+}
+
+.session-picker-legend-item {
+    height: 1;
+}
+
+#session-picker-help {
+    width: 100%;
+    height: 2;
+    margin-top: 1;
+}

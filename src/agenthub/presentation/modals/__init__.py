@@ -1,17 +1,17 @@
 """Modal workflows coordinated by the AgentHub application."""
 
-from .harness_selection import HarnessSelectionModal
-from .native_session_delete import NativeSessionDeleteModal
-from .native_session_link import NativeSessionLinkModal
-from .session_name import SessionNameModal
-from .session_selection import SessionSelectionModal
-from .working_directory import WorkingDirectoryModal
+from .harness_picker import HarnessPickerModal
+from .session_delete_confirmation import SessionDeleteConfirmationModal
+from .session_link import SessionLinkModal
+from .session_picker import SessionPickerModal
+from .shell_session_name_input import ShellSessionNameInputModal
+from .working_directory_picker import WorkingDirectoryPickerModal
 
 __all__ = [
-    "HarnessSelectionModal",
-    "NativeSessionDeleteModal",
-    "NativeSessionLinkModal",
-    "SessionNameModal",
-    "SessionSelectionModal",
-    "WorkingDirectoryModal",
+    "HarnessPickerModal",
+    "SessionDeleteConfirmationModal",
+    "SessionLinkModal",
+    "SessionPickerModal",
+    "ShellSessionNameInputModal",
+    "WorkingDirectoryPickerModal",
 ]

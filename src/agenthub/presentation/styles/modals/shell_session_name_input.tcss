@@ -1,0 +1,49 @@
+ShellSessionNameInputModal {
+    align: center middle;
+    background: $background 70%;
+}
+
+#shell-session-name-input-dialog {
+    width: 54;
+    max-width: 90%;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: tall $panel;
+}
+
+#shell-session-name-input-header {
+    width: 100%;
+    height: 2;
+}
+
+#shell-session-name-input-title {
+    width: 1fr;
+    height: 1;
+    color: $foreground;
+    text-style: bold;
+}
+
+#shell-session-name-input-label {
+    width: 100%;
+    height: 1;
+    color: $foreground;
+}
+
+#shell-session-name-input {
+    width: 100%;
+    margin-top: 1;
+    margin-bottom: 1;
+    background: $background;
+    color: $foreground;
+    border: tall $panel;
+}
+
+#shell-session-name-input:focus {
+    border: tall $primary;
+}
+
+#shell-session-name-input-help {
+    width: 100%;
+    height: 1;
+}

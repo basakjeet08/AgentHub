@@ -15,7 +15,7 @@ from textual.widgets import OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from agenthub.activity import AgentActivity
-from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, OPENCODE, AgentHarness
+from agenthub.harnesses import AgentHarness
 from agenthub.sessions import AgentSession, SessionKind
 
 _ACTIVE_INDICATOR = "▌"
@@ -24,12 +24,22 @@ _SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇"
 _ANIMATION_TICK_SECONDS = 0.05
 _WORKING_TICKS_PER_FRAME = 2
 _ANIMATION_CYCLE_TICKS = 20
+LOCKED_ICON = "●"
+UNLOCKED_ICON = "○"
 _STATIC_ACTIVITY_PRESENTATION = {
     AgentActivity.UNKNOWN: ("·", "Unknown", "$text-muted"),
     AgentActivity.IDLE: ("·", "Idle", "$text-muted"),
     AgentActivity.NEEDS_INPUT: ("!", "Needs Input", "bold $warning"),
     AgentActivity.DONE: ("✓", "Done", "$success"),
 }
+
+
+def _mode_content(locked: bool) -> tuple[str, str, str]:
+    """Return the icon, label, and action hint for one ownership mode."""
+
+    if locked:
+        return LOCKED_ICON, "Locked", "Ctrl+G Unlock"
+    return UNLOCKED_ICON, "Unlocked", "Ctrl+G Lock"
 
 
 class SidebarTab(StrEnum):
@@ -74,6 +84,7 @@ class SessionSidebar(Vertical):
         sessions: Iterable[AgentSession],
         *,
         harnesses: Iterable[AgentHarness] | None = None,
+        locked: bool = False,
         id: str | None = None,
     ) -> None:
         """Retain application-owned session identity for tab presentation."""
@@ -90,10 +101,10 @@ class SessionSidebar(Vertical):
         self._cursor_visible = True
         self._animation_tick = 0
         self._activity_animation_timer: Timer | None = None
-        self._harnesses: tuple[AgentHarness, ...] = (
-            (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
-            if harnesses is None
-            else tuple(sorted(harnesses, key=lambda harness: harness.display_name.casefold()))
+        self.update_lock_mode(locked)
+        configured_harnesses = () if harnesses is None else harnesses
+        self._harnesses: tuple[AgentHarness, ...] = tuple(
+            sorted(configured_harnesses, key=lambda harness: harness.display_name.casefold())
         )
 
     @property
@@ -113,6 +124,20 @@ class SessionSidebar(Vertical):
         """Return session IDs in the selected tab's display order."""
 
         return tuple(session.id for session in self._sessions_for_tab(self._selected_tab))
+
+    def update_lock_mode(self, locked: bool) -> None:
+        """Update keyboard-ownership text and its visual cue."""
+
+        self._locked = locked
+        self.set_class(locked, "-locked")
+        self.set_class(not locked, "-unlocked")
+        if not self.is_mounted:
+            return
+
+        icon, label, action = _mode_content(locked)
+        self.query_one("#sidebar-mode-indicator", Static).update(icon)
+        self.query_one("#sidebar-mode-label", Static).update(label)
+        self.query_one("#sidebar-mode-action", Static).update(action)
 
     def update_sessions(self, sessions: Iterable[AgentSession]) -> None:
         """Refresh category presentation from application-owned session state."""
@@ -281,6 +306,12 @@ class SessionSidebar(Vertical):
                         else harness.display_name
                     )
                     yield Static(label, classes="legend-item")
+
+        icon, label, action = _mode_content(self._locked)
+        with Horizontal(id="sidebar-lock-status"):
+            yield Static(icon, id="sidebar-mode-indicator")
+            yield Static(label, id="sidebar-mode-label")
+            yield Static(action, id="sidebar-mode-action")
 
     def on_mount(self) -> None:
         """Synchronize empty-state and legend visibility after composition."""

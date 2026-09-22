@@ -14,20 +14,11 @@ from ._forwarder import (
     AGENTHUB_ACTIVITY_TOKEN,
     AGENTHUB_SESSION_ID,
 )
-from .antigravity import AntigravityActivityNormalizer
-from .codex import normalize_codex_activity
-from .devin import normalize_devin_activity
 from .model import AgentActivityEvent
-from .opencode import normalize_opencode_activity
 
 _HOST = "127.0.0.1"
 _MAX_MESSAGE_BYTES = 1_048_576
 _PROTOCOL_VERSION = 1
-_NORMALIZERS = {
-    "codex": normalize_codex_activity,
-    "devin": normalize_devin_activity,
-    "opencode": normalize_opencode_activity,
-}
 
 
 @dataclass(frozen=True)
@@ -87,8 +78,7 @@ class ActivityReceiver:
         self,
         session_id: str,
         provider: str,
-        *,
-        native_session_id: str | None = None,
+        normalizer: Callable[[str, object], AgentActivityEvent | None],
     ) -> ActivityRegistration:
         """Create an unguessable route for exactly one logical session."""
 
@@ -102,14 +92,7 @@ class ActivityReceiver:
             endpoint=self.endpoint,
         )
         self._registrations[token] = registration
-        if provider == "antigravity":
-            self._normalizers[token] = AntigravityActivityNormalizer(
-                native_session_id
-            )
-        else:
-            normalizer = _NORMALIZERS.get(provider)
-            if normalizer is not None:
-                self._normalizers[token] = normalizer
+        self._normalizers[token] = normalizer
         return registration
 
     def revoke(self, registration: ActivityRegistration) -> None:

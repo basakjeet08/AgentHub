@@ -5,6 +5,7 @@ from pathlib import Path
 from agenthub.activity import AgentActivity, AgentActivityEvent, AgentActivityEventKind
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
+from agenthub.native_sessions import NativeSessionService
 from agenthub.notifications import DesktopNotification
 from agenthub.sessions import SessionKind
 
@@ -35,7 +36,7 @@ async def test_all_loaded_attention_transitions_notify_once_even_when_focused(
 ) -> None:
     backend = RecordingNotificationBackend()
     app = AgentHubApp(
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
         desktop_notification_backend=backend,
     )
     background = app.session_manager.create(
@@ -105,7 +106,7 @@ async def test_active_agent_notifies_when_application_is_not_focused(
 ) -> None:
     backend = RecordingNotificationBackend()
     app = AgentHubApp(
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
         desktop_notification_backend=backend,
     )
     session = app.session_manager.create(
@@ -138,7 +139,7 @@ async def test_backend_failure_does_not_affect_activity_or_application(
 ) -> None:
     backend = FailingNotificationBackend()
     app = AgentHubApp(
-        native_session_adapters={},
+        native_session_service=NativeSessionService({}),
         desktop_notification_backend=backend,
     )
     background = app.session_manager.create(

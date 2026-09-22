@@ -9,9 +9,11 @@ from textual.content import Content
 from textual.widgets import OptionList, Static
 
 from agenthub.activity import AgentActivity
-from agenthub.harnesses import ANTIGRAVITY, CODEX, DEVIN, FISH, OPENCODE, AgentHarness
-from agenthub.native_sessions import NativeSession
+from agenthub.app import AgentHubApp
+from agenthub.harnesses import FISH, AgentHarness
+from agenthub.native_sessions import NativeSession, NativeSessionService
 from agenthub.presentation import SessionSidebar, SidebarTab
+from agenthub.providers import ANTIGRAVITY, CODEX, DEVIN, OPENCODE
 from agenthub.sessions import AgentSession, SessionKind, SessionManager
 
 
@@ -20,13 +22,18 @@ class SidebarTestApp(App):
 
     CSS_PATH = Path(__file__).parents[2] / "src/agenthub/presentation/styles/panels/sidebar.tcss"
 
-    def __init__(self, sessions: tuple[AgentSession, ...]) -> None:
+    def __init__(
+        self,
+        sessions: tuple[AgentSession, ...],
+        harnesses: tuple[AgentHarness, ...] = (),
+    ) -> None:
         super().__init__()
         self.sessions = sessions
+        self.harnesses = harnesses
         self.selected_session_id: str | None = None
 
     def compose(self) -> ComposeResult:
-        yield SessionSidebar(self.sessions)
+        yield SessionSidebar(self.sessions, harnesses=self.harnesses)
 
     def on_session_sidebar_session_selected(
         self,
@@ -307,9 +314,10 @@ async def test_loaded_agent_activity_updates_and_unloaded_agent_hides_it(
             sidebar.update_sessions(manager.sessions)
             await pilot.pause()
             lines = str(session_list.get_option(loaded.id).prompt).splitlines()
+            harness_badge = f"{sleeping_harness.icon} "
             assert lines == [
-                "  Test Sleeper · Loaded",
-                f"  {' ' * Content('Test Sleeper · ').cell_length}{label}",
+                f"  {harness_badge}Loaded",
+                f"  {' ' * Content(harness_badge).cell_length}{label}",
             ]
 
         sidebar.select_tab(SidebarTab.UNLOADED)
@@ -462,7 +470,8 @@ async def test_empty_tabs_keep_focus_and_show_category_copy(
 
 async def test_harness_legend_is_shared_by_agent_tabs_and_hidden_for_shells() -> None:
     sessions = _sessions(FISH, SessionKind.SHELL, "Shell")
-    app = SidebarTestApp(sessions)
+    harnesses = (ANTIGRAVITY, CODEX, DEVIN, OPENCODE)
+    app = SidebarTestApp(sessions, harnesses)
 
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -481,6 +490,28 @@ async def test_harness_legend_is_shared_by_agent_tabs_and_hidden_for_shells() ->
         assert legend.display
         sidebar.select_tab(SidebarTab.SHELLS)
         assert not legend.display
+
+
+async def test_app_injects_its_configured_harnesses_into_the_sidebar(
+    sleeping_harness: AgentHarness,
+) -> None:
+    custom_harness = replace(
+        sleeping_harness,
+        id="custom",
+        display_name="Custom Harness",
+        icon="",
+    )
+    app = AgentHubApp(
+        agent_harnesses={custom_harness.id: custom_harness},
+        native_session_service=NativeSessionService({}),
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        legend = app.query_one("#agent-legend")
+        labels = [str(item.content) for item in legend.query(".legend-item")]
+
+        assert labels == [custom_harness.display_name]
 
 
 async def test_sidebar_displays_icon_and_ellipsizes_long_session_names(

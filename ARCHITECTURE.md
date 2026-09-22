@@ -34,10 +34,9 @@ main.py
    ▼
 AgentHubApp
    │
-   ├── SessionSidebar
+   ├── SessionSidebar (sessions + keyboard ownership)
    ├── HomeScreen
-   ├── AgentHubStatusBar
-   └── native-session adapters → unloaded AgentSession entries
+   └── NativeSessionService → native-session adapters → unloaded AgentSession entries
 ```
 
 No `AgentTerminal`, PTY, or coding-agent process is created just to display
@@ -56,7 +55,7 @@ bittty / PTY → coding agent`.
   allowing one provider failure to prevent startup;
 - resumes unloaded conversations by exact native ID and reuses an existing
   terminal when one is already running;
-- owns the persistent sidebar, main content area, and status bar shell;
+- owns the persistent sidebar and main content area;
 - mounts every terminal runtime known at composition time inside a
   `ContentSwitcher`;
 - owns the session sidebar, active-terminal visibility, and focus;
@@ -76,7 +75,7 @@ bittty / PTY → coding agent`.
   native-backed Agent with only its provider, removes disposable unidentified
   agents and shells, and shows Home after an active exit;
 - exposes contextual Delete for the active native-backed Agent while delegating
-  native deletion to the selected session's provider adapter;
+  native deletion to `NativeSessionService`;
 - starts an authenticated loopback activity receiver only when a supported
   provider runtime needs one, applies normalized events to the exact logical
   session, and refreshes the sidebar when activity changes;
@@ -392,10 +391,10 @@ sessions; the app controls the widget tree, layout, focus, and visibility.
 
 ### AgentHarness
 
-`AgentHarness` is an immutable, semantic description of a supported coding
-agent. It answers:
+`AgentHarness` is an immutable, provider-independent description of a hosted
+command-line harness. It answers:
 
-- What kind of agent is this?
+- What kind of harness is this?
 - What stable ID identifies it in configuration and persistence?
 - What name should the UI display?
 - What command launches it?
@@ -725,7 +724,7 @@ Permanent deletion follows this ownership sequence:
 
 ```text
 active native-backed Agent → Ctrl+P → Delete
-        ↓ adapter capability check
+        ↓ NativeSessionService capability check
         ├── unsupported → guidance toast; no modal or runtime change
         └── supported
                 ↓ confirmation
@@ -733,7 +732,7 @@ SessionManager enters DELETING and detaches runtime
         ↓
 AgentHubApp unmounts/stops the terminal
         ↓
-NativeSessionAdapter.delete(exact native ID)
+NativeSessionService.delete(exact native ID)
         ↓
 same-provider discovery verifies absence
         ├── absent        → SessionManager removes logical row
@@ -741,7 +740,9 @@ same-provider discovery verifies absence
 ```
 
 Provider-specific commands, capabilities, and failures remain inside
-native-session adapters; the app contains no harness-ID branches. Delete
+native-session adapters; the app contains no harness-ID branches and does not
+call concrete adapters directly. `NativeSessionService` receives the adapter
+registry through dependency injection. Delete
 subprocesses receive closed stdin so they cannot become interactive.
 
 This policy does not belong inside `AgentTerminal`; that boundary continues to
@@ -986,16 +987,15 @@ Normal empty startup uses a persistent application shell:
 │                      │                                    │
 │                      │ Lightweight orientation            │
 │                      │ Essential shortcut reference       │
-├──────────────────────┴────────────────────────────────────┤
-│ Sessions 0   Running 0            ○ Unlocked  Ctrl+G Lock │
-└───────────────────────────────────────────────────────────┘
+│ ○ Unlocked Ctrl+G    │                                    │
+└──────────────────────┴────────────────────────────────────┘
 ```
 
-The status bar keeps session and running-agent metrics on the left while the
-keyboard-ownership state and Ctrl+G action remain grouped on the right.
+The sidebar keeps its category counts and keyboard-ownership state together.
+The Ctrl+G action hint remains anchored at the bottom of the sidebar.
 The Home screen is a content view inside the application shell rather than a
-separate Textual screen stack entry. This keeps shared navigation and status
-chrome mounted while future content changes inside the `ContentSwitcher`. Home
+separate Textual screen stack entry. This keeps shared navigation chrome mounted
+while future content changes inside the `ContentSwitcher`. Home
 contains only static orientation, a compact essential-shortcut reference, and a
 pointer to the README usage guide. It adds no focusable controls or application
 bindings and uses only page-level scrolling when a short viewport requires it.
@@ -1006,13 +1006,13 @@ modal screens:
 Ctrl+P → New Agent
    │
    ▼
-HarnessSelectionModal
+HarnessPickerModal
    │ stable harness ID or cancellation
    ▼
 AgentHubApp resolves registry
    │ selected harness
    ▼
-WorkingDirectoryModal
+WorkingDirectoryPickerModal
    │ confirmed normalized Path or cancellation
    ▼
 AgentHubApp._create_agent_session(...)
@@ -1034,7 +1034,7 @@ Fresh runtime reconciliation is deliberately explicit rather than heuristic:
 Open running fresh Agent (native_session_id=None)
    │
    ▼ Ctrl+P → Link
-NativeSessionLinkModal
+SessionLinkModal
    │ same-harness, same-cwd, unloaded, unique-ID native rows only
    ▼ user selects one row
 SessionManager.link_native_session(...)
@@ -1075,7 +1075,7 @@ clears its filter and focuses the nearest ancestor that remains visible.
 
 Textual 8.2.8 normally loads `DirectoryTree` entries through a threaded worker.
 Under the project's Python 3.13 runtime, that worker prevents the event loop's
-default executor from shutting down after the picker is used. `FolderTree`
+default executor from shutting down after the picker is used. `DirectoryPickerTree`
 therefore retains Textual's loading queue and filesystem error handling while
 performing directory scans and entry checks in cooperative async handlers. This
 version-sensitive adapter behavior is protected by integration tests.
@@ -1139,34 +1139,45 @@ src/agenthub/
 ├── activity/
 │   ├── _forwarder.py    # shared neutral local hook forwarding
 │   ├── __init__.py      # public activity API
-│   ├── _opencode_plugin.js # passive OpenCode V2 event bridge
-│   ├── antigravity.py   # Antigravity hook bridge and event normalizer
-│   ├── codex.py         # Codex hook bridge and event normalizer
-│   ├── devin.py         # Devin hook bridge, config overlay, and normalizer
+│   ├── adapter.py       # provider-neutral activity adapter protocol
 │   ├── model.py         # activity state and normalized events
-│   ├── opencode.py      # OpenCode V2 launch config and event normalizer
 │   ├── receiver.py      # authenticated loopback event receiver
-│   └── reducer.py       # provider-neutral activity transitions
+│   ├── reducer.py       # provider-neutral activity transitions
+│   └── service.py       # application-facing activity setup and routing
 ├── harnesses/
-│   ├── __init__.py      # public harness API
-│   ├── antigravity.py   # Antigravity definition
-│   ├── codex.py         # Codex definition
-│   ├── devin.py         # Devin definition
+│   ├── __init__.py      # public generic harness API
 │   ├── fish.py          # Fish shell definition
-│   ├── model.py         # immutable semantic models
-│   ├── opencode.py      # OpenCode definition
-│   └── registry.py      # built-in harness lookup
+│   └── model.py         # immutable semantic models
+├── providers/
+│   ├── __init__.py      # public coding-agent provider API
+│   ├── registry.py      # built-in harness and native-session adapter lookup
+│   ├── antigravity/
+│   │   ├── __init__.py  # Antigravity harness export
+│   │   ├── harness.py   # Antigravity harness definition
+│   │   ├── session_adapter.py # Antigravity native-session adapter
+│   │   └── activity_adapter.py # Antigravity activity integration
+│   ├── codex/
+│   │   ├── __init__.py  # Codex harness export
+│   │   ├── harness.py   # Codex harness definition
+│   │   ├── session_adapter.py # Codex native-session adapter
+│   │   └── activity_adapter.py # Codex activity integration
+│   ├── devin/
+│   │   ├── __init__.py  # Devin harness export
+│   │   ├── harness.py   # Devin harness definition
+│   │   ├── session_adapter.py # Devin native-session adapter
+│   │   └── activity_adapter.py # Devin activity integration
+│   └── opencode/
+│       ├── __init__.py  # OpenCode harness export
+│       ├── harness.py   # OpenCode harness definition
+│       ├── session_adapter.py # OpenCode native-session adapter
+│       ├── activity_adapter.py # OpenCode activity integration
+│       └── activity_plugin.js # passive OpenCode event bridge
 ├── native_sessions/
 │   ├── __init__.py      # public native-session API
-│   ├── _normalize.py     # shared provider-record validation
-│   ├── _sqlite.py        # read-only provider database access
+│   ├── _utils.py         # shared command, normalization, and SQLite helpers
 │   ├── adapter.py       # provider adapter protocol and failures
 │   ├── model.py         # normalized discovery and launch models
-│   ├── registry.py      # built-in adapter lookup
-│   ├── antigravity.py   # Antigravity discovery/resume adapter
-│   ├── codex.py         # Codex discovery/resume adapter
-│   ├── devin.py         # Devin discovery/resume adapter
-│   └── opencode.py      # OpenCode discovery/resume adapter
+│   └── service.py       # provider-neutral operation and capability boundary
 ├── notifications/
 │   ├── __init__.py      # public notification API
 │   ├── backend.py       # platform-neutral delivery protocol
@@ -1189,16 +1200,15 @@ src/agenthub/
     ├── key_bindings.py  # Textual bindings and shared shortcut metadata
     ├── modals/
     │   ├── __init__.py
-    │   ├── harness_selection.py     # registry-driven agent harness picker
-    │   ├── native_session_delete.py # irreversible native-deletion confirmation
-    │   ├── native_session_link.py   # explicit native-session reconciliation
-    │   ├── session_name.py          # optional Fish shell session name input
-    │   ├── session_selection.py     # unified Agent/Shell open picker
-    │   └── working_directory.py     # directory-only tree picker
+    │   ├── harness_picker.py        # registry-driven agent harness picker
+    │   ├── session_picker.py        # unified Agent/Shell open picker
+    │   ├── session_delete_confirmation.py # irreversible native-deletion confirmation
+    │   ├── session_link.py          # explicit native-session reconciliation
+    │   ├── shell_session_name_input.py  # optional Fish shell session name input
+    │   └── working_directory_picker.py  # directory-only tree picker
     ├── panels/
     │   ├── __init__.py
-    │   ├── sidebar.py   # session navigation panel
-    │   └── status_bar.py   # real application state and counts
+    │   └── sidebar.py   # session navigation and keyboard-ownership status
     ├── screens/
     │   ├── __init__.py
     │   └── home.py      # static landing orientation and shortcut reference
@@ -1206,15 +1216,14 @@ src/agenthub/
         ├── app.tcss         # persistent application-shell layout
         ├── theme.tcss       # shared component and Textual overlay styles
         ├── modals/
-        │   ├── harness_selection.tcss   # compact picker presentation
-        │   ├── native_session_delete.tcss # deletion-confirmation presentation
-        │   ├── native_session_link.tcss # native-link picker presentation
-        │   ├── session_name.tcss        # compact name-prompt presentation
-        │   ├── session_selection.tcss   # open-picker presentation
-        │   └── working_directory.tcss   # directory-picker presentation
+        │   ├── harness_picker.tcss      # compact picker presentation
+        │   ├── session_picker.tcss      # session-picker presentation
+        │   ├── session_delete_confirmation.tcss # deletion-confirmation presentation
+        │   ├── session_link.tcss        # native-link picker presentation
+        │   ├── shell_session_name_input.tcss  # compact name-prompt presentation
+        │   └── working_directory_picker.tcss  # directory-picker presentation
         ├── panels/
-        │   ├── sidebar.tcss # sidebar presentation styles
-        │   └── status_bar.tcss # persistent status presentation
+        │   └── sidebar.tcss # sidebar and lock-status presentation
         └── screens/
             └── home.tcss    # responsive Home landing presentation
 
@@ -1232,9 +1241,9 @@ tests/
 │   ├── test_native_session_adapters.py
 │   ├── test_activity_notifications.py
 │   ├── test_session_manager.py
-│   ├── test_session_name_modal.py
+│   ├── test_shell_session_name_input_modal.py
 │   ├── test_terminal.py
-│   └── test_working_directory_modal.py
+│   └── test_working_directory_picker_modal.py
 └── integration/
     ├── test_app_lifecycle.py
     ├── test_desktop_activity_notifications.py
@@ -1250,11 +1259,20 @@ tests/
     └── test_terminal_paste.py
 ```
 
-Packages are appropriate here because harnesses, sessions, and terminal hosting
-are already distinct architectural concepts with multiple responsibilities or
-expected implementations. Imports elsewhere should prefer the package public
-APIs rather than reaching into `model.py`, `manager.py`, or individual harness
-modules.
+The `harnesses/` package owns generic terminal and harness concepts plus the
+Fish shell definition. The `providers/` package owns coding-agent-specific
+harness definitions, native-session implementations, and their registries.
+The `native_sessions/` package owns only provider-neutral native-session
+contracts, models, utilities, and service logic. The `activity/` package owns
+provider-neutral activity models, reducer, transport, adapter contract, and
+service; provider normalization and launch preparation live under each
+provider package.
+
+Packages are appropriate here because harnesses, providers, sessions, and
+terminal hosting are distinct architectural concepts with multiple
+responsibilities or expected implementations. Imports elsewhere should prefer
+the package public APIs rather than reaching into `model.py`, `manager.py`, or
+individual provider harness modules.
 
 Do not create empty `widgets/`, `persistence/`, or `config/` packages yet. Add
 those when the corresponding implementation begins.
@@ -1283,8 +1301,8 @@ The architectural foundation is implemented:
    to the active terminal, exit events map to the correct session, and app
    shutdown terminates both processes.
 8. A persistent application shell, Textual's built-in Tokyo Night theme,
-   responsive static Home landing view, clean zero-session sidebar, and real
-   status bar establish the shared UI foundation.
+   responsive static Home landing view, and clean zero-session sidebar
+   establish the shared UI foundation.
 9. Sidebar presentation classifies one manager-owned session collection into
    counted Loaded, Unloaded, and Shells tabs backed by the same selection flow.
 10. New Agent opens a registry-driven harness picker followed by a
@@ -1346,7 +1364,7 @@ The architectural foundation is implemented:
 
 The remaining sequence is:
 
-1. Add usage and quota details to the status bar.
+1. Add usage and quota details to the application shell.
 2. Add macOS desktop activity notification delivery.
 3. Add packaging and distribution workflows.
 
@@ -1629,9 +1647,9 @@ covered by an integration test.
 Current state: native-session adapters discover Codex, OpenCode, Devin, and
 Antigravity conversations at startup. They appear unloaded, resume by exact
 native ID when selected, and reuse an already-running terminal. The
-harness/terminal/session/manager boundaries, Home-first
-application shell, persistent sidebar and status bar, Locked/Unlocked keyboard
-ownership, loaded/unloaded Agent grouping, registry-driven Antigravity, Codex,
+harness/terminal/session/manager boundaries, Home-first application shell,
+persistent sidebar with Locked/Unlocked keyboard ownership, loaded/unloaded
+Agent grouping, registry-driven Antigravity, Codex,
 Devin, and OpenCode selection, required session naming, working-directory
 browsing, shell creation and navigation, explicit session kinds, exited-runtime cleanup, and multi-session
 switching runtime are implemented and tested. Normal startup and incomplete or

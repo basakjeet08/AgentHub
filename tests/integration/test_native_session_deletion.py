@@ -11,8 +11,8 @@ from textual.widgets import Button, Static
 
 from agenthub.app import AgentHubApp
 from agenthub.harnesses import AgentHarness
-from agenthub.native_sessions import LaunchSpec, NativeSession
-from agenthub.presentation.modals import NativeSessionDeleteModal
+from agenthub.native_sessions import LaunchSpec, NativeSession, NativeSessionService
+from agenthub.presentation.modals import SessionDeleteConfirmationModal
 from agenthub.sessions import SessionKind, SessionState
 
 
@@ -68,12 +68,14 @@ async def test_manual_native_deletion_is_reconciled_after_only_its_process_exits
     exiting = AgentHarness(
         id="exiting-provider",
         display_name="Exiting Provider",
+        icon="🧪",
         command=(sys.executable, "-c", "import time; time.sleep(0.2)"),
         scroll=None,
     )
     unrelated = AgentHarness(
         id="unrelated-provider",
         display_name="Unrelated Provider",
+        icon="🧪",
         command=(sys.executable, "-c", "import time; time.sleep(30)"),
         scroll=None,
     )
@@ -89,10 +91,10 @@ async def test_manual_native_deletion_is_reconciled_after_only_its_process_exits
     )
     app = AgentHubApp(
         agent_harnesses={exiting.id: exiting, unrelated.id: unrelated},
-        native_session_adapters={
+        native_session_service=NativeSessionService({
             exiting.id: exiting_adapter,
             unrelated.id: unrelated_adapter,
-        },
+        }),
     )
 
     async with app.run_test() as pilot:
@@ -129,7 +131,7 @@ async def test_explicit_target_deletes_inactive_agent_not_active_agent(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -141,20 +143,20 @@ async def test_explicit_target_deletes_inactive_agent_not_active_agent(
         app._request_native_session_delete(highlighted.id)
         await pilot.pause()
 
-        assert isinstance(app.screen, NativeSessionDeleteModal)
-        copy = app.screen.query_one("#native-session-delete-copy", Static)
+        assert isinstance(app.screen, SessionDeleteConfirmationModal)
+        copy = app.screen.query_one("#session-delete-confirmation-copy", Static)
         assert 'Delete "Auth Refactor" permanently?' == str(copy.content)
         assert copy._render_markup is False
 
-        cancel = app.screen.query_one("#native-session-delete-cancel", Button)
-        confirm = app.screen.query_one("#native-session-delete-confirm", Button)
+        cancel = app.screen.query_one("#session-delete-confirmation-cancel", Button)
+        confirm = app.screen.query_one("#session-delete-confirmation-confirm", Button)
         assert cancel.has_focus
 
         await pilot.press("right")
         assert confirm.has_focus
         await pilot.press("left")
         assert cancel.has_focus
-        await pilot.press("down", "enter")
+        await pilot.press("right", "enter")
         for _ in range(20):
             if highlighted not in app.session_manager.sessions:
                 break
@@ -178,7 +180,7 @@ async def test_ctrl_d_with_terminal_focus_reaches_native_terminal(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -196,7 +198,7 @@ async def test_ctrl_d_with_terminal_focus_reaches_native_terminal(
             await pilot.pause()
 
         write_spy.assert_called_once_with("\x04")
-        assert not isinstance(app.screen, NativeSessionDeleteModal)
+        assert not isinstance(app.screen, SessionDeleteConfirmationModal)
         assert adapter.delete_calls == []
 
 
@@ -213,7 +215,7 @@ async def test_cancel_native_deletion_leaves_everything_untouched(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -222,12 +224,12 @@ async def test_cancel_native_deletion_leaves_everything_untouched(
         session = app.session_manager.sessions[0]
         app._request_native_session_delete(session.id)
         await pilot.pause()
-        assert isinstance(app.screen, NativeSessionDeleteModal)
+        assert isinstance(app.screen, SessionDeleteConfirmationModal)
 
         if cancel_with == "escape":
             await pilot.press("escape")
         else:
-            await pilot.click("#native-session-delete-cancel")
+            await pilot.click("#session-delete-confirmation-cancel")
         await pilot.pause()
 
         assert app.session_manager.sessions == (session,)
@@ -260,7 +262,7 @@ async def test_failed_native_deletion_preserves_row_and_native_identity(
         adapter.keep_after_delete = True
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -269,7 +271,7 @@ async def test_failed_native_deletion_preserves_row_and_native_identity(
         session = app.session_manager.sessions[0]
         app._request_native_session_delete(session.id)
         await pilot.pause()
-        await pilot.click("#native-session-delete-confirm")
+        await pilot.click("#session-delete-confirmation-confirm")
         for _ in range(20):
             if session.state is not SessionState.DELETING:
                 break
@@ -304,7 +306,7 @@ async def test_unavailable_native_deletion_shows_provider_guidance_as_warning(
     adapter.supports_delete = False
     app = AgentHubApp(
         agent_harnesses={antigravity.id: antigravity},
-        native_session_adapters={antigravity.id: adapter},
+        native_session_service=NativeSessionService({antigravity.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -323,7 +325,7 @@ async def test_unavailable_native_deletion_shows_provider_guidance_as_warning(
         assert notification.message == guidance
         assert notification.title == "Native deletion unavailable"
         assert notification.severity == "warning"
-        assert not isinstance(app.screen, NativeSessionDeleteModal)
+        assert not isinstance(app.screen, SessionDeleteConfirmationModal)
         assert app.session_manager.sessions == (session,)
         assert session.native_session_id == "native-1"
         assert session.state is SessionState.RUNNING
@@ -344,7 +346,7 @@ async def test_running_native_agent_is_stopped_before_provider_deletion(
     )
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
 
     async with app.run_test() as pilot:
@@ -362,7 +364,7 @@ async def test_running_native_agent_is_stopped_before_provider_deletion(
 
         app._request_native_session_delete(session.id)
         await pilot.pause()
-        await pilot.click("#native-session-delete-confirm")
+        await pilot.click("#session-delete-confirmation-confirm")
         for _ in range(20):
             if session not in app.session_manager.sessions:
                 break
@@ -381,7 +383,7 @@ async def test_fresh_agent_and_shell_targets_cannot_delete_natively(
     app = AgentHubApp(
         agent_harnesses={sleeping_harness.id: sleeping_harness},
         shell_harness=sleeping_harness,
-        native_session_adapters={sleeping_harness.id: adapter},
+        native_session_service=NativeSessionService({sleeping_harness.id: adapter}),
     )
     fresh = app.session_manager.create(
         name="New session",
@@ -402,12 +404,12 @@ async def test_fresh_agent_and_shell_targets_cannot_delete_natively(
         app._request_native_session_delete(fresh.id)
         await pilot.pause()
 
-        assert not isinstance(app.screen, NativeSessionDeleteModal)
+        assert not isinstance(app.screen, SessionDeleteConfirmationModal)
         assert "Fresh Agents are not linked" in list(app._notifications)[-1].message
 
         app._request_native_session_delete(shell.id)
         await pilot.pause()
 
         assert app.session_manager.sessions == (fresh, shell)
-        assert not isinstance(app.screen, NativeSessionDeleteModal)
+        assert not isinstance(app.screen, SessionDeleteConfirmationModal)
         assert adapter.delete_calls == []
