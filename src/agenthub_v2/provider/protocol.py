@@ -18,6 +18,8 @@ class DiscoveredSession:
 class Provider(Protocol):
     """Capabilities exposed by one coding-agent provider."""
 
+    display_name: str
+    icon: str
     provider_id: str
 
     def discover_sessions(self) -> tuple[DiscoveredSession, ...]:

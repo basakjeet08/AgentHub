@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from agenthub_v2.provider import ProviderService
 from agenthub_v2.session import Session
 
 
@@ -26,5 +27,12 @@ def main() -> int | None:
     print(f"Provider: {session.provider_id}")
     print(f"Provider Session ID: {session.provider_session_id}")
     print(f"Activity: {session.activity}")
+
+    # Creating the provider service that will later be used by controllers.
+    provider_service = ProviderService()
+    sessions = provider_service.discover_sessions()
+
+    for discovered_sessions in sessions:
+        print(discovered_sessions)
 
     return None
