@@ -59,7 +59,7 @@ def test_service_with_no_providers_discovers_nothing() -> None:
     assert ProviderService(()).discover_sessions() == ()
 
 
-def test_resume_command_routes_to_requested_provider(tmp_path: Path) -> None:
+def test_resume_command_routes_to_requested_provider() -> None:
     codex = StubProvider("codex")
     devin = StubProvider("devin")
     service = ProviderService((codex, devin))

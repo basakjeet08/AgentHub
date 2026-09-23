@@ -1,5 +1,6 @@
 """Unit coverage for the shared provider discovery helpers."""
 
+import asyncio
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
@@ -78,7 +79,15 @@ async def test_run_delete_command_returns_on_clean_exit() -> None:
     with patch("agenthub_v2.provider.utils.asyncio.create_subprocess_exec", new=launcher):
         await run_delete_command(("codex", "delete", "--force", "codex-1"))
 
-    launcher.assert_awaited_once()
+    launcher.assert_awaited_once_with(
+        "codex",
+        "delete",
+        "--force",
+        "codex-1",
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
 
 async def test_run_delete_command_raises_with_stderr_detail() -> None:
