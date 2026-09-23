@@ -2,6 +2,7 @@
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -60,3 +61,20 @@ def test_opencode_rejects_unsupported_schemas(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="unsupported schema"):
         OpenCodeProvider(database).discover_sessions()
+
+
+def test_opencode_resume_command_matches_launch_contract(tmp_path: Path) -> None:
+    provider = OpenCodeProvider(tmp_path / "opencode.db")
+
+    assert provider.resume_command("open-1") == ("opencode", "--session", "open-1")
+
+
+async def test_opencode_delete_session_runs_exact_command(tmp_path: Path) -> None:
+    provider = OpenCodeProvider(tmp_path / "opencode.db")
+
+    with patch(
+        "agenthub_v2.provider.opencode.service.run_delete_command", new=AsyncMock()
+    ) as delete_command:
+        await provider.delete_session("open-1")
+
+    delete_command.assert_awaited_once_with(("opencode", "session", "delete", "open-1"))

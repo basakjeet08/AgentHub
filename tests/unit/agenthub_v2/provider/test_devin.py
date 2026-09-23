@@ -2,6 +2,7 @@
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -71,3 +72,20 @@ def test_devin_discovers_visible_sessions(tmp_path: Path) -> None:
         DiscoveredSession("devin", "devin-2", "Recent work", tmp_path),
         DiscoveredSession("devin", "devin-1", "Devin work", tmp_path),
     )
+
+
+def test_devin_resume_command_matches_launch_contract(tmp_path: Path) -> None:
+    provider = DevinProvider(tmp_path / "sessions.db")
+
+    assert provider.resume_command("devin-1") == ("devin", "--resume", "devin-1")
+
+
+async def test_devin_delete_session_runs_exact_command(tmp_path: Path) -> None:
+    provider = DevinProvider(tmp_path / "sessions.db")
+
+    with patch(
+        "agenthub_v2.provider.devin.service.run_delete_command", new=AsyncMock()
+    ) as delete_command:
+        await provider.delete_session("devin-1")
+
+    delete_command.assert_awaited_once_with(("devin", "rm", "--force", "devin-1"))

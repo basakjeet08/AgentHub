@@ -2,6 +2,7 @@
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -112,3 +113,20 @@ def test_codex_resolves_directory_environment_precedence(
     monkeypatch.delenv("CODEX_HOME")
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     assert CodexProvider()._configured_data_directory() == tmp_path / ".codex"
+
+
+def test_codex_resume_command_matches_launch_contract(tmp_path: Path) -> None:
+    provider = CodexProvider(tmp_path)
+
+    assert provider.resume_command("codex-1") == ("codex", "resume", "codex-1")
+
+
+async def test_codex_delete_session_runs_exact_command(tmp_path: Path) -> None:
+    provider = CodexProvider(tmp_path)
+
+    with patch(
+        "agenthub_v2.provider.codex.service.run_delete_command", new=AsyncMock()
+    ) as delete_command:
+        await provider.delete_session("codex-1")
+
+    delete_command.assert_awaited_once_with(("codex", "delete", "--force", "codex-1"))

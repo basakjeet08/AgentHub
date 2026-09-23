@@ -4,6 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from agenthub_v2.provider.antigravity import AntigravityProvider
 from agenthub_v2.provider.protocol import DiscoveredSession
 
@@ -71,3 +73,16 @@ def test_antigravity_excludes_zero_step_and_killed_sessions(tmp_path: Path) -> N
     assert AntigravityProvider(tmp_path / "conversation_summaries.db").discover_sessions() == (
         DiscoveredSession("antigravity", "agy-1", "Active thread", tmp_path),
     )
+
+
+def test_antigravity_resume_command_matches_launch_contract(tmp_path: Path) -> None:
+    provider = AntigravityProvider(tmp_path / "conversation_summaries.db")
+
+    assert provider.resume_command("agy-1") == ("agy", "--conversation", "agy-1")
+
+
+async def test_antigravity_delete_session_rejects_deletion(tmp_path: Path) -> None:
+    provider = AntigravityProvider(tmp_path / "conversation_summaries.db")
+
+    with pytest.raises(RuntimeError, match="does not support"):
+        await provider.delete_session("agy-1")
