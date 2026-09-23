@@ -6,9 +6,13 @@ import sqlite3
 from pathlib import Path
 
 from agenthub_v2.provider.protocol import DiscoveredSession
-from agenthub_v2.provider.utils import normalize_discovered_session, read_rows
+from agenthub_v2.provider.utils import (
+    normalize_discovered_session,
+    read_rows,
+    run_delete_command,
+)
 
-from ._config import DISPLAY_NAME, ICON, PROVIDER_ID
+from ._config import COMMAND, DISPLAY_NAME, ICON, PROVIDER_ID
 
 _STATE_DATABASE = re.compile(r"state_(\d+)\.sqlite$")
 
@@ -16,6 +20,7 @@ _STATE_DATABASE = re.compile(r"state_(\d+)\.sqlite$")
 class CodexProvider:
     """Provider operations for Codex."""
 
+    command = COMMAND
     display_name = DISPLAY_NAME
     icon = ICON
     provider_id = PROVIDER_ID
@@ -89,3 +94,13 @@ class CodexProvider:
 
         except (OSError, sqlite3.Error) as error:
             raise RuntimeError(f"Codex discovery failed: {error}") from error
+
+    def resume_command(self, provider_session_id: str) -> tuple[str, ...]:
+        """Return the command used to resume a Codex session."""
+
+        return (*self.command, "resume", provider_session_id)
+
+    async def delete_session(self, provider_session_id: str) -> None:
+        """Delete a Codex session."""
+
+        await run_delete_command((*self.command, "delete", "--force", provider_session_id))

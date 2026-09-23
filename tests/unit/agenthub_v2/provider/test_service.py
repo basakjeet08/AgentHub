@@ -25,6 +25,16 @@ class StubProvider:
 
         return self._sessions
 
+    def resume_command(self, provider_session_id: str) -> tuple[str, ...]:
+        """Return a stub resume command for the session."""
+
+        return (self.provider_id, provider_session_id)
+
+    async def delete_session(self, provider_session_id: str) -> None:
+        """Accept deletion without performing any operation."""
+
+        del provider_session_id
+
 
 def test_service_aggregates_sessions_from_injected_providers(
     tmp_path: Path,

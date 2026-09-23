@@ -1,10 +1,13 @@
 """Shared helpers for coding-agent providers."""
 
+import asyncio
 import sqlite3
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from .protocol import DiscoveredSession
+
+_DELETE_TIMEOUT_SECONDS = 30
 
 
 def normalize_discovered_session(
@@ -56,3 +59,36 @@ def read_rows[T](
         return tuple(converted_rows)
     finally:
         connection.close()
+
+
+async def run_delete_command(command: Sequence[str]) -> None:
+    """Run one non-interactive provider deletion command and require success."""
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as error:
+        raise RuntimeError(f"Could not launch {command[0]}: {error}") from error
+
+    try:
+        async with asyncio.timeout(_DELETE_TIMEOUT_SECONDS):
+            stdout, stderr = await process.communicate()
+    except TimeoutError as error:
+        process.kill()
+        await process.wait()
+        raise RuntimeError(f"{command[0]} deletion timed out") from error
+
+    if process.returncode == 0:
+        return
+
+    detail = stderr.decode(errors="replace").strip()
+    if not detail:
+        detail = stdout.decode(errors="replace").strip()
+    if not detail:
+        detail = f"exit status {process.returncode}"
+
+    raise RuntimeError(f"{command[0]} deletion failed: {detail}")

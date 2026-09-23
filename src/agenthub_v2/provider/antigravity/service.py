@@ -8,12 +8,13 @@ from urllib.parse import unquote, urlparse
 from agenthub_v2.provider.protocol import DiscoveredSession
 from agenthub_v2.provider.utils import normalize_discovered_session, read_rows
 
-from ._config import DISPLAY_NAME, ICON, PROVIDER_ID
+from ._config import COMMAND, DISPLAY_NAME, ICON, PROVIDER_ID
 
 
 class AntigravityProvider:
     """Provider operations for Antigravity."""
 
+    command = COMMAND
     display_name = DISPLAY_NAME
     icon = ICON
     provider_id = PROVIDER_ID
@@ -84,3 +85,13 @@ class AntigravityProvider:
 
         except (OSError, sqlite3.Error) as error:
             raise RuntimeError(f"Antigravity discovery failed: {error}") from error
+
+    def resume_command(self, provider_session_id: str) -> tuple[str, ...]:
+        """Return the command used to resume an Antigravity session."""
+
+        return (*self.command, "--conversation", provider_session_id)
+
+    async def delete_session(self, provider_session_id: str) -> None:
+        """Reject deletion because Antigravity has no supported headless delete API."""
+
+        raise RuntimeError("Antigravity does not support programmatic session deletion.")

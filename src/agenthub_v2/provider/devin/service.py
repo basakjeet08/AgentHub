@@ -5,14 +5,19 @@ import sqlite3
 from pathlib import Path
 
 from agenthub_v2.provider.protocol import DiscoveredSession
-from agenthub_v2.provider.utils import normalize_discovered_session, read_rows
+from agenthub_v2.provider.utils import (
+    normalize_discovered_session,
+    read_rows,
+    run_delete_command,
+)
 
-from ._config import DISPLAY_NAME, ICON, PROVIDER_ID
+from ._config import COMMAND, DISPLAY_NAME, ICON, PROVIDER_ID
 
 
 class DevinProvider:
     """Provider operations for Devin."""
 
+    command = COMMAND
     display_name = DISPLAY_NAME
     icon = ICON
     provider_id = PROVIDER_ID
@@ -78,3 +83,13 @@ class DevinProvider:
 
         except (OSError, sqlite3.Error) as error:
             raise RuntimeError(f"Devin discovery failed: {error}") from error
+
+    def resume_command(self, provider_session_id: str) -> tuple[str, ...]:
+        """Return the command used to resume a Devin session."""
+
+        return (*self.command, "--resume", provider_session_id)
+
+    async def delete_session(self, provider_session_id: str) -> None:
+        """Delete a Devin session."""
+
+        await run_delete_command((*self.command, "rm", "--force", provider_session_id))

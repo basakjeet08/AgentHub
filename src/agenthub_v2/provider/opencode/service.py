@@ -5,9 +5,13 @@ import sqlite3
 from pathlib import Path
 
 from agenthub_v2.provider.protocol import DiscoveredSession
-from agenthub_v2.provider.utils import normalize_discovered_session, read_rows
+from agenthub_v2.provider.utils import (
+    normalize_discovered_session,
+    read_rows,
+    run_delete_command,
+)
 
-from ._config import DISPLAY_NAME, ICON, PROVIDER_ID
+from ._config import COMMAND, DISPLAY_NAME, ICON, PROVIDER_ID
 
 _REQUIRED_SESSION_COLUMNS = frozenset(
     {"id", "title", "directory", "parent_id", "time_archived", "time_updated"}
@@ -17,6 +21,7 @@ _REQUIRED_SESSION_COLUMNS = frozenset(
 class OpenCodeProvider:
     """Provider operations for OpenCode."""
 
+    command = COMMAND
     display_name = DISPLAY_NAME
     icon = ICON
     provider_id = PROVIDER_ID
@@ -95,3 +100,13 @@ class OpenCodeProvider:
             )
         except (OSError, sqlite3.Error) as error:
             raise RuntimeError(f"OpenCode discovery failed: {error}") from error
+
+    def resume_command(self, provider_session_id: str) -> tuple[str, ...]:
+        """Return the command used to resume an OpenCode session."""
+
+        return (*self.command, "--session", provider_session_id)
+
+    async def delete_session(self, provider_session_id: str) -> None:
+        """Delete an OpenCode session."""
+
+        await run_delete_command((*self.command, "session", "delete", provider_session_id))

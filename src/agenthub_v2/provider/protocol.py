@@ -25,3 +25,11 @@ class Provider(Protocol):
     def discover_sessions(self) -> tuple[DiscoveredSession, ...]:
         """Discover sessions owned by the provider."""
         ...
+
+    def resume_command(self, provider_session_id: str) -> tuple[str, ...]:
+        """Return the command used to resume a provider session."""
+        ...
+
+    async def delete_session(self, provider_session_id: str) -> None:
+        """Delete a provider session."""
+        ...
