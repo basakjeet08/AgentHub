@@ -9,18 +9,25 @@ from .protocol import DiscoveredSession
 
 def normalize_discovered_session(
     provider_id: str,
-    provider_session_id: str,
-    name: str,
+    provider_session_id: object,
+    name: object,
     cwd: Path | None,
-) -> DiscoveredSession:
-    """Normalize one discovered provider session."""
+) -> DiscoveredSession | None:
+    """
+    Normalize one discovered provider record while rejecting records without
+    an identity.
+    """
+
+    provider_session_id = str(provider_session_id or "").strip()
+    if not provider_session_id:
+        return None
 
     normalized_cwd = cwd if cwd is not None and cwd.is_dir() else Path.home()
 
     return DiscoveredSession(
         provider_id=provider_id,
-        provider_session_id=provider_session_id.strip(),
-        name=name.strip() or "Untitled",
+        provider_session_id=provider_session_id,
+        name=str(name or "").strip() or "Untitled",
         cwd=normalized_cwd,
     )
 
