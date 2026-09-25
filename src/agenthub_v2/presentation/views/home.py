@@ -57,7 +57,8 @@ class HomeView(VerticalScroll):
 
             yield Static(
                 f"Select a session from the sidebar\n"
-                f"or start a new session with {binding_key(COMMAND_PALETTE_BINDING)}.",
+                f"or start a new session with "
+                f"[$secondary]{binding_key(COMMAND_PALETTE_BINDING)}[/].",
                 id="home-orientation",
             )
 
