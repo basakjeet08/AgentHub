@@ -20,7 +20,15 @@ CommandPalette CommandList {
     max-height: 50vh;
 }
 
+.muted {
+    color: $text-muted;
+}
+
 Screen {
     background: $background;
     color: $foreground;
+}
+
+.card {
+    background: $surface;
 }
